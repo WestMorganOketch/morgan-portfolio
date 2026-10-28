@@ -1,0 +1,222 @@
+[
+  {
+    "id": "ssh-brute-root",
+    "title": "Multiple failed SSH logins followed by success",
+    "source": "Linux auth log",
+    "severity": "High",
+    "difficulty": "easy",
+    "details": "187 failed SSH logins for the root account from EXTERNAL-HOST-01 in four minutes, followed by one successful root login from that host.",
+    "verdict": "true_positive",
+    "explanation": "A burst of failures followed by a success from one external address is consistent with a successful brute-force attack. Treat the root account as potentially compromised.",
+    "mitre": "T1110"
+  },
+  {
+    "id": "user-lockout",
+    "title": "Account locked after repeated failed logins",
+    "source": "Active Directory",
+    "severity": "Medium",
+    "difficulty": "easy",
+    "details": "A standard user account locked after five failed logins at 08:02 from WORKSTATION-01. The same account successfully signed in from that workstation at 08:04 on a Monday morning.",
+    "verdict": "false_positive",
+    "explanation": "The same account and workstation, followed by a successful login two minutes later, are consistent with a mistyped password rather than an attack.",
+    "mitre": null
+  },
+  {
+    "id": "phish-click",
+    "title": "User submitted credentials to a suspicious sign-in page",
+    "source": "Email gateway and web proxy",
+    "severity": "High",
+    "difficulty": "easy",
+    "details": "An email from MAIL-SENDER-01 asked a user to verify a mailbox. Proxy telemetry shows a credential submission to a lookalike sign-in domain registered two days earlier.",
+    "verdict": "true_positive",
+    "explanation": "A lookalike sender, urgency, and credential submission to a newly registered domain indicate credential phishing. Reset the password and revoke active sessions.",
+    "mitre": "T1566"
+  },
+  {
+    "id": "scan-approved",
+    "title": "Port scan detected inside the network",
+    "source": "IDS",
+    "severity": "High",
+    "difficulty": "medium",
+    "details": "APPROVED-SCANNER-01 probed 1,000 ports across SCAN-SUBNET-01 in 60 seconds. The asset is a registered vulnerability scanner and the activity matches approved change CHG-EXAMPLE-01.",
+    "verdict": "false_positive",
+    "explanation": "An approved scanner running inside its scheduled change window is expected. Confirming the asset and approved change is what clears this alert.",
+    "mitre": null
+  },
+  {
+    "id": "scan-rogue",
+    "title": "Port scan from a user workstation",
+    "source": "IDS",
+    "severity": "High",
+    "difficulty": "medium",
+    "details": "USER-WORKSTATION-01 probed 15 ports each on a domain controller and file server at 22:10. No change is recorded and no scanning tool is approved on this host.",
+    "verdict": "true_positive",
+    "explanation": "A standard user workstation has no expected reason to scan servers. This may indicate reconnaissance by malware or an intruder; isolate and investigate the host.",
+    "mitre": "T1046"
+  },
+  {
+    "id": "ps-encoded-office",
+    "title": "Suspicious PowerShell launched from Word",
+    "source": "EDR",
+    "severity": "Critical",
+    "difficulty": "medium",
+    "details": "WINWORD.EXE on WORKSTATION-02 spawned powershell.exe with an encoded command, which then connected to EXTERNAL-HOST-02 on port 443.",
+    "verdict": "true_positive",
+    "explanation": "Word should not normally launch encoded PowerShell. The unusual child process and outbound callback warrant investigation as a possible malicious document.",
+    "mitre": "T1059.001"
+  },
+  {
+    "id": "ps-scheduled",
+    "title": "PowerShell executed as SYSTEM",
+    "source": "EDR",
+    "severity": "Medium",
+    "difficulty": "medium",
+    "details": "PowerShell ran Get-WindowsUpdateLog at 02:00 as SYSTEM under the established WeeklyMaintenance task, created by IT six months ago and scheduled for Sundays.",
+    "verdict": "false_positive",
+    "explanation": "A longstanding scheduled task running a built-in maintenance command on its normal schedule is routine administration.",
+    "mitre": null
+  },
+  {
+    "id": "mfa-fatigue",
+    "title": "Unusual sign-in with repeated MFA prompts",
+    "source": "Identity provider",
+    "severity": "High",
+    "difficulty": "hard",
+    "details": "USER-01 signed in from Nairobi at 09:12, then from a distant location at 09:41 on a new device. The second sign-in followed six denied MFA prompts and one approval.",
+    "verdict": "true_positive",
+    "explanation": "A geographically implausible sign-in, a new device, and repeated denied prompts ending in approval are consistent with MFA fatigue. Verify with the user and revoke suspicious sessions.",
+    "mitre": "T1078"
+  },
+  {
+    "id": "vpn-travel",
+    "title": "Impossible travel detected",
+    "source": "Identity provider",
+    "severity": "Medium",
+    "difficulty": "medium",
+    "details": "USER-02 signed in from Nairobi at 14:05 and a Netherlands VPN exit node at 14:25. The device identifier is unchanged and there were no failed attempts; the VPN provider is approved.",
+    "verdict": "false_positive",
+    "explanation": "The approved VPN exit point, unchanged device, and absence of failed attempts explain the location jump as VPN routing.",
+    "mitre": null
+  },
+  {
+    "id": "sqli-web",
+    "title": "SQL injection attempt on a web application",
+    "source": "WAF",
+    "severity": "High",
+    "difficulty": "easy",
+    "details": "Requests to a product endpoint contained common SQL injection test strings and originated from WEB-CLIENT-01. The last response was HTTP 200 and ten times larger than normal.",
+    "verdict": "true_positive",
+    "explanation": "Injection-like requests followed by an unusually large successful response may indicate data was returned. Review application logs and response behavior, and remediate any confirmed weakness.",
+    "mitre": "T1190"
+  },
+  {
+    "id": "waf-keyword",
+    "title": "WAF blocked possible SQL injection",
+    "source": "WAF",
+    "severity": "Medium",
+    "difficulty": "medium",
+    "details": "A POST from the authenticated staff editor was blocked. The request body contains the ordinary sentence SELECT the best option from the list inside an article draft.",
+    "verdict": "false_positive",
+    "explanation": "The word SELECT appears in ordinary prose from an authenticated editor. The context suggests a keyword rule over-match rather than an injection attempt.",
+    "mitre": null
+  },
+  {
+    "id": "dns-tunnel",
+    "title": "High-volume DNS TXT queries",
+    "source": "DNS logs",
+    "severity": "High",
+    "difficulty": "hard",
+    "details": "DNS-SOURCE-01 made 4,200 DNS TXT queries in one hour to random subdomains of a reserved example domain. The average query length was 180 characters.",
+    "verdict": "true_positive",
+    "explanation": "Long random subdomains and high-volume TXT lookups can indicate data being moved through DNS. Investigate the source host and destination domain.",
+    "mitre": "T1071.004"
+  },
+  {
+    "id": "av-updates",
+    "title": "DNS spike to a single domain",
+    "source": "DNS logs",
+    "severity": "Low",
+    "difficulty": "easy",
+    "details": "Forty hosts queried the approved example antivirus update domain between 06:00 and 06:05, as they do each day.",
+    "verdict": "false_positive",
+    "explanation": "Many hosts contacting a known vendor domain at the same time each day is consistent with scheduled antivirus updates.",
+    "mitre": null
+  },
+  {
+    "id": "exfil-upload",
+    "title": "Large upload to personal cloud storage",
+    "source": "DLP and web proxy",
+    "severity": "High",
+    "difficulty": "medium",
+    "details": "A generic user account uploaded a 4.2 GB archive to a personal cloud storage site at 23:47. The account's usual uploads are under 50 MB, and an HR departure notice is recorded.",
+    "verdict": "true_positive",
+    "explanation": "Unusual volume, after-hours timing, a personal storage destination, and a recorded departure may indicate data theft. Preserve evidence and follow the organization's response process.",
+    "mitre": "T1567"
+  },
+  {
+    "id": "backup-transfer",
+    "title": "Large outbound data transfer",
+    "source": "Firewall",
+    "severity": "High",
+    "difficulty": "medium",
+    "details": "BACKUP-SERVER-01 sent 600 GB to the approved backup vault at 01:00. This matches the nightly backup job and is within five percent of each of the last 30 nights.",
+    "verdict": "false_positive",
+    "explanation": "The same source, destination, schedule, and consistent size indicate a normal offsite backup rather than data exfiltration.",
+    "mitre": null
+  },
+  {
+    "id": "ransomware",
+    "title": "Mass file modification",
+    "source": "EDR",
+    "severity": "Critical",
+    "difficulty": "easy",
+    "details": "On FILE-SERVER-01, 3,200 files were renamed with a .locked extension in 90 seconds. A recovery note appeared in each folder, and a command to delete shadow copies was executed.",
+    "verdict": "true_positive",
+    "explanation": "Rapid mass renaming, a ransom note, and deletion of shadow copies are strong ransomware indicators. Isolate the server and follow incident response procedures.",
+    "mitre": "T1486"
+  },
+  {
+    "id": "admin-rogue",
+    "title": "New account added to Domain Admins",
+    "source": "Active Directory",
+    "severity": "Critical",
+    "difficulty": "medium",
+    "details": "A generic service account was created and added to Domain Admins at 03:14 by ADMIN-01. No change is recorded. ADMIN-01 normally works business hours and is marked away.",
+    "verdict": "true_positive",
+    "explanation": "An unapproved privileged account created at night by an account marked away may indicate credential compromise or persistence. Verify with the account owner and investigate.",
+    "mitre": "T1136"
+  },
+  {
+    "id": "admin-approved",
+    "title": "New account added to Domain Admins",
+    "source": "Active Directory",
+    "severity": "Critical",
+    "difficulty": "medium",
+    "details": "A generic service account was created and added to Domain Admins at 10:30 by the IT manager. It matches approved onboarding request HR-EXAMPLE-01.",
+    "verdict": "false_positive",
+    "explanation": "The account, timing, actor, and approved onboarding request line up. Context distinguishes this expected change from an otherwise similar serious alert.",
+    "mitre": null
+  },
+  {
+    "id": "rdp-jump",
+    "title": "Remote Desktop login to database server",
+    "source": "Windows event logs",
+    "severity": "Medium",
+    "difficulty": "medium",
+    "details": "DBA-USER-01 logged in via RDP to DB-SERVER-01 at 14:20 from approved JUMP-HOST-01. MFA succeeded and the login occurred during business hours.",
+    "verdict": "false_positive",
+    "explanation": "Administrative access through the approved jump host with MFA during working hours is the intended secure path.",
+    "mitre": null
+  },
+  {
+    "id": "eicar-test",
+    "title": "Malware detected by antivirus",
+    "source": "Endpoint antivirus",
+    "severity": "High",
+    "difficulty": "easy",
+    "details": "Antivirus detected the harmless EICAR test string on TEST-HOST-01 during a security awareness exercise. The file was quarantined immediately.",
+    "verdict": "false_positive",
+    "explanation": "EICAR is a harmless standard test string designed to trigger antivirus detection. The alert confirms that the control is working.",
+    "mitre": null
+  }
+]
