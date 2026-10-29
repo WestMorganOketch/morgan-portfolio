@@ -18,6 +18,8 @@ try {
       updated_at timestamptz NOT NULL DEFAULT now()
     );
 
+    ALTER TABLE portfolio_projects ENABLE ROW LEVEL SECURITY;
+
     ALTER TABLE portfolio_projects
       ADD COLUMN IF NOT EXISTS challenges text NOT NULL DEFAULT '',
       ADD COLUMN IF NOT EXISTS solutions text NOT NULL DEFAULT '',
@@ -39,6 +41,8 @@ try {
       )),
       created_at timestamptz NOT NULL DEFAULT now()
     );
+
+    ALTER TABLE portfolio_analytics ENABLE ROW LEVEL SECURITY;
 
     ALTER TABLE portfolio_analytics
       DROP CONSTRAINT IF EXISTS portfolio_analytics_page_check;
@@ -74,6 +78,8 @@ try {
       updated_at timestamptz NOT NULL DEFAULT now()
     );
 
+    ALTER TABLE portfolio_content ENABLE ROW LEVEL SECURITY;
+
     CREATE INDEX IF NOT EXISTS portfolio_content_public_order_idx
       ON portfolio_content (category, published, sort_order, created_at DESC);
 
@@ -88,6 +94,7 @@ try {
     ON CONFLICT DO NOTHING;
   `);
   await pool.query(readFileSync(new URL("../migrations/002_features.sql", import.meta.url), "utf8"));
+  await pool.query(readFileSync(new URL("../migrations/003_enable_rls.sql", import.meta.url), "utf8"));
 
   const alerts = JSON.parse(readFileSync(new URL("../data/alerts.json", import.meta.url), "utf8"));
   const alertValues = alerts.flatMap((alert) => [

@@ -63,10 +63,11 @@ The website uses `VITE_API_URL`, `PORTFOLIO_API_ORIGIN`, and `NEXT_PUBLIC_SITE_U
 - Helmet security headers, strict environment-configured CORS origins, and global plus route-specific rate limits.
 - Zod input validation, parameterized SQL, request-size limits, and generic production errors.
 - Bcrypt password hashes, secure HTTP-only same-site sessions, CSRF and same-origin checks, and server-side authorization for admin routes.
+- Row-level security is enabled on every API table without anonymous or authenticated policies; those Supabase roles have no table or sequence privileges. The API connects through the trusted Postgres role, which owns these tables and therefore bypasses RLS unless row security is forced.
 - Private document storage, content-signature checks, randomized object names, short-lived signed links, and publish-only access.
 - Contact retention is limited to 90 days; game answers and identifying visitor data are not exposed in the public leaderboard.
 
-Never commit `.env` files, database credentials, admin secrets, service-role keys, private keys, or the legacy résumé PDF.
+For every future database table, add an additive migration that enables RLS immediately after creation and revokes privileges from `PUBLIC`, `anon`, and `authenticated`; do not add public policies. Keep the API on its trusted Postgres connection, not a Supabase browser key. Never commit `.env` files, database credentials, admin secrets, service-role keys, private keys, or the legacy résumé PDF.
 
 ## Checks
 

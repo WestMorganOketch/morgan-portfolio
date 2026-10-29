@@ -101,7 +101,7 @@ app.use(session({
   store: new PgSession({
     pool,
     tableName: "admin_sessions",
-    createTableIfMissing: true,
+    createTableIfMissing: false,
     pruneSessionInterval: 60 * 15,
   }),
   resave: false,

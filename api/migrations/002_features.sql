@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS contact_messages (
   expires_at timestamptz NOT NULL DEFAULT (now() + interval '90 days')
 );
 
+ALTER TABLE contact_messages ENABLE ROW LEVEL SECURITY;
+
 CREATE INDEX IF NOT EXISTS contact_messages_expiry_idx
   ON contact_messages (expires_at);
 
@@ -24,6 +26,8 @@ CREATE TABLE IF NOT EXISTS soc_alerts (
   mitre text
 );
 
+ALTER TABLE soc_alerts ENABLE ROW LEVEL SECURITY;
+
 CREATE TABLE IF NOT EXISTS triage_rounds (
   token_hash char(64) PRIMARY KEY,
   alert_ids text[] NOT NULL,
@@ -31,6 +35,8 @@ CREATE TABLE IF NOT EXISTS triage_rounds (
   expires_at timestamptz NOT NULL DEFAULT (now() + interval '10 minutes'),
   submitted_at timestamptz
 );
+
+ALTER TABLE triage_rounds ENABLE ROW LEVEL SECURITY;
 
 CREATE INDEX IF NOT EXISTS triage_rounds_expiry_idx
   ON triage_rounds (expires_at);
@@ -41,6 +47,8 @@ CREATE TABLE IF NOT EXISTS triage_scores (
   score integer NOT NULL CHECK (score BETWEEN 0 AND 1500),
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE triage_scores ENABLE ROW LEVEL SECURITY;
 
 CREATE INDEX IF NOT EXISTS triage_scores_leaderboard_idx
   ON triage_scores (score DESC, created_at ASC);
@@ -58,6 +66,8 @@ CREATE TABLE IF NOT EXISTS documents (
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (category, title)
 );
+
+ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE documents
   ADD COLUMN IF NOT EXISTS is_published boolean NOT NULL DEFAULT false;

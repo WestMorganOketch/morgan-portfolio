@@ -50,6 +50,8 @@ npm run db:migrate
 
 The migration creates the portfolio schema, private contact inbox with 90-day expiry, server-side alert-triage game tables and its 20 anonymized alerts, and three unpublished document drafts. It does not create leaderboard players or publish documents. It is safe to rerun: schema changes are additive, and seeded rows are inserted only when missing. `WEB_ORIGINS` is a required comma-separated exact-origin allow-list; set it to the local website origins during development and the exact Vercel HTTPS origin in production.
 
+All application tables, including the admin session store, have row-level security enabled without public policies. Migrations revoke table and sequence privileges from `PUBLIC`, `anon`, and `authenticated`, and configure default privilege revocation for new objects created by the migration role. The API uses the trusted direct Postgres role; as table owner it bypasses RLS unless row security is forced. For every new table, enable RLS immediately after creating it, keep public policies absent, and revoke public/client-role privileges in the same migration. Never connect the API using a browser/anon key.
+
 ### 2. Start the API
 
 Keep this terminal open:
