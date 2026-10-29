@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { MotionConfig } from "framer-motion";
+import { LazyMotion, MotionConfig, domAnimation } from "framer-motion";
 import { ThemeProvider } from "next-themes";
 import { SiteShell } from "@/components/SiteShell";
 import "./globals.css";
@@ -48,10 +48,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" suppressHydrationWarning>
       <body>
         <ThemeProvider attribute="data-theme" defaultTheme="system" enableSystem storageKey="morgan-portfolio-theme" disableTransitionOnChange>
-          <MotionConfig reducedMotion="user">
-            <a className="skip-link" href="#main-content">Skip to content</a>
-            <SiteShell>{children}</SiteShell>
-          </MotionConfig>
+          <LazyMotion features={domAnimation}>
+            <MotionConfig reducedMotion="user">
+              <a className="skip-link" href="#main-content">Skip to content</a>
+              <SiteShell>{children}</SiteShell>
+            </MotionConfig>
+          </LazyMotion>
         </ThemeProvider>
       </body>
     </html>

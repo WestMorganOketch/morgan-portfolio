@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { m, useReducedMotion } from "framer-motion";
 import {
   ArrowRight, ArrowUpRight, Award, BookOpen, BriefcaseBusiness, Check, Code2,
   Database, GraduationCap, Network, Server, Shield, Sparkles, Users,
 } from "lucide-react";
 import { profile } from "@/data/profile";
 import { details, skillGroups, timeline } from "@/data/site";
+import { motionDurations, motionEasing } from "@/lib/motion";
 import ContactForm from "@/components/ContactForm";
 import AlertTriageGame from "@/components/AlertTriageGame";
 import DocumentVault from "@/components/DocumentVault";
@@ -17,15 +18,20 @@ import Leaderboard from "@/components/Leaderboard";
 const icons = { shield: Shield, network: Network, code: Code2, server: Server, users: Users };
 
 function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
+  const prefersReducedMotion = useReducedMotion();
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 18 }}
+    <m.div
+      initial={{ opacity: 0, y: 16 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.12 }}
-      transition={{ duration: 0.45, delay, ease: "easeOut" }}
+      transition={{
+        duration: prefersReducedMotion ? motionDurations.reduced : motionDurations.reveal,
+        delay: Math.min(5, Math.round(Math.max(delay, 0) / motionDurations.stagger)) * motionDurations.stagger,
+        ease: motionEasing.enter,
+      }}
     >
       {children}
-    </motion.div>
+    </m.div>
   );
 }
 
@@ -65,7 +71,7 @@ function SkillsContent() {
           <button key={group} type="button" className={selected === group ? "filter-chip selected" : "filter-chip"} onClick={() => setSelected(group)} aria-pressed={selected === group}>{group}</button>
         ))}
       </div>
-      <div className="skill-group-grid">
+      <div className="skill-group-grid content-swap" key={selected}>
         {groups.map((group, index) => {
           const Icon = icons[group.icon];
           return (
@@ -206,8 +212,8 @@ function ProjectsContent() {
         <span className="filter-label">EXPLORE THE WORK</span>
         {filters.map((option) => <button key={option} type="button" className={filter === option ? "filter-chip selected" : "filter-chip"} onClick={() => setFilter(option)} aria-pressed={filter === option}>{option}</button>)}
       </div>
-      {databaseNotice && <p className="inline-note" role="status">{databaseNotice}</p>}
-      <div className="project-card-grid">
+      {databaseNotice && <p className={databaseNotice.startsWith("Waking up") ? "inline-note waking-note" : "inline-note"} role="status">{databaseNotice}</p>}
+      <div className="project-card-grid content-swap" key={filter}>
         {filtered.map((project, index) => (
           <Reveal key={project.id} delay={index * 0.04}>
             <article className="project-card">
@@ -217,7 +223,7 @@ function ProjectsContent() {
                 <p>{project.description}</p>
                 {caseStudyFields.map(([label, key]) => {
                   const text = project[key];
-                  return text ? <details className="project-details" key={key}><summary>{label}</summary><p>{text}</p></details> : null;
+                  return text ? <details className="project-details" key={key}><summary>{label}</summary><div className="accordion-content"><div><p>{text}</p></div></div></details> : null;
                 })}
                 <ul className="tag-list" aria-label="Technologies">{project.tags.map((tag) => <li key={tag}>{tag}</li>)}</ul>
                 {(project.url?.startsWith("https://") || project.demoUrl?.startsWith("https://")) && (
@@ -400,15 +406,26 @@ function ManagedContent({ slug }: { slug: string }) {
   if (!category || (!loading && !entries.length && !notice)) return null;
   return (
     <section className="managed-content" aria-label="Additional portfolio entries">
-      {loading && notice ? <p className="inline-note managed-notice" role="status">{notice}</p> : null}
+      {loading && notice ? <p className="inline-note managed-notice waking-note" role="status">{notice}</p> : null}
       {!loading && notice ? <p className="inline-note managed-notice" role="status">{notice} The verified profile information above remains available.</p> : null}
+      {loading ? (
+        <div className="managed-content-grid" aria-hidden="true">
+          {Array.from({ length: 2 }, (_, index) => (
+            <div className="managed-entry loading-skeleton managed-skeleton" key={index}>
+              <span className="loading-skeleton-line loading-skeleton-line-short" />
+              <span className="loading-skeleton-line loading-skeleton-line-medium" />
+              <span className="loading-skeleton-line loading-skeleton-line-long" />
+            </div>
+          ))}
+        </div>
+      ) : null}
       {entries.length ? <div className="managed-content-grid">
         {entries.map((entry) => (
           <article className="managed-entry" key={entry.id}>
             <p className="card-index">{entry.period || "PORTFOLIO UPDATE"}</p>
             <h2>{entry.title}</h2>
             <p>{entry.description}</p>
-            {entry.body && <details><summary>Additional details</summary><p>{entry.body}</p></details>}
+            {entry.body && <details className="managed-details"><summary>Additional details</summary><div className="accordion-content"><div><p>{entry.body}</p></div></div></details>}
             {entry.tags.length > 0 && <ul className="tag-list">{entry.tags.map((tag) => <li key={tag}>{tag}</li>)}</ul>}
             {entry.url?.startsWith("https://") && <a className="text-link managed-reference" href={entry.url} target="_blank" rel="noreferrer">Open reference <ArrowUpRight size={13} aria-hidden="true" /><span className="sr-only">(opens in a new tab)</span></a>}
           </article>

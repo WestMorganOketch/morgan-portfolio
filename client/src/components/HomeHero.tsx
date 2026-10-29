@@ -1,20 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { AnimatePresence, animate, motion, useInView, useMotionValue, useMotionValueEvent, useTransform } from "framer-motion";
+import { AnimatePresence, m, useReducedMotion } from "framer-motion";
 import { ArrowDown, ArrowRight, ArrowUpRight, Code2, Mail } from "lucide-react";
 import { profile } from "@/data/profile";
+import { motionDurations, motionEasing } from "@/lib/motion";
 
-const roles = [
-  "Cybersecurity Analyst",
-  "SOC Analyst",
-  "IT Support Specialist",
-  "Network Security Enthusiast",
-  "Data & Systems Professional",
-  "Full-Stack Developer",
-  "Problem Solver",
-];
+const primaryRole = "Cybersecurity Analyst";
 
 const scenes = [
   {
@@ -39,15 +32,10 @@ const scenes = [
 
 function FocusVisualizer() {
   const [active, setActive] = useState(0);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setActive((index) => (index + 1) % scenes.length), 6500);
-    return () => window.clearInterval(timer);
-  }, []);
-
+  const prefersReducedMotion = useReducedMotion();
   const scene = scenes[active];
   return (
-    <div className={`hero-visual scene-${active}`} aria-label={`Animated portfolio illustration: ${scene.label.toLowerCase()}`}>
+    <div className={`hero-visual scene-${active}`} aria-label={`Portfolio illustration: ${scene.label.toLowerCase()}`}>
       <div className="visual-orbit orbit-one" aria-hidden="true" />
       <div className="visual-orbit orbit-two" aria-hidden="true" />
       <div className="visual-glow" aria-hidden="true" />
@@ -59,13 +47,23 @@ function FocusVisualizer() {
           <span className="live-label"><span className="status-indicator" /> ACTIVE</span>
         </div>
         <AnimatePresence mode="wait">
-          <motion.div
+          <m.div
             className="visual-window-body"
             key={scene.label}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.3 }}
+            exit={{
+              opacity: 0,
+              y: -8,
+              transition: {
+                duration: prefersReducedMotion ? motionDurations.reduced : motionDurations.exit,
+                ease: motionEasing.move,
+              },
+            }}
+            transition={{
+              duration: prefersReducedMotion ? motionDurations.reduced : motionDurations.base,
+              ease: motionEasing.enter,
+            }}
           >
             <div className="visual-kicker">// A PRACTICAL, CURIOUS APPROACH</div>
             <h2>{scene.title}</h2>
@@ -79,7 +77,7 @@ function FocusVisualizer() {
                 <div key={label}><span>{label}</span><strong>{value}</strong></div>
               ))}
             </div>
-          </motion.div>
+          </m.div>
         </AnimatePresence>
         <div className="visual-window-footer">
           <span>NAIROBI, KE <span aria-hidden="true">·</span> EAT</span>
@@ -104,43 +102,11 @@ function FocusVisualizer() {
 }
 
 function AnimatedRole() {
-  const [index, setIndex] = useState(0);
-  useEffect(() => {
-    const timer = window.setInterval(() => setIndex((current) => (current + 1) % roles.length), 2800);
-    return () => window.clearInterval(timer);
-  }, []);
   return (
-    <span className="animated-role" aria-label={roles[index]}>
-      <AnimatePresence mode="wait">
-        <motion.span
-          key={roles[index]}
-          initial={{ opacity: 0, y: 9 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -9 }}
-          transition={{ duration: 0.2 }}
-        >{roles[index]}</motion.span>
-      </AnimatePresence>
-      <span className="typing-caret" aria-hidden="true" />
+    <span className="animated-role">
+      <span>{primaryRole}</span>
     </span>
   );
-}
-
-function AnimatedCount({ value, suffix = "" }: { value: number; suffix?: string }) {
-  const ref = useRef<HTMLElement>(null);
-  const inView = useInView(ref, { once: true });
-  const count = useMotionValue(0);
-  const rounded = useTransform(count, Math.round);
-  const [displayed, setDisplayed] = useState(0);
-
-  useEffect(() => {
-    if (!inView) return;
-    const controls = animate(count, value, { duration: 1.2, ease: "easeOut" });
-    return () => controls.stop();
-  }, [count, inView, value]);
-
-  useMotionValueEvent(rounded, "change", setDisplayed);
-
-  return <strong ref={ref}>{displayed}{suffix}</strong>;
 }
 
 export default function HomeHero() {
@@ -176,9 +142,9 @@ export default function HomeHero() {
             <p>Real experience, documented projects, and a steady commitment to growing in the security field.</p>
           </div>
           <div className="snapshot-grid">
-            <article><span>01 / EXPERIENCE</span><AnimatedCount value={50} suffix="+" /><p>users supported in a volunteer IT lab</p></article>
-            <article><span>02 / PROJECTS</span><AnimatedCount value={2} /><p>hands-on security and development projects</p></article>
-            <article><span>03 / TRAINING</span><AnimatedCount value={5} /><p>completed professional learning programs</p></article>
+            <article><span>01 / EXPERIENCE</span><strong>50+</strong><p>users supported in a volunteer IT lab</p></article>
+            <article><span>02 / PROJECTS</span><strong>2</strong><p>hands-on security and development projects</p></article>
+            <article><span>03 / TRAINING</span><strong>5</strong><p>completed professional learning programs</p></article>
             <article><span>04 / EDUCATION</span><strong>2026</strong><p>expected BSc graduation year</p></article>
           </div>
         </div>

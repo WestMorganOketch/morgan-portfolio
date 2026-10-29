@@ -77,7 +77,7 @@ export default function DocumentVault() {
           <option value="">All categories</option><option value="Resume">Resume</option><option value="Certificates">Certificates</option><option value="Lab Reports">Lab Reports</option>
         </select></div>
       </div>
-      {loading && notice ? <p className="inline-note" role="status">{notice}</p> : null}
+      {loading && notice ? <p className="inline-note waking-note" role="status">{notice}</p> : null}
       {!loading && notice ? <p className="inline-note" role="alert">{notice}</p> : null}
       {!loading && !notice && documents.length === 0 ? (
         <div className="coming-soon-card vault-empty">
@@ -86,7 +86,21 @@ export default function DocumentVault() {
           <p>Documents appear here only after Morgan uploads and publishes them from the private admin dashboard.</p>
         </div>
       ) : null}
-      <div className="vault-grid">
+      {loading ? (
+        <>
+          <p className="sr-only" role="status">Loading published documents.</p>
+          <div className="vault-grid" aria-hidden="true">
+            {Array.from({ length: 3 }, (_, index) => (
+              <div className="vault-card loading-skeleton vault-skeleton" key={index}>
+                <span className="loading-skeleton-line loading-skeleton-line-short" />
+                <span className="loading-skeleton-line loading-skeleton-line-medium" />
+                <span className="loading-skeleton-line loading-skeleton-line-long" />
+              </div>
+            ))}
+          </div>
+        </>
+      ) : null}
+      {!loading ? <div className="vault-grid">
         {documents.map((document) => (
           <article className="vault-card" key={document.id}>
             <p className="card-index">{document.category.toUpperCase()}{document.issuedDate ? ` · ${document.issuedDate}` : ""}</p>
@@ -101,7 +115,7 @@ export default function DocumentVault() {
             </div>
           </article>
         ))}
-      </div>
+      </div> : null}
     </section>
   );
 }

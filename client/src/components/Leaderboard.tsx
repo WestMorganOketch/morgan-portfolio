@@ -53,8 +53,18 @@ export default function Leaderboard() {
 
   return (
     <section className="leaderboard-content" aria-label="Top alert triage scores">
-      {loading && notice ? <p className="inline-note" role="status">{notice}</p> : null}
+      {loading && notice ? <p className="inline-note waking-note" role="status">{notice}</p> : null}
       {!loading && notice ? <p className="inline-note" role="alert">{notice}</p> : null}
+      {loading ? (
+        <>
+          <p className="sr-only" role="status">Loading the top alert triage scores.</p>
+          <div className="loading-skeleton leaderboard-skeleton" aria-hidden="true">
+            {Array.from({ length: 4 }, (_, index) => (
+              <span className="loading-skeleton-line loading-skeleton-line-long" key={index} />
+            ))}
+          </div>
+        </>
+      ) : null}
       {!loading && !notice && scores.length === 0 ? <p className="coming-soon-card">No scores yet. Play a round to appear on the board.</p> : null}
       {scores.length ? (
         <div className="analytics-table-wrap">

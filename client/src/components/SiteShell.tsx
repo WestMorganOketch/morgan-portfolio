@@ -128,15 +128,29 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [exploreOpen, setExploreOpen] = useState(false);
   const [showTop, setShowTop] = useState(false);
-  const [returnNotice, setReturnNotice] = useState(false);
-  const returnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
   const exploreRef = useRef<HTMLDivElement>(null);
   const exploreButtonRef = useRef<HTMLButtonElement>(null);
+  const drawerStartRef = useRef<{ x: number; y: number; time: number; lastX: number; lastY: number; lastTime: number } | null>(null);
+  const closeExplore = useCallback((restoreFocus = false) => {
+    setExploreOpen(false);
+    if (restoreFocus) requestAnimationFrame(() => exploreButtonRef.current?.focus());
+  }, []);
   const closePalette = useCallback(() => {
     setPaletteOpen(false);
     requestAnimationFrame(() => searchButtonRef.current?.focus());
   }, []);
+  const finishDrawerSwipe = (x: number, y: number, time: number) => {
+    const start = drawerStartRef.current;
+    drawerStartRef.current = null;
+    if (!start) return;
+    const horizontalDistance = Math.abs(x - start.x);
+    const verticalDistance = Math.abs(y - start.y);
+    const elapsed = time - start.time;
+    const fastFlick = Math.abs(x - start.lastX) >= 20 && time - start.lastTime <= 120;
+    if (horizontalDistance > verticalDistance
+      && (horizontalDistance >= 60 || (horizontalDistance >= 30 && elapsed <= 180) || fastFlick)) closeExplore(true);
+  };
 
   useEffect(() => {
     let frame = 0;
@@ -145,32 +159,12 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
       frame = requestAnimationFrame(() => {
         const scrollable = document.documentElement.scrollHeight - window.innerHeight;
         const progress = scrollable > 0 ? window.scrollY / scrollable : 0;
-        document.documentElement.style.setProperty("--scroll-progress", `${Math.min(100, progress * 100)}%`);
+        document.documentElement.style.setProperty("--scroll-progress", String(Math.min(1, progress)));
         setCompact(window.scrollY > 36);
         setShowTop(window.scrollY > 420);
-
-        if (scrollable > 320 && progress >= 0.995 && !returnTimer.current) {
-          setReturnNotice(true);
-          returnTimer.current = setTimeout(() => {
-            const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-            window.scrollTo({ top: 0, behavior: reduceMotion ? "instant" : "smooth" });
-            returnTimer.current = null;
-            setReturnNotice(false);
-          }, 6000);
-        } else if (progress < 0.985 && returnTimer.current) {
-          clearTimeout(returnTimer.current);
-          returnTimer.current = null;
-          setReturnNotice(false);
-        }
       });
     };
 
-    const cancelReturn = () => {
-      if (!returnTimer.current) return;
-      clearTimeout(returnTimer.current);
-      returnTimer.current = null;
-      setReturnNotice(false);
-    };
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -180,15 +174,12 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
         });
       }
       if (event.key === "Escape") {
-        cancelReturn();
-        setPaletteOpen(false);
-        if (exploreRef.current?.contains(document.activeElement)) exploreButtonRef.current?.focus();
-        setExploreOpen(false);
+        if (paletteOpen) closePalette();
+        closeExplore(exploreRef.current?.contains(document.activeElement) ?? false);
       }
     };
     const onPointerDown = (event: PointerEvent) => {
-      if (event.target instanceof Element && event.target.closest("a, button, input, textarea, select, summary")) cancelReturn();
-      if (event.target instanceof Node && !exploreRef.current?.contains(event.target)) setExploreOpen(false);
+      if (event.target instanceof Node && !exploreRef.current?.contains(event.target)) closeExplore();
     };
 
     update();
@@ -202,9 +193,31 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
       window.removeEventListener("resize", update);
       window.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("pointerdown", onPointerDown, true);
-      if (returnTimer.current) clearTimeout(returnTimer.current);
     };
-  }, []);
+  }, [closeExplore, closePalette, paletteOpen]);
+
+  useEffect(() => {
+    if (!exploreOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Tab" || !window.matchMedia("(max-width: 800px)").matches) return;
+      const menu = exploreRef.current?.querySelector("nav");
+      if (!menu) return;
+      const focusable = [exploreButtonRef.current, ...menu.querySelectorAll<HTMLElement>("a[href]")].filter(
+        (element): element is HTMLElement => element instanceof HTMLElement,
+      );
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [exploreOpen]);
 
   useEffect(() => {
     if (pathname) {
@@ -260,13 +273,55 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
                 <span className="nav-explore-label">Explore <span aria-hidden="true">⌄</span></span>
                 {exploreOpen ? <X className="nav-hamburger" size={18} aria-hidden="true" /> : <Menu className="nav-hamburger" size={18} aria-hidden="true" />}
               </button>
-              <nav id="portfolio-pages-menu" aria-label="Explore all pages" hidden={!exploreOpen}>
-                {publicPages.slice(5).map((page) => (
-                  <Link key={page.href} href={page.href} onClick={() => setExploreOpen(false)} aria-current={pathname === page.href ? "page" : undefined}>
-                    {page.label}<small>{page.description}</small>
-                  </Link>
-                ))}
-                <Link href="/privacy" onClick={() => setExploreOpen(false)} aria-current={pathname === "/privacy" ? "page" : undefined}>Privacy<small>Privacy and data practices</small></Link>
+              <button
+                type="button"
+                className="nav-drawer-backdrop"
+                tabIndex={-1}
+                aria-hidden="true"
+                onClick={() => closeExplore(true)}
+              />
+              <nav
+                id="portfolio-pages-menu"
+                aria-label="Explore all pages"
+                aria-hidden={!exploreOpen}
+                inert={!exploreOpen}
+                onPointerDown={(event) => {
+                  if (event.pointerType === "mouse") return;
+                  const time = performance.now();
+                  drawerStartRef.current = {
+                    x: event.clientX,
+                    y: event.clientY,
+                    time,
+                    lastX: event.clientX,
+                    lastY: event.clientY,
+                    lastTime: time,
+                  };
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                }}
+                onPointerMove={(event) => {
+                  const start = drawerStartRef.current;
+                  if (start) {
+                    start.lastX = event.clientX;
+                    start.lastY = event.clientY;
+                    start.lastTime = performance.now();
+                  }
+                }}
+                onPointerUp={(event) => {
+                  finishDrawerSwipe(event.clientX, event.clientY, performance.now());
+                }}
+                onPointerCancel={() => {
+                  const start = drawerStartRef.current;
+                  if (start) finishDrawerSwipe(start.lastX, start.lastY, start.lastTime);
+                }}
+              >
+                <div className="nav-pages-inner">
+                  {publicPages.slice(5).map((page) => (
+                    <Link key={page.href} href={page.href} onClick={() => closeExplore()} aria-current={pathname === page.href ? "page" : undefined}>
+                      {page.label}<small>{page.description}</small>
+                    </Link>
+                  ))}
+                  <Link href="/privacy" onClick={() => closeExplore()} aria-current={pathname === "/privacy" ? "page" : undefined}>Privacy<small>Privacy and data practices</small></Link>
+                </div>
               </nav>
             </div>
           </nav>
@@ -297,16 +352,6 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
       )}
       {!isAdmin && (
         <div className="floating-tools">
-          {returnNotice && (
-            <div className="return-notice" role="status">
-              <span>You reached the end. Returning to the top shortly.</span>
-              <button type="button" onClick={() => {
-                if (returnTimer.current) clearTimeout(returnTimer.current);
-                returnTimer.current = null;
-                setReturnNotice(false);
-              }}>Stay here</button>
-            </div>
-          )}
           {showTop && (
             <button
               className="icon-button top-button"

@@ -58,7 +58,7 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--green); outline
 .wordmark-label { display: grid; gap: 3px; font: 600 11px var(--mono); letter-spacing: 0.05em; }
 .wordmark-label span { color: var(--muted); font: 9px var(--mono); letter-spacing: 0.12em; }
 .main-nav { display: flex; align-items: center; gap: 35px; color: #b1c0bd; font-size: 12px; }
-.main-nav a { transition: color 160ms ease; }
+.main-nav a { transition: opacity var(--motion-fast) var(--motion-ease-move); }
 .main-nav a:hover, .social-links a:hover, .site-footer > a:last-child:hover { color: var(--green); }
 .main-nav .nav-contact { color: var(--green); }
 .main-nav .nav-contact span { padding-left: 5px; }
@@ -82,8 +82,7 @@ h1 span, .contact-content h2 span { color: var(--mint); }
 .hero-intro { max-width: 490px; margin-bottom: 32px; color: #aabbb7; font-size: 16px; line-height: 1.8; }
 .hero-intro strong { color: var(--text); font-weight: 600; }
 .hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.button { display: inline-flex; min-height: 46px; align-items: center; justify-content: center; gap: 15px; padding: 0 17px; border: 1px solid var(--line); font-size: 12px; font-weight: 600; transition: transform 160ms ease, border-color 160ms ease, background 160ms ease; }
-.button:hover { transform: translateY(-2px); }
+.button { display: inline-flex; min-height: 46px; align-items: center; justify-content: center; gap: 15px; padding: 0 17px; border: 1px solid var(--line); font-size: 12px; font-weight: 600; }
 .button-primary { border-color: var(--green); background: var(--green); color: #0a1510; }
 .button-primary:hover { border-color: #c5ff9b; background: #c5ff9b; }
 .button-quiet { color: #d9e4e1; }
@@ -105,7 +104,7 @@ h1 span, .contact-content h2 span { color: var(--mint); }
 .console-prompt { margin-bottom: 12px; color: #d8e4df; font: 12px var(--mono); }
 .console-prompt span { color: #81cba7; }
 .console-commands { display: flex; gap: 8px; }
-.command { padding: 6px 9px; border: 1px solid rgba(191, 226, 218, 0.14); background: transparent; color: #95aaa2; cursor: pointer; font: 10px var(--mono); transition: all 140ms ease; }
+.command { padding: 6px 9px; border: 1px solid rgba(191, 226, 218, 0.14); background: transparent; color: #95aaa2; cursor: pointer; font: 10px var(--mono); transition: opacity var(--motion-fast) var(--motion-ease-move), transform var(--motion-fast) var(--motion-ease-move); }
 .command:hover, .command.active { border-color: rgba(167, 243, 108, 0.55); color: var(--green); }
 .console-result { display: flex; min-height: 68px; align-items: flex-start; gap: 10px; padding-block: 20px; color: #d7e6df; font: 12px/1.7 var(--mono); }
 .result-caret { color: var(--green); }
@@ -129,7 +128,7 @@ h1 span, .contact-content h2 span { color: var(--mint); }
 .accent { color: var(--green); }
 .section-note { max-width: 310px; margin-bottom: 5px; color: var(--muted); font-size: 13px; line-height: 1.7; }
 .mission-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-.mission-card { display: flex; min-height: 330px; flex-direction: column; padding: 21px; border: 1px solid var(--line); background: rgba(10, 19, 20, 0.72); transition: border-color 160ms ease, transform 160ms ease; }
+.mission-card { display: flex; min-height: 330px; flex-direction: column; padding: 21px; border: 1px solid var(--line); background: rgba(10, 19, 20, 0.72); transition: transform var(--motion-fast) var(--motion-ease-move), opacity var(--motion-fast) var(--motion-ease-move); }
 .mission-card:hover { transform: translateY(-4px); border-color: rgba(167, 243, 108, 0.38); }
 .mission-meta, .mission-bottom { display: flex; align-items: center; justify-content: space-between; color: #70867f; font: 9px var(--mono); letter-spacing: 0.04em; }
 .file-status { color: #a5d98b; }
@@ -328,5 +327,5 @@ h1 span, .contact-content h2 span { color: var(--mint); }
   .console-topbar, .console-footer { padding-inline: 11px; font-size: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+  html { scroll-behavior: auto !important; }
 }

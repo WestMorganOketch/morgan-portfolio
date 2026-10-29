@@ -79,6 +79,7 @@ Open `http://localhost:3000` (or `http://127.0.0.1:3000`). The Next.js rewrite p
 - `src/data/profile.ts`: confirmed public profile, experience, projects, education, certifications, and services.
 - `src/data/site.ts`: page descriptions, skills, navigation, and timeline entries.
 - `src/components/PortfolioPage.tsx` and `src/components/HomeHero.tsx`: reusable page and landing-page UI.
+- `src/lib/motion.ts` and the matching `--motion-*` variables in `src/app/globals.css`: shared animation durations and easing. Keep component motion tied to these tokens; the site respects reduced-motion preferences.
 - `src/app/globals.css`: responsive design, light/dark themes, and reduced-motion styling.
 - `/admin`: add, edit, publish, unpublish, or delete projects and plain-text entries for experience, education, certifications, achievements, blog, gallery, services, write-ups, experiments, cheatsheets, CTF notes, assignments, and skills. Manage private contact messages, remove any leaderboard entry, and upload/edit/publish/delete documents. Published entries appear on the corresponding page; drafts remain private.
 - `/documents`: public search and category filters for published documents. Only PDF, PNG, and JPG files up to 10 MB are accepted; the API inspects file contents, assigns random names, and keeps the Storage bucket private.
