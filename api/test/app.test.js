@@ -6,7 +6,7 @@ process.env.DATABASE_URL = "postgresql://127.0.0.1:1/test";
 process.env.ADMIN_EMAIL = "admin@example.com";
 process.env.ADMIN_PASSWORD_HASH = "test-hash";
 process.env.SESSION_SECRET = "test-session-secret-that-is-long-enough-to-run-tests";
-process.env.WEB_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000";
+process.env.WEB_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000,https://morgan-portfolio-delta.vercel.app";
 
 const [{ app }, { pool }] = await Promise.all([
   import("../src/app.js"),
@@ -47,6 +47,17 @@ test("CORS accepts only configured origins and supports admin preflights", async
     assert.equal(allowed.status, 200);
     assert.equal(allowed.headers.get("access-control-allow-origin"), "http://localhost:3000");
     assert.equal(allowed.headers.get("access-control-allow-credentials"), "true");
+
+    const productionContact = await fetch(`http://127.0.0.1:${address.port}/api/contact`, {
+      method: "POST",
+      headers: {
+        Origin: "https://morgan-portfolio-delta.vercel.app",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    assert.equal(productionContact.status, 400);
+    assert.equal(productionContact.headers.get("access-control-allow-origin"), "https://morgan-portfolio-delta.vercel.app");
 
     const denied = await fetch(`http://127.0.0.1:${address.port}/api/health`, {
       headers: { Origin: "https://untrusted.example" },

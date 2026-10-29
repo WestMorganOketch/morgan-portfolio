@@ -80,9 +80,11 @@ export default function ContactForm() {
       if (!response.ok) {
         const apiMessage = typeof result === "object" && result !== null && "error" in result
           && typeof result.error === "string" ? result.error : null;
-        const message = response.status === 429 && apiMessage
-          ? apiMessage
-          : "I couldn't send your message just now. Please try again.";
+        const message = response.status === 403
+          ? "This site was blocked from sending your message. Please contact Morgan directly while the website settings are checked."
+          : response.status === 429 && apiMessage
+            ? apiMessage
+            : "I couldn't send your message just now. Please try again.";
         setNotice({ type: "error", message });
         return;
       }
