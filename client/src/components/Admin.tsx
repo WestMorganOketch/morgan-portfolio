@@ -145,12 +145,11 @@ async function readResponse(response: Response): Promise<unknown> {
 }
 
 async function request(path: string, init?: RequestInit): Promise<unknown> {
-  const response = await fetch(path, { ...init, credentials: "same-origin" });
+  const response = await fetch(path, { ...init, credentials: "include" });
   return readResponse(response);
 }
 
-export default function Admin() {
-  const [email, setEmail] = useState("");
+export default function Admin({ loginOnly = false }: { loginOnly?: boolean }) {
   const [csrfToken, setCsrfToken] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [projects, setProjects] = useState<Project[]>([]);
@@ -205,13 +204,30 @@ export default function Admin() {
         if (!active) return;
         setCsrfToken(csrfData.token);
 
-        const response = await fetch("/api/admin/me", { credentials: "same-origin" });
-        if (response.status === 401) return;
+        const response = await fetch("/api/admin/me", { credentials: "include", cache: "no-store" });
+        if (response.status === 401) {
+          if (loginOnly) {
+            const errorCode = new URLSearchParams(window.location.search).get("error");
+            const loginErrors: Record<string, string> = {
+              not_allowed: "This Google account is not allowed.",
+              invalid_state: "The sign-in request expired or could not be verified. Please try again.",
+              sign_in_failed: "Google sign-in could not be completed. Please try again.",
+            };
+            if (errorCode) setError(loginErrors[errorCode] ?? "Sign-in failed. Please try again.");
+          } else {
+            window.location.replace("/admin/login");
+          }
+          return;
+        }
         const adminData = await readResponse(response);
         if (!isRecord(adminData) || typeof adminData.email !== "string") {
           throw new Error("The server returned unexpected sign-in data.");
         }
         if (!active) return;
+        if (loginOnly) {
+          window.location.replace("/admin");
+          return;
+        }
         setAdminEmail(adminData.email);
         const [projectData, analyticsData, contentData] = await Promise.all([
           request("/api/admin/projects"),
@@ -234,29 +250,7 @@ export default function Admin() {
     }
     void initialize();
     return () => { active = false; };
-  }, []);
-
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    setMessage("");
-    try {
-      const data = await request("/api/admin/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
-        body: JSON.stringify({ email, password: (new FormData(event.currentTarget).get("password") ?? "").toString() }),
-      });
-      if (!isRecord(data) || typeof data.email !== "string" || typeof data.csrfToken !== "string") {
-        throw new Error("The server returned unexpected sign-in data.");
-      }
-      setAdminEmail(data.email);
-      setCsrfToken(data.csrfToken);
-      await loadDashboard();
-      setMessage("Signed in. Drafts remain private until you publish them.");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Sign-in failed.");
-    }
-  }
+  }, [loginOnly]);
 
   function resetForm() {
     setForm(emptyProject);
@@ -367,7 +361,7 @@ export default function Admin() {
   async function signOut() {
     setError("");
     try {
-      await request("/api/admin/logout", {
+      await request("/api/admin/auth/logout", {
         method: "POST",
         headers: { "X-CSRF-Token": csrfToken },
       });
@@ -377,7 +371,7 @@ export default function Admin() {
       setAnalytics([]);
       resetForm();
       resetContentForm();
-      setMessage("You have signed out.");
+      window.location.replace("/admin/login");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not sign out.");
     }
@@ -406,13 +400,13 @@ export default function Admin() {
             <p className="eyebrow">PRIVATE AREA / SIGN IN</p>
             <h1>Welcome back.</h1>
             <p className="admin-help">Sign in to manage your public projects and view private, anonymous aggregate activity.</p>
-            <form onSubmit={handleLogin}>
-              <label htmlFor="admin-email">Admin email</label>
-              <input autoComplete="username" id="admin-email" onChange={(event) => setEmail(event.target.value)} required type="email" value={email} />
-              <label htmlFor="admin-password">Password</label>
-              <input autoComplete="current-password" id="admin-password" name="password" required type="password" />
-              <button className="button button-primary" disabled={!csrfToken} type="submit">Sign in <span aria-hidden="true">→</span></button>
-            </form>
+            <button
+              className="button button-primary"
+              onClick={() => window.location.assign("/api/admin/auth/google/start")}
+              type="button"
+            >
+              Continue with Google <span aria-hidden="true">→</span>
+            </button>
           </section>
         ) : null}
 

@@ -19,7 +19,7 @@ A polished, responsive professional portfolio for Morgan West Oketch. The public
 ## Features
 
 - Responsive, accessible portfolio pages with light/dark themes, reduced-motion support, search, and SEO metadata.
-- Password-protected admin tools for portfolio entries, contact messages, scores, and documents.
+- Google Sign-In protected admin tools for portfolio entries, contact messages, scores, and documents.
 - Contact submissions require consent, remain private to the admin, and expire after 90 days.
 - A server-scored alert-triage game keeps answers private until a round is submitted.
 - A public leaderboard contains only chosen nicknames, scores, and dates.
@@ -36,7 +36,6 @@ In the first PowerShell terminal:
 cd api
 npm install
 Copy-Item .env.example .env
-npm run admin:hash
 npm run db:migrate
 npm run dev
 ```
@@ -52,21 +51,17 @@ npm run dev
 
 Open the local Next.js address shown by the client dev server. See [`client/README.md`](./client/README.md) for variable setup, content editing, and detailed deployment steps.
 
-## Reset admin access
+## Admin sign-in
 
-The API requires these Render environment variables for admin login:
+Admin access uses Google OpenID Connect authorization-code sign-in with PKCE and a single allowed address. Enable Google 2-Step Verification on the admin Gmail account. No admin password or password hash is used.
 
-- `ADMIN_EMAIL` — the email address used as the login name.
-- `ADMIN_PASSWORD_HASH` — a bcrypt hash of the password, not the password itself.
-- `SESSION_SECRET` — a secret of at least 32 characters used to sign sessions.
+Set these Render environment variables: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `ADMIN_EMAIL`, `SESSION_SECRET`, and `FRONTEND_URL`. Register `https://morgan-portfolio-delta.vercel.app/api/admin/auth/google/callback` as an Authorized redirect URI in Google Cloud Console; for local development, register `http://localhost:3000/api/admin/auth/google/callback`. The production `FRONTEND_URL` is the exact Vercel origin, and it must also be in `WEB_ORIGINS`.
 
-From a VS Code terminal in `api/`, run `npm run admin:hash`. Enter and confirm a new password at the hidden prompts. The password is not echoed, saved, or logged; the command prints only the bcrypt hash. Paste that hash into Render's `ADMIN_PASSWORD_HASH` environment variable and redeploy the API. Do not change `SESSION_SECRET` unless you also intend to invalidate all sessions.
-
-After the updated API is deployed, clear the existing production sessions from the Render Shell attached to that API by running `npm run admin:sessions:clear`. Confirm by typing `CLEAR ALL ADMIN SESSIONS`. The command deletes only rows from `admin_sessions`; it does not touch portfolio data. Do not run it from a local terminal when you intend to clear production sessions, because a local `api/.env` could point to a different database. Alternatively, in the Supabase dashboard, select the production project, open **SQL Editor**, create a query containing `DELETE FROM public.admin_sessions;`, and run it. This invalidates every existing admin login.
+After deploying this change, invalidate sessions created by the previous login yourself: run `npm run admin:sessions:clear` against the production API environment and confirm `CLEAR ALL ADMIN SESSIONS`, or run `DELETE FROM public.admin_sessions;` in the production Supabase SQL Editor. Do not run the cleanup against an unverified database.
 
 ## Environment variable names
 
-The API uses `NODE_ENV`, `PORT`, `DATABASE_URL`, `DB_SSL`, `DB_SSL_CA_PATH`, `DB_SSL_CA`, `WEB_ORIGINS`, `TRUST_PROXY`, `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, `SESSION_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_DOCUMENT_BUCKET`.
+The API uses `NODE_ENV`, `PORT`, `DATABASE_URL`, `DB_SSL`, `DB_SSL_CA_PATH`, `DB_SSL_CA`, `WEB_ORIGINS`, `TRUST_PROXY`, `ADMIN_EMAIL`, `SESSION_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `FRONTEND_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_DOCUMENT_BUCKET`.
 
 The website uses `VITE_API_URL`, `PORTFOLIO_API_ORIGIN`, and `NEXT_PUBLIC_SITE_URL`.
 
@@ -74,7 +69,7 @@ The website uses `VITE_API_URL`, `PORTFOLIO_API_ORIGIN`, and `NEXT_PUBLIC_SITE_U
 
 - Helmet security headers, strict environment-configured CORS origins, and global plus route-specific rate limits.
 - Zod input validation, parameterized SQL, request-size limits, and generic production errors.
-- Bcrypt password hashes, secure HTTP-only same-site sessions, CSRF and same-origin checks, and server-side authorization for admin routes.
+- Google-verified admin identity, secure HTTP-only same-site sessions, CSRF and same-origin checks, and server-side authorization for admin routes.
 - Row-level security is enabled on every API table without anonymous or authenticated policies; those Supabase roles have no table or sequence privileges. The API connects through the trusted Postgres role, which owns these tables and therefore bypasses RLS unless row security is forced.
 - Private document storage, content-signature checks, randomized object names, short-lived signed links, and publish-only access.
 - Contact retention is limited to 90 days; game answers and identifying visitor data are not exposed in the public leaderboard.

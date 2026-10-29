@@ -72,7 +72,7 @@ function isDocumentList(value: unknown): value is DocumentEntry[] {
 }
 
 async function request(path: string, init?: RequestInit): Promise<unknown> {
-  const response = await fetch(path, { ...init, credentials: "same-origin", cache: "no-store" });
+  const response = await fetch(path, { ...init, credentials: "include", cache: "no-store" });
   const text = await response.text();
   let data: unknown = null;
   if (text) {

@@ -1,19 +1,23 @@
-import bcrypt from "bcryptjs";
 import connectPgSimple from "connect-pg-simple";
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import express from "express";
 import { rateLimit } from "express-rate-limit";
 import session from "express-session";
+import { OAuth2Client } from "google-auth-library";
 import helmet from "helmet";
 import { pool } from "./db.js";
-import { analyticsSchema, contentCategories, contentSchema, loginSchema, parseInput, projectSchema, uuidSchema } from "./validation.js";
+import { analyticsSchema, contentCategories, contentSchema, parseInput, projectSchema, uuidSchema } from "./validation.js";
 import { registerFeatureRoutes } from "./featureRoutes.js";
 
 const PgSession = connectPgSimple(session);
 const app = express();
 const sessionSecret = process.env.SESSION_SECRET;
 const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-const adminPasswordHash = process.env.ADMIN_PASSWORD_HASH;
+const googleClientId = process.env.GOOGLE_CLIENT_ID?.trim();
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
+const googleRedirectUri = process.env.GOOGLE_REDIRECT_URI?.trim();
+const frontendUrl = process.env.FRONTEND_URL?.trim();
+const googleAuthClient = new OAuth2Client(googleClientId, googleClientSecret, googleRedirectUri);
 const webOrigins = new Set(
   (process.env.WEB_ORIGINS ?? "").split(",").map((origin) => origin.trim()).filter(Boolean),
 );
@@ -29,15 +33,61 @@ const invalidOrigin = [...webOrigins].find((origin) => {
 if (!sessionSecret || sessionSecret.length < 32) {
   throw new Error("SESSION_SECRET must contain at least 32 characters.");
 }
-if (!adminEmail || !adminPasswordHash) {
-  throw new Error("Set ADMIN_EMAIL and ADMIN_PASSWORD_HASH in api/.env before starting the API.");
-}
 if (webOrigins.size === 0) {
   throw new Error("Set WEB_ORIGINS to a comma-separated allow-list of website origins.");
 }
 if (invalidOrigin) {
   throw new Error("WEB_ORIGINS entries must be exact HTTP or HTTPS origins without paths.");
 }
+if (frontendUrl) {
+  let frontendOrigin;
+  try {
+    const parsed = new URL(frontendUrl);
+    if (
+      !["http:", "https:"].includes(parsed.protocol)
+      || parsed.origin !== frontendUrl
+      || (process.env.NODE_ENV === "production" && parsed.protocol !== "https:")
+    ) {
+      throw new Error();
+    }
+    frontendOrigin = parsed.origin;
+  } catch {
+    throw new Error("FRONTEND_URL must be an exact HTTP or HTTPS origin without a path.");
+  }
+  if (!webOrigins.has(frontendOrigin)) {
+    throw new Error("FRONTEND_URL must also be included in WEB_ORIGINS.");
+  }
+}
+if (googleRedirectUri) {
+  try {
+    const callback = new URL(googleRedirectUri);
+    if (
+      !["http:", "https:"].includes(callback.protocol)
+      || callback.pathname !== "/api/admin/auth/google/callback"
+      || callback.search
+      || callback.hash
+      || (frontendUrl && callback.origin !== frontendUrl)
+      || (process.env.NODE_ENV === "production" && callback.protocol !== "https:")
+    ) {
+      throw new Error();
+    }
+  } catch {
+    throw new Error("GOOGLE_REDIRECT_URI must use FRONTEND_URL with the /api/admin/auth/google/callback path.");
+  }
+}
+const requiredGoogleConfig = [
+  ["GOOGLE_CLIENT_ID", googleClientId],
+  ["GOOGLE_CLIENT_SECRET", googleClientSecret],
+  ["GOOGLE_REDIRECT_URI", googleRedirectUri],
+  ["ADMIN_EMAIL", adminEmail],
+  ["SESSION_SECRET", sessionSecret],
+  ["FRONTEND_URL", frontendUrl],
+];
+const missingGoogleConfig = requiredGoogleConfig.filter(([, value]) => !value).map(([name]) => name);
+if (process.env.NODE_ENV === "production" && missingGoogleConfig.length) {
+  throw new Error(`Missing required Google admin sign-in environment variables: ${missingGoogleConfig.join(", ")}.`);
+}
+app.locals.googleOAuthClient = googleAuthClient;
 
 app.disable("x-powered-by");
 app.set("trust proxy", process.env.TRUST_PROXY === "true" ? 1 : false);
@@ -98,25 +148,27 @@ app.use(express.json({ limit: "32kb", strict: true }));
 app.use(session({
   name: "morgan_admin",
   secret: sessionSecret,
-  store: new PgSession({
-    pool,
-    tableName: "admin_sessions",
-    createTableIfMissing: false,
-    pruneSessionInterval: 60 * 15,
-  }),
+  store: process.env.NODE_ENV === "test"
+    ? new session.MemoryStore()
+    : new PgSession({
+        pool,
+        tableName: "admin_sessions",
+        createTableIfMissing: false,
+        pruneSessionInterval: 60 * 15,
+      }),
   resave: false,
   saveUninitialized: false,
-  rolling: true,
+  rolling: false,
   cookie: {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    sameSite: "lax",
     maxAge: 1000 * 60 * 60 * 8,
     path: "/",
   },
 }));
 
-const loginLimiter = rateLimit({
+const googleAuthLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
   standardHeaders: "draft-8",
@@ -148,10 +200,58 @@ function requireCsrfToken(req, res, next) {
 }
 
 function requireAdmin(req, res, next) {
-  if (req.session.adminEmail !== adminEmail) {
+  if (
+    !adminEmail
+    || req.session.adminEmail !== adminEmail
+    || !Number.isFinite(req.session.adminExpiresAt)
+    || Date.now() >= req.session.adminExpiresAt
+  ) {
     return res.status(401).json({ error: "Sign in to use the admin area." });
   }
   next();
+}
+
+function isGoogleConfigReady() {
+  return missingGoogleConfig.length === 0;
+}
+
+function oauthErrorUrl(error) {
+  const url = new URL("/admin/login", frontendUrl);
+  url.searchParams.set("error", error);
+  return url.href;
+}
+
+function rejectOAuthFlow(res, status, error) {
+  const destination = oauthErrorUrl(error);
+  res.set("Cache-Control", "no-store");
+  res.set("Location", destination);
+  res.set("Refresh", `0; url=${destination}`);
+  return res.status(status).type("text/plain").send("Google sign-in could not be completed.");
+}
+
+function safeStateMatches(expected, actual) {
+  if (typeof expected !== "string" || typeof actual !== "string") return false;
+  const expectedBuffer = Buffer.from(expected);
+  const actualBuffer = Buffer.from(actual);
+  return expectedBuffer.length === actualBuffer.length && timingSafeEqual(expectedBuffer, actualBuffer);
+}
+
+function regenerateSession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.regenerate((error) => error ? reject(error) : resolve());
+  });
+}
+
+function saveSession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.save((error) => error ? reject(error) : resolve());
+  });
+}
+
+function destroySession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.destroy((error) => error ? reject(error) : resolve());
+  });
 }
 
 function invalidInput(res, parsed) {
@@ -222,26 +322,97 @@ app.get("/api/admin/csrf", (req, res) => {
   res.json({ token: req.session.csrfToken });
 });
 
-app.post("/api/admin/login", loginLimiter, requireSameOrigin, requireCsrfToken, async (req, res, next) => {
-  const parsed = parseInput(loginSchema, req.body);
-  if (parsed.error) return invalidInput(res, parsed);
+app.get("/api/admin/auth/google/start", googleAuthLimiter, (req, res) => {
+  if (!isGoogleConfigReady()) {
+    return res.status(503).json({ error: "Google admin sign-in is not configured." });
+  }
   try {
-    const passwordMatches = await bcrypt.compare(parsed.data.password, adminPasswordHash);
-    if (parsed.data.email.toLowerCase() !== adminEmail || !passwordMatches) {
-      return res.status(401).json({ error: "Email or password was not accepted." });
-    }
-    req.session.regenerate((error) => {
-      if (error) return next(error);
-      req.session.adminEmail = adminEmail;
-      req.session.csrfToken = randomUUID();
-      req.session.save((saveError) => {
-        if (saveError) return next(saveError);
-        res.set("Cache-Control", "no-store");
-        res.json({ email: adminEmail, csrfToken: req.session.csrfToken });
-      });
+    const state = randomBytes(32).toString("base64url");
+    const nonce = randomBytes(32).toString("base64url");
+    const codeVerifier = randomBytes(32).toString("base64url");
+    const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url");
+    req.session.googleAuth = { state, nonce, codeVerifier, expiresAt: Date.now() + 10 * 60 * 1000 };
+    req.session.cookie.maxAge = 10 * 60 * 1000;
+    const authorizationUrl = app.locals.googleOAuthClient.generateAuthUrl({
+      access_type: "online",
+      code_challenge: codeChallenge,
+      code_challenge_method: "S256",
+      max_age: 0,
+      nonce,
+      prompt: "select_account",
+      redirect_uri: googleRedirectUri,
+      response_type: "code",
+      scope: ["openid", "email", "profile"],
+      state,
     });
-  } catch (error) {
-    next(error);
+    res.set("Cache-Control", "no-store");
+    return res.redirect(authorizationUrl);
+  } catch {
+    console.warn("Google admin sign-in could not be started.");
+    return res.status(500).json({ error: "Google sign-in could not be started." });
+  }
+});
+
+app.get("/api/admin/auth/google/callback", googleAuthLimiter, async (req, res) => {
+  if (!isGoogleConfigReady()) {
+    return res.status(503).json({ error: "Google admin sign-in is not configured." });
+  }
+  const flow = req.session.googleAuth;
+  if (
+    !flow
+    || !safeStateMatches(flow.state, req.query.state)
+    || !Number.isFinite(flow.expiresAt)
+    || Date.now() >= flow.expiresAt
+  ) {
+    return rejectOAuthFlow(res, 400, "invalid_state");
+  }
+  delete req.session.googleAuth;
+  try {
+    await saveSession(req);
+    if (typeof req.query.error === "string" || typeof req.query.code !== "string") {
+      return rejectOAuthFlow(res, 400, "sign_in_failed");
+    }
+    const { tokens } = await app.locals.googleOAuthClient.getToken({
+      code: req.query.code,
+      codeVerifier: flow.codeVerifier,
+    });
+    if (!tokens.id_token) return rejectOAuthFlow(res, 400, "sign_in_failed");
+    const ticket = await app.locals.googleOAuthClient.verifyIdToken({
+      idToken: tokens.id_token,
+      audience: googleClientId,
+    });
+    const payload = ticket.getPayload();
+    if (
+      !payload
+      || payload.nonce !== flow.nonce
+      || payload.email_verified !== true
+      || typeof payload.email !== "string"
+    ) {
+      return rejectOAuthFlow(res, 400, "sign_in_failed");
+    }
+    if (payload.email.trim().toLowerCase() !== adminEmail) {
+      console.warn("Google admin sign-in rejected: account is not allow-listed.");
+      await destroySession(req);
+      res.clearCookie("morgan_admin", {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+      });
+      return rejectOAuthFlow(res, 403, "not_allowed");
+    }
+    await regenerateSession(req);
+    req.session.adminEmail = adminEmail;
+    req.session.adminExpiresAt = Date.now() + 8 * 60 * 60 * 1000;
+    req.session.csrfToken = randomUUID();
+    req.session.cookie.maxAge = 8 * 60 * 60 * 1000;
+    await saveSession(req);
+    res.set("Cache-Control", "no-store");
+    return res.redirect(`${frontendUrl}/admin`);
+  } catch {
+    console.warn("Google admin sign-in could not be completed.");
+    if (res.headersSent) return res.end();
+    return rejectOAuthFlow(res, 400, "sign_in_failed");
   }
 });
 
@@ -250,12 +421,19 @@ app.get("/api/admin/me", requireAdmin, (req, res) => {
   res.json({ email: req.session.adminEmail });
 });
 
-app.post("/api/admin/logout", requireSameOrigin, requireCsrfToken, requireAdmin, (req, res, next) => {
-  req.session.destroy((error) => {
-    if (error) return next(error);
-    res.clearCookie("morgan_admin", { httpOnly: true, sameSite: "strict", secure: process.env.NODE_ENV === "production", path: "/" });
+app.post("/api/admin/auth/logout", requireSameOrigin, requireCsrfToken, requireAdmin, async (req, res, next) => {
+  try {
+    await destroySession(req);
+    res.clearCookie("morgan_admin", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+    });
     res.sendStatus(204);
-  });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get("/api/admin/projects", requireAdmin, async (_req, res, next) => {
