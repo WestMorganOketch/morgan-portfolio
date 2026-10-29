@@ -8,6 +8,7 @@
     "lint": "eslint .",
     "db:migrate": "node scripts/migrate.js",
     "admin:hash": "node scripts/hash-admin-password.js",
+    "admin:sessions:clear": "node scripts/clear-admin-sessions.js",
     "test": "node --test"
   },
   "dependencies": {

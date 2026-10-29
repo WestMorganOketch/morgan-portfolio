@@ -52,6 +52,18 @@ npm run dev
 
 Open the local Next.js address shown by the client dev server. See [`client/README.md`](./client/README.md) for variable setup, content editing, and detailed deployment steps.
 
+## Reset admin access
+
+The API requires these Render environment variables for admin login:
+
+- `ADMIN_EMAIL` — the email address used as the login name.
+- `ADMIN_PASSWORD_HASH` — a bcrypt hash of the password, not the password itself.
+- `SESSION_SECRET` — a secret of at least 32 characters used to sign sessions.
+
+From a VS Code terminal in `api/`, run `npm run admin:hash`. Enter and confirm a new password at the hidden prompts. The password is not echoed, saved, or logged; the command prints only the bcrypt hash. Paste that hash into Render's `ADMIN_PASSWORD_HASH` environment variable and redeploy the API. Do not change `SESSION_SECRET` unless you also intend to invalidate all sessions.
+
+After the updated API is deployed, clear the existing production sessions from the Render Shell attached to that API by running `npm run admin:sessions:clear`. Confirm by typing `CLEAR ALL ADMIN SESSIONS`. The command deletes only rows from `admin_sessions`; it does not touch portfolio data. Do not run it from a local terminal when you intend to clear production sessions, because a local `api/.env` could point to a different database. Alternatively, in the Supabase dashboard, select the production project, open **SQL Editor**, create a query containing `DELETE FROM public.admin_sessions;`, and run it. This invalidates every existing admin login.
+
 ## Environment variable names
 
 The API uses `NODE_ENV`, `PORT`, `DATABASE_URL`, `DB_SSL`, `DB_SSL_CA_PATH`, `DB_SSL_CA`, `WEB_ORIGINS`, `TRUST_PROXY`, `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, `SESSION_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_DOCUMENT_BUCKET`.

@@ -39,8 +39,8 @@ try {
   if (password.length < 14) throw new Error("Choose a password with at least 14 characters.");
   const confirmation = await readSecret("Confirm the admin password: ");
   if (password !== confirmation) throw new Error("The passwords do not match.");
-  console.info(`Add this hash to api/.env as ADMIN_PASSWORD_HASH:\n${await bcrypt.hash(password, 12)}`);
+  stdout.write(`${await bcrypt.hash(password, 12)}\n`);
 } catch (error) {
-  console.error(error.message);
+  console.error(error instanceof Error ? error.message : "Password hash generation failed.");
   process.exitCode = 1;
 }
