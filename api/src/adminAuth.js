@@ -95,8 +95,31 @@ function clearSessionCookie(req, res) {
   res.set("Set-Cookie", `morgan_admin=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT${secure}`);
 }
 
-function logFailure(reason) {
-  console.warn(`Admin authentication failed: ${reason}.`);
+function logFailure(reason, error, sensitiveValues = []) {
+  if (reason !== "db_error" || !error) {
+    console.warn(`Admin authentication failed: ${reason}.`);
+    return;
+  }
+  const redact = (value) => {
+    if (typeof value !== "string") return undefined;
+    let safeValue = value
+      .replace(/\bpostgres(?:ql)?:\/\/[^\s"'<>]+/gi, "[REDACTED]")
+      .replace(/\bscrypt\$[^\s"'<>]+/gi, "[REDACTED]")
+      .replace(/\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}/g, "[REDACTED]")
+      .replace(/\b[a-f0-9]{64}\b/gi, "[REDACTED]");
+    for (const secret of sensitiveValues) {
+      if (typeof secret === "string" && secret.length > 0) {
+        safeValue = safeValue.split(secret).join("[REDACTED]");
+      }
+    }
+    return safeValue;
+  };
+  const details = {};
+  for (const field of ["code", "message", "detail", "column"]) {
+    const value = redact(error[field]);
+    if (value !== undefined) details[field] = value;
+  }
+  console.warn(`Admin authentication failed: db_error. ${JSON.stringify(details)}`);
 }
 
 function attemptKey(req, email) {
@@ -164,7 +187,7 @@ export function registerAdminAuth(app, db, requireSameOrigin) {
       }
       next();
     } catch (error) {
-      logFailure("db_error");
+      logFailure("db_error", error, [token, hashToken(token)]);
       next(error);
     }
   }
@@ -204,8 +227,8 @@ export function registerAdminAuth(app, db, requireSameOrigin) {
       const { rows } = await db.query("SELECT EXISTS (SELECT 1 FROM public.admin_account WHERE id = 1) AS claimed");
       res.set("Cache-Control", "no-store");
       res.json({ claimed: rows[0].claimed });
-    } catch {
-      logFailure("db_error");
+    } catch (error) {
+      logFailure("db_error", error);
       res.status(503).json({ error: "Admin setup status is temporarily unavailable." });
     }
   });
@@ -213,8 +236,9 @@ export function registerAdminAuth(app, db, requireSameOrigin) {
   router.post("/claim", rateLimiter(5, "Too many setup attempts. Try again later."), requireSameOrigin, async (req, res) => {
     const parsed = claimAdminSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Enter a valid email and matching passwords of at least 10 characters." });
+    let passwordHash;
     try {
-      const passwordHash = await hashAdminPassword(parsed.data.password);
+      passwordHash = await hashAdminPassword(parsed.data.password);
       const { rows } = await db.query(
         `INSERT INTO public.admin_account (id, email, password_hash)
          VALUES (1, $1, $2)
@@ -228,8 +252,8 @@ export function registerAdminAuth(app, db, requireSameOrigin) {
       }
       const session = await createSession(req, res, rows[0].email);
       res.status(201).json(session);
-    } catch {
-      logFailure("db_error");
+    } catch (error) {
+      logFailure("db_error", error, [parsed.data.password, parsed.data.confirmPassword, passwordHash]);
       res.status(503).json({ error: "Admin setup is temporarily unavailable." });
     }
   });
@@ -237,9 +261,10 @@ export function registerAdminAuth(app, db, requireSameOrigin) {
   router.post("/login", requireSameOrigin, async (req, res) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Enter a valid email and password." });
+    let account;
     try {
       const { rows } = await db.query("SELECT email, password_hash FROM public.admin_account WHERE id = 1");
-      const account = rows[0];
+      account = rows[0];
       if (!account) {
         logFailure("not_claimed");
         res.status(409).json({ error: "Not set up yet", claimed: false });
@@ -256,8 +281,11 @@ export function registerAdminAuth(app, db, requireSameOrigin) {
       }
       failedAttempts.delete(key);
       res.json(await createSession(req, res, account.email));
-    } catch {
-      logFailure("db_error");
+    } catch (error) {
+      logFailure("db_error", error, [
+        parsed.data.password,
+        ...(account ? [account.password_hash] : []),
+      ]);
       res.status(503).json({ error: "Sign-in is temporarily unavailable." });
     }
   });
@@ -277,8 +305,8 @@ export function registerAdminAuth(app, db, requireSameOrigin) {
       await db.query("DELETE FROM public.admin_sessions WHERE token_hash = $1", [req.adminSession.tokenHash]);
       clearSessionCookie(req, res);
       res.sendStatus(204);
-    } catch {
-      logFailure("db_error");
+    } catch (error) {
+      logFailure("db_error", error, [req.adminSession.tokenHash]);
       res.status(503).json({ error: "Sign-out is temporarily unavailable." });
     }
   });
@@ -292,14 +320,16 @@ export function registerAdminAuth(app, db, requireSameOrigin) {
     async (req, res) => {
       const parsed = changeAdminCredentialsSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "Enter your current password and a valid new email or password." });
+      let account;
+      let newHash;
       try {
         const { rows } = await db.query("SELECT password_hash FROM public.admin_account WHERE id = 1");
-        const account = rows[0];
+        account = rows[0];
         if (!account || !await verifyAdminPassword(parsed.data.currentPassword, account.password_hash)) {
           res.status(401).json({ error: "Current password is incorrect." });
           return;
         }
-        const newHash = parsed.data.newPassword
+        newHash = parsed.data.newPassword
           ? await hashAdminPassword(parsed.data.newPassword)
           : account.password_hash;
         const { rows: updated } = await db.query(
@@ -317,8 +347,14 @@ export function registerAdminAuth(app, db, requireSameOrigin) {
         );
         res.set("Cache-Control", "no-store");
         res.json({ email: updated[0].email });
-      } catch {
-        logFailure("db_error");
+      } catch (error) {
+        logFailure("db_error", error, [
+          parsed.data.currentPassword,
+          ...(account ? [account.password_hash] : []),
+          ...(parsed.data.newPassword ? [parsed.data.newPassword] : []),
+          ...(typeof newHash === "string" ? [newHash] : []),
+          req.adminSession.tokenHash,
+        ]);
         res.status(503).json({ error: "Account settings are temporarily unavailable." });
       }
     },
