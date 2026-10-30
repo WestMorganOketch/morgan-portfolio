@@ -5,9 +5,6 @@ import test from "node:test";
 
 process.env.DATABASE_URL = "postgresql://127.0.0.1:1/test";
 process.env.NODE_ENV = "test";
-process.env.ADMIN_EMAIL = "admin@example.test";
-process.env.ADMIN_PASSWORD_HASH = "test-hash";
-process.env.SESSION_SECRET = "test-session-secret-with-more-than-thirty-two-characters";
 process.env.FRONTEND_URL = "http://localhost:3000";
 process.env.WEB_ORIGINS = "http://localhost:3000";
 

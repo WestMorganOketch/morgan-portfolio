@@ -8,9 +8,21 @@ const safeLink = z
   .transform((value) => value || null);
 
 export const loginSchema = z.object({
-  email: z.string().trim().email().max(254),
-  password: z.string().min(1).max(200),
+  email: z.string().trim().toLowerCase().email().max(254),
+  password: z.string().min(10).max(200),
 });
+
+export const claimAdminSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+  password: z.string().min(10).max(200),
+  confirmPassword: z.string().min(10).max(200),
+}).refine((value) => value.password === value.confirmPassword, { path: ["confirmPassword"] });
+
+export const changeAdminCredentialsSchema = z.object({
+  currentPassword: z.string().min(1).max(200),
+  newEmail: z.string().trim().toLowerCase().email().max(254).optional(),
+  newPassword: z.string().min(10).max(200).optional(),
+}).refine((value) => value.newEmail !== undefined || value.newPassword !== undefined);
 
 export const uuidSchema = z.string().uuid();
 

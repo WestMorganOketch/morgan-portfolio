@@ -1,11 +1,19 @@
 import "dotenv/config";
 import { app } from "./app.js";
+import { initializeAdminAuthSchema } from "./adminAuth.js";
 import { pool } from "./db.js";
 
 const port = Number(process.env.PORT || 3001);
-const server = app.listen(port, () => {
-  console.info(`Portfolio API listening on http://localhost:${port}`);
-});
+let server;
+try {
+  await initializeAdminAuthSchema(pool);
+  server = app.listen(port, () => {
+    console.info(`Portfolio API listening on http://localhost:${port}`);
+  });
+} catch {
+  process.exitCode = 1;
+  await pool.end();
+}
 
 async function purgeExpiredContactMessages() {
   try {
@@ -22,6 +30,7 @@ retentionCleanup.unref();
 async function shutdown(signal) {
   console.info(`${signal} received; shutting down the portfolio API.`);
   clearInterval(retentionCleanup);
+  if (!server) return;
   server.close(async (serverError) => {
     try {
       await pool.end();

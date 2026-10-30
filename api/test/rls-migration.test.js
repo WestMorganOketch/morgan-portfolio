@@ -6,6 +6,7 @@ const migration = readFileSync(new URL("../migrations/003_enable_rls.sql", impor
 const baseMigration = readFileSync(new URL("../scripts/migrate.js", import.meta.url), "utf8");
 const featuresMigration = readFileSync(new URL("../migrations/002_features.sql", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
+const adminAuthSource = readFileSync(new URL("../src/adminAuth.js", import.meta.url), "utf8");
 const applicationTables = [
   "portfolio_projects",
   "portfolio_analytics",
@@ -34,7 +35,9 @@ test("all application tables enable RLS in their creation migration", () => {
   }
 
   assert.match(migration, /CREATE TABLE IF NOT EXISTS admin_sessions[\s\S]*?ALTER TABLE admin_sessions ENABLE ROW LEVEL SECURITY/);
-  assert.match(appSource, /tableName:\s*"admin_sessions",\s*createTableIfMissing:\s*false/);
+  assert.match(adminAuthSource, /CREATE TABLE IF NOT EXISTS public\.admin_account[\s\S]*?ENABLE ROW LEVEL SECURITY/);
+  assert.match(adminAuthSource, /ADD COLUMN IF NOT EXISTS token_hash/);
+  assert.match(appSource, /registerAdminAuth\(app, pool, requireSameOrigin\)/);
   for (const table of applicationTables) {
     assert.match(migration, new RegExp(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`));
   }

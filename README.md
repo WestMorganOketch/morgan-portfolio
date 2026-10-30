@@ -19,7 +19,7 @@ A polished, responsive professional portfolio for Morgan West Oketch. The public
 ## Features
 
 - Responsive, accessible portfolio pages with light/dark themes, reduced-motion support, search, and SEO metadata.
-- Google Sign-In protected admin tools for portfolio entries, contact messages, scores, and documents.
+- Email-and-password protected admin tools for portfolio entries, contact messages, scores, and documents.
 - Contact submissions require consent, remain private to the admin, and expire after 90 days.
 - A server-scored alert-triage game keeps answers private until a round is submitted.
 - A public leaderboard contains only chosen nicknames, scores, and dates.
@@ -53,15 +53,20 @@ Open the local Next.js address shown by the client dev server. See [`client/READ
 
 ## Admin sign-in
 
-Admin access supports Google OpenID Connect authorization-code sign-in with PKCE and email/password sign-in, both restricted to the single `ADMIN_EMAIL` address. Google sign-in continues to work independently. To enable password sign-in, run `npm run admin:password-hash` from `api/` in an interactive terminal and set the generated `ADMIN_PASSWORD_HASH` in the API environment; the password is hidden while entered and only its scrypt hash is stored. Leave the variable empty to disable password sign-in. Keep Google 2-Step Verification enabled on the admin Gmail account.
+The first visitor to `/admin` creates the single admin account with an email and password. The account is stored in Supabase; passwords use Node.js scrypt and sessions use random, database-backed tokens. No admin credentials, password hashes, or session secrets need to be configured as environment variables. Once claimed, setup stays closed unless the account is reset.
 
-Set `ADMIN_EMAIL` and `SESSION_SECRET` in the API environment. For password-only sign-in, set `ADMIN_PASSWORD_HASH`; Google OAuth variables and `FRONTEND_URL` are not required. To also offer Google sign-in, set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, and `FRONTEND_URL`. Register `https://morgan-portfolio-delta.vercel.app/api/admin/auth/google/callback` as an Authorized redirect URI in Google Cloud Console; for local development, register `http://localhost:3000/api/admin/auth/google/callback`. The production `FRONTEND_URL` is the exact Vercel origin, and it must also be in `WEB_ORIGINS`.
+To reset the admin account, run these statements in the Supabase SQL Editor:
 
-After deploying this change, invalidate sessions created by the previous login yourself: run `npm run admin:sessions:clear` against the production API environment and confirm `CLEAR ALL ADMIN SESSIONS`, or run `DELETE FROM public.admin_sessions;` in the production Supabase SQL Editor. Do not run the cleanup against an unverified database.
+```sql
+DELETE FROM public.admin_sessions;
+DELETE FROM public.admin_account;
+```
+
+The next visitor can claim the account again. The API creates and secures the admin tables at startup.
 
 ## Environment variable names
 
-The API uses `NODE_ENV`, `PORT`, `DATABASE_URL`, `DB_SSL`, `DB_SSL_CA_PATH`, `DB_SSL_CA`, `WEB_ORIGINS`, `TRUST_PROXY`, `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, `SESSION_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `FRONTEND_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_DOCUMENT_BUCKET`.
+The API uses `NODE_ENV`, `PORT`, `DATABASE_URL`, `DB_SSL`, `DB_SSL_CA_PATH`, `DB_SSL_CA`, `WEB_ORIGINS`, `TRUST_PROXY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_DOCUMENT_BUCKET`. Admin credentials are stored in the database, not environment variables.
 
 The website uses `VITE_API_URL`, `PORTFOLIO_API_ORIGIN`, and `NEXT_PUBLIC_SITE_URL`.
 
@@ -69,7 +74,7 @@ The website uses `VITE_API_URL`, `PORTFOLIO_API_ORIGIN`, and `NEXT_PUBLIC_SITE_U
 
 - Helmet security headers, strict environment-configured CORS origins, and global plus route-specific rate limits.
 - Zod input validation, parameterized SQL, request-size limits, and generic production errors.
-- Google-verified admin identity, secure HTTP-only same-site sessions, CSRF and same-origin checks, and server-side authorization for admin routes.
+- Scrypt-hashed admin credentials, secure HTTP-only same-site session cookies with hashed database tokens, CSRF and same-origin checks, and server-side authorization for admin routes.
 - Row-level security is enabled on every API table without anonymous or authenticated policies; those Supabase roles have no table or sequence privileges. The API connects through the trusted Postgres role, which owns these tables and therefore bypasses RLS unless row security is forced.
 - Private document storage, content-signature checks, randomized object names, short-lived signed links, and publish-only access.
 - Contact retention is limited to 90 days; game answers and identifying visitor data are not exposed in the public leaderboard.

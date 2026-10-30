@@ -123,35 +123,47 @@ function isAnalyticsRows(value: unknown): value is AnalyticsRow[] {
 }
 
 async function readResponse(response: Response): Promise<unknown> {
-  if (response.status >= 500) {
-    throw new Error("The admin API or PostgreSQL is not ready. Configure PostgreSQL and api/.env, then start the API from the api folder.");
-  }
   const text = await response.text();
   let data: unknown = null;
   if (text) {
     try {
       data = JSON.parse(text);
     } catch {
-      throw new Error("The server returned an unreadable response.");
+      if (response.status >= 500) {
+        throw new Error("The admin service is temporarily unavailable. Please try again.");
+      }
+      if (response.ok) throw new Error("The server returned an unreadable response.");
     }
   }
   if (!response.ok) {
     const message = isRecord(data) && typeof data.error === "string"
       ? data.error
-      : `The request failed (${response.status}).`;
+      : response.status >= 500
+        ? "The admin service is temporarily unavailable. Please try again."
+        : `The request failed (${response.status}).`;
     throw new Error(message);
   }
   return data;
 }
 
 async function request(path: string, init?: RequestInit): Promise<unknown> {
-  const response = await fetch(path, { ...init, credentials: "include" });
-  return readResponse(response);
+  try {
+    const response = await fetch(path, { ...init, credentials: "same-origin" });
+    return readResponse(response);
+  } catch (cause) {
+    if (cause instanceof TypeError) {
+      throw new Error("Could not reach the admin service. Check your connection and try again.");
+    }
+    throw cause;
+  }
 }
 
-export default function Admin({ loginOnly = false }: { loginOnly?: boolean }) {
+export default function Admin() {
+  const [email, setEmail] = useState("");
   const [csrfToken, setCsrfToken] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
+  const [claimed, setClaimed] = useState<boolean | null>(null);
+  const [settingsEmail, setSettingsEmail] = useState("");
   const [projects, setProjects] = useState<Project[]>([]);
   const [contentEntries, setContentEntries] = useState<ContentEntry[]>([]);
   const [analytics, setAnalytics] = useState<AnalyticsRow[]>([]);
@@ -162,7 +174,6 @@ export default function Admin({ loginOnly = false }: { loginOnly?: boolean }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [signingIn, setSigningIn] = useState(false);
 
   useEffect(() => {
     const originalTitle = document.title;
@@ -198,38 +209,26 @@ export default function Admin({ loginOnly = false }: { loginOnly?: boolean }) {
     let active = true;
     async function initialize() {
       try {
-        const csrfData = await request("/api/admin/csrf");
-        if (!isRecord(csrfData) || typeof csrfData.token !== "string") {
-          throw new Error("The server did not provide request verification.");
+        const statusData = await request("/api/admin/status");
+        if (!isRecord(statusData) || typeof statusData.claimed !== "boolean") {
+          throw new Error("The server returned unexpected admin setup status.");
         }
         if (!active) return;
-        setCsrfToken(csrfData.token);
+        setClaimed(statusData.claimed);
 
-        const response = await fetch("/api/admin/me", { credentials: "include", cache: "no-store" });
-        if (response.status === 401) {
-          if (loginOnly) {
-            const errorCode = new URLSearchParams(window.location.search).get("error");
-            const loginErrors: Record<string, string> = {
-              not_allowed: "This Google account is not allowed.",
-              invalid_state: "The sign-in request expired or could not be verified. Please try again.",
-              sign_in_failed: "Google sign-in could not be completed. Please try again.",
-            };
-            if (errorCode) setError(loginErrors[errorCode] ?? "Sign-in failed. Please try again.");
-          } else {
-            window.location.replace("/admin/login");
-          }
-          return;
-        }
+        const response = await fetch("/api/admin/me", { credentials: "same-origin" });
+        if (response.status === 401) return;
         const adminData = await readResponse(response);
         if (!isRecord(adminData) || typeof adminData.email !== "string") {
           throw new Error("The server returned unexpected sign-in data.");
         }
         if (!active) return;
-        if (loginOnly) {
-          window.location.replace("/admin");
-          return;
-        }
         setAdminEmail(adminData.email);
+        const csrfData = await request("/api/admin/csrf");
+        if (!isRecord(csrfData) || typeof csrfData.token !== "string") {
+          throw new Error("The server did not provide request verification.");
+        }
+        setCsrfToken(csrfData.token);
         const [projectData, analyticsData, contentData] = await Promise.all([
           request("/api/admin/projects"),
           request("/api/admin/analytics"),
@@ -251,7 +250,97 @@ export default function Admin({ loginOnly = false }: { loginOnly?: boolean }) {
     }
     void initialize();
     return () => { active = false; };
-  }, [loginOnly]);
+  }, []);
+
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    try {
+      const data = await request("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password: (new FormData(event.currentTarget).get("password") ?? "").toString() }),
+      });
+      if (!isRecord(data) || typeof data.email !== "string") {
+        throw new Error("The server returned unexpected sign-in data.");
+      }
+      setAdminEmail(data.email);
+      const csrfData = await request("/api/admin/csrf");
+      if (!isRecord(csrfData) || typeof csrfData.token !== "string") {
+        throw new Error("The server did not provide request verification.");
+      }
+      setCsrfToken(csrfData.token);
+      await loadDashboard();
+      setMessage("Signed in. Drafts remain private until you publish them.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Sign-in failed.");
+    }
+  }
+
+  async function handleClaim(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    const formData = new FormData(event.currentTarget);
+    try {
+      const data = await request("/api/admin/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password: String(formData.get("password") ?? ""),
+          confirmPassword: String(formData.get("confirmPassword") ?? ""),
+        }),
+      });
+      if (!isRecord(data) || typeof data.email !== "string") {
+        throw new Error("The server returned unexpected setup data.");
+      }
+      setClaimed(true);
+      setAdminEmail(data.email);
+      const csrfData = await request("/api/admin/csrf");
+      if (!isRecord(csrfData) || typeof csrfData.token !== "string") {
+        throw new Error("The server did not provide request verification.");
+      }
+      setCsrfToken(csrfData.token);
+      await loadDashboard();
+      setMessage("Admin account created. You are signed in.");
+    } catch (cause) {
+      const errorMessage = cause instanceof Error ? cause.message : "Admin setup failed.";
+      if (errorMessage === "Admin already set up") setClaimed(true);
+      setError(errorMessage);
+    }
+  }
+
+  async function handleCredentialChange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const newEmail = String(formData.get("newEmail") ?? "").trim();
+    const newPassword = String(formData.get("newPassword") ?? "");
+    try {
+      const data = await request("/api/admin/change-credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+        body: JSON.stringify({
+          currentPassword: String(formData.get("currentPassword") ?? ""),
+          ...(newEmail ? { newEmail } : {}),
+          ...(newPassword ? { newPassword } : {}),
+        }),
+      });
+      if (!isRecord(data) || typeof data.email !== "string") {
+        throw new Error("The server returned unexpected account settings.");
+      }
+      setAdminEmail(data.email);
+      setSettingsEmail("");
+      form.reset();
+      setMessage("Account credentials updated. Other sessions have been signed out.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Account settings could not be updated.");
+    }
+  }
 
   function resetForm() {
     setForm(emptyProject);
@@ -359,31 +448,10 @@ export default function Admin({ loginOnly = false }: { loginOnly?: boolean }) {
     }
   }
 
-  async function signInWithPassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    setSigningIn(true);
-    const formData = new FormData(event.currentTarget);
-    try {
-      await request("/api/admin/auth/password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
-        body: JSON.stringify({
-          email: formData.get("email"),
-          password: formData.get("password"),
-        }),
-      });
-      window.location.replace("/admin");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not sign in.");
-      setSigningIn(false);
-    }
-  }
-
   async function signOut() {
     setError("");
     try {
-      await request("/api/admin/auth/logout", {
+      await request("/api/admin/logout", {
         method: "POST",
         headers: { "X-CSRF-Token": csrfToken },
       });
@@ -393,7 +461,7 @@ export default function Admin({ loginOnly = false }: { loginOnly?: boolean }) {
       setAnalytics([]);
       resetForm();
       resetContentForm();
-      window.location.replace("/admin/login");
+      setMessage("You have signed out.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not sign out.");
     }
@@ -417,42 +485,35 @@ export default function Admin({ loginOnly = false }: { loginOnly?: boolean }) {
         {error ? <p className="admin-message admin-error" role="alert">{error}</p> : null}
         {message ? <p className="admin-message" role="status">{message}</p> : null}
 
-        {!loading && !adminEmail ? (
+        {!loading && !adminEmail && claimed === false ? (
+          <section className="admin-login">
+            <p className="eyebrow">PRIVATE AREA / FIRST-TIME SETUP</p>
+            <h1>Set up your admin account.</h1>
+            <p className="admin-help">Create the one admin account for this portfolio. Setup closes permanently after this account is created.</p>
+            <form onSubmit={handleClaim}>
+              <label htmlFor="admin-email">Admin email</label>
+              <input autoComplete="username" id="admin-email" onChange={(event) => setEmail(event.target.value)} required type="email" value={email} />
+              <label htmlFor="admin-password">Password</label>
+              <input autoComplete="new-password" id="admin-password" maxLength={200} minLength={10} name="password" required type="password" />
+              <label htmlFor="admin-confirm-password">Confirm password</label>
+              <input autoComplete="new-password" id="admin-confirm-password" maxLength={200} minLength={10} name="confirmPassword" required type="password" />
+              <button className="button button-primary" type="submit">Create admin and sign in <span aria-hidden="true">→</span></button>
+            </form>
+          </section>
+        ) : null}
+
+        {!loading && !adminEmail && claimed === true ? (
           <section className="admin-login">
             <p className="eyebrow">PRIVATE AREA / SIGN IN</p>
             <h1>Welcome back.</h1>
             <p className="admin-help">Sign in to manage your public projects and view private, anonymous aggregate activity.</p>
-            <form onSubmit={(event) => void signInWithPassword(event)}>
-              <label htmlFor="admin-email">Email address</label>
-              <input
-                autoComplete="username"
-                id="admin-email"
-                maxLength={254}
-                name="email"
-                required
-                type="email"
-              />
+            <form onSubmit={handleLogin}>
+              <label htmlFor="admin-email">Admin email</label>
+              <input autoComplete="username" id="admin-email" onChange={(event) => setEmail(event.target.value)} required type="email" value={email} />
               <label htmlFor="admin-password">Password</label>
-              <input
-                autoComplete="current-password"
-                id="admin-password"
-                maxLength={1024}
-                name="password"
-                required
-                type="password"
-              />
-              <button className="button button-primary" disabled={signingIn || !csrfToken} type="submit">
-                {signingIn ? "Signing in…" : "Sign in"} <span aria-hidden="true">→</span>
-              </button>
+              <input autoComplete="current-password" id="admin-password" maxLength={200} minLength={10} name="password" required type="password" />
+              <button className="button button-primary" type="submit">Sign in <span aria-hidden="true">→</span></button>
             </form>
-            <div className="admin-login-divider" aria-hidden="true"><span>OR</span></div>
-            <button
-              className="button button-quiet admin-google-button"
-              onClick={() => window.location.assign("/api/admin/auth/google/start")}
-              type="button"
-            >
-              Continue with Google <span aria-hidden="true">→</span>
-            </button>
           </section>
         ) : null}
 
@@ -469,6 +530,19 @@ export default function Admin({ loginOnly = false }: { loginOnly?: boolean }) {
               <article><span>PROJECTS</span><strong>{projects.length}</strong></article>
             </section>
             <p className="admin-privacy">Activity is stored as aggregate event counts only. The analytics table does not store visitor identities, IP addresses, or query strings.</p>
+
+            <section className="admin-panel">
+              <div className="admin-panel-heading"><div><p className="eyebrow">ACCOUNT</p><h2>Account settings</h2></div></div>
+              <form className="project-form" onSubmit={(event) => void handleCredentialChange(event)}>
+                <label htmlFor="account-new-email">New email (optional)</label>
+                <input autoComplete="email" id="account-new-email" name="newEmail" onChange={(event) => setSettingsEmail(event.target.value)} type="email" value={settingsEmail} />
+                <label htmlFor="account-new-password">New password (optional, at least 10 characters)</label>
+                <input autoComplete="new-password" id="account-new-password" maxLength={200} minLength={10} name="newPassword" type="password" />
+                <label htmlFor="account-current-password">Current password</label>
+                <input autoComplete="current-password" id="account-current-password" maxLength={200} name="currentPassword" required type="password" />
+                <button className="button button-primary" type="submit">Save account settings</button>
+              </form>
+            </section>
 
             <section className="admin-panel">
               <div className="admin-panel-heading"><div><p className="eyebrow">CONTENT MANAGEMENT</p><h2>{editingId ? "Edit project" : "Add a project"}</h2></div></div>
