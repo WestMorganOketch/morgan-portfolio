@@ -1,9 +1,1 @@
-NODE_ENV=development
-PORT=3001
-WEB_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
-DATABASE_URL=postgresql://postgres.fkpberxkkukpfdmazdjj:Oreroboys8914%23@aws-1-eu-central-1.pooler.supabase.com:5432/postgres
-ADMIN_EMAIL=westmorgan777@gmail.com
-ADMIN_PASSWORD_HASH=$2b$12$w0RQ9ZYKc0w7jhk1dL8FJusYFGpqXgVmAogPr4uOuyUJPs4vlEOkS
-SESSION_SECRET=fQjqNTXi20O3fPI7PS3YCfoofo9jTD0W1963nQDnOHkrVssI-Om5umBCpInwBXe_
-DB_SSL=true
-DB_SSL_CA_PATH=C:\Users\KONZA-VDI\Desktop\morgan portfolio\api\certs\prod-ca-2021.crt
+
