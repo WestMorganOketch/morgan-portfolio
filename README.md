@@ -53,15 +53,15 @@ Open the local Next.js address shown by the client dev server. See [`client/READ
 
 ## Admin sign-in
 
-Admin access uses Google OpenID Connect authorization-code sign-in with PKCE and a single allowed address. Enable Google 2-Step Verification on the admin Gmail account. No admin password or password hash is used.
+Admin access supports Google OpenID Connect authorization-code sign-in with PKCE and email/password sign-in, both restricted to the single `ADMIN_EMAIL` address. Google sign-in continues to work independently. To enable password sign-in, run `npm run admin:password-hash` from `api/` in an interactive terminal and set the generated `ADMIN_PASSWORD_HASH` in the API environment; the password is hidden while entered and only its scrypt hash is stored. Leave the variable empty to disable password sign-in. Keep Google 2-Step Verification enabled on the admin Gmail account.
 
-Set these Render environment variables: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `ADMIN_EMAIL`, `SESSION_SECRET`, and `FRONTEND_URL`. Register `https://morgan-portfolio-delta.vercel.app/api/admin/auth/google/callback` as an Authorized redirect URI in Google Cloud Console; for local development, register `http://localhost:3000/api/admin/auth/google/callback`. The production `FRONTEND_URL` is the exact Vercel origin, and it must also be in `WEB_ORIGINS`.
+Set these Render environment variables: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `ADMIN_EMAIL`, `SESSION_SECRET`, and `FRONTEND_URL`; set `ADMIN_PASSWORD_HASH` if password sign-in should be enabled. Register `https://morgan-portfolio-delta.vercel.app/api/admin/auth/google/callback` as an Authorized redirect URI in Google Cloud Console; for local development, register `http://localhost:3000/api/admin/auth/google/callback`. The production `FRONTEND_URL` is the exact Vercel origin, and it must also be in `WEB_ORIGINS`.
 
 After deploying this change, invalidate sessions created by the previous login yourself: run `npm run admin:sessions:clear` against the production API environment and confirm `CLEAR ALL ADMIN SESSIONS`, or run `DELETE FROM public.admin_sessions;` in the production Supabase SQL Editor. Do not run the cleanup against an unverified database.
 
 ## Environment variable names
 
-The API uses `NODE_ENV`, `PORT`, `DATABASE_URL`, `DB_SSL`, `DB_SSL_CA_PATH`, `DB_SSL_CA`, `WEB_ORIGINS`, `TRUST_PROXY`, `ADMIN_EMAIL`, `SESSION_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `FRONTEND_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_DOCUMENT_BUCKET`.
+The API uses `NODE_ENV`, `PORT`, `DATABASE_URL`, `DB_SSL`, `DB_SSL_CA_PATH`, `DB_SSL_CA`, `WEB_ORIGINS`, `TRUST_PROXY`, `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, `SESSION_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `FRONTEND_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_DOCUMENT_BUCKET`.
 
 The website uses `VITE_API_URL`, `PORTFOLIO_API_ORIGIN`, and `NEXT_PUBLIC_SITE_URL`.
 

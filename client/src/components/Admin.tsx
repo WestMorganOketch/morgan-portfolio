@@ -162,6 +162,7 @@ export default function Admin({ loginOnly = false }: { loginOnly?: boolean }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [signingIn, setSigningIn] = useState(false);
 
   useEffect(() => {
     const originalTitle = document.title;
@@ -358,6 +359,27 @@ export default function Admin({ loginOnly = false }: { loginOnly?: boolean }) {
     }
   }
 
+  async function signInWithPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setSigningIn(true);
+    const formData = new FormData(event.currentTarget);
+    try {
+      await request("/api/admin/auth/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+        body: JSON.stringify({
+          email: formData.get("email"),
+          password: formData.get("password"),
+        }),
+      });
+      window.location.replace("/admin");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not sign in.");
+      setSigningIn(false);
+    }
+  }
+
   async function signOut() {
     setError("");
     try {
@@ -400,8 +422,32 @@ export default function Admin({ loginOnly = false }: { loginOnly?: boolean }) {
             <p className="eyebrow">PRIVATE AREA / SIGN IN</p>
             <h1>Welcome back.</h1>
             <p className="admin-help">Sign in to manage your public projects and view private, anonymous aggregate activity.</p>
+            <form onSubmit={(event) => void signInWithPassword(event)}>
+              <label htmlFor="admin-email">Email address</label>
+              <input
+                autoComplete="username"
+                id="admin-email"
+                maxLength={254}
+                name="email"
+                required
+                type="email"
+              />
+              <label htmlFor="admin-password">Password</label>
+              <input
+                autoComplete="current-password"
+                id="admin-password"
+                maxLength={1024}
+                name="password"
+                required
+                type="password"
+              />
+              <button className="button button-primary" disabled={signingIn || !csrfToken} type="submit">
+                {signingIn ? "Signing in…" : "Sign in"} <span aria-hidden="true">→</span>
+              </button>
+            </form>
+            <div className="admin-login-divider" aria-hidden="true"><span>OR</span></div>
             <button
-              className="button button-primary"
+              className="button button-quiet admin-google-button"
               onClick={() => window.location.assign("/api/admin/auth/google/start")}
               type="button"
             >

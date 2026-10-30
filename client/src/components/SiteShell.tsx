@@ -244,7 +244,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener("click", trackOutboundLinks);
   }, [pathname]);
 
-  const isAdmin = pathname === "/admin";
+  const isAdmin = pathname === "/admin" || pathname?.startsWith("/admin/") === true;
 
   return (
     <div className="modern-site">

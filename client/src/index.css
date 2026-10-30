@@ -237,6 +237,9 @@ h1 span, .contact-content h2 span { color: var(--mint); }
 .project-form textarea { resize: vertical; line-height: 1.65; }
 .admin-login input:focus, .project-form input:focus, .project-form textarea:focus, .project-form select:focus { border-color: var(--green); outline: 1px solid var(--green); }
 .admin-login .button { margin-top: 15px; justify-self: start; cursor: pointer; }
+.admin-login form .button, .admin-google-button { width: 100%; justify-content: center; }
+.admin-login-divider { display: flex; align-items: center; gap: 12px; margin-top: 20px; color: #82968e; font: 9px var(--mono); }
+.admin-login-divider::before, .admin-login-divider::after { height: 1px; flex: 1; background: var(--line); content: ""; }
 .admin-login .button:disabled { opacity: 0.5; cursor: not-allowed; }
 .admin-title-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 27px; }
 .admin-title-row .eyebrow { margin-bottom: 11px; }

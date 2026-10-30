@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes, scryptSync } from "node:crypto";
 import { once } from "node:events";
 import test from "node:test";
 
@@ -7,6 +7,8 @@ process.env.NODE_ENV = "test";
 process.env.DATABASE_URL = "postgresql://127.0.0.1:1/test";
 process.env.ADMIN_EMAIL = " Admin@Example.com ";
 process.env.SESSION_SECRET = "test-session-secret-that-is-long-enough-to-run-tests";
+const passwordSalt = randomBytes(16);
+process.env.ADMIN_PASSWORD_HASH = `scrypt$${passwordSalt.toString("base64url")}$${scryptSync("correct horse battery staple", passwordSalt, 64).toString("base64url")}`;
 process.env.GOOGLE_CLIENT_ID = "test-google-client-id";
 process.env.GOOGLE_CLIENT_SECRET = "test-google-client-secret";
 process.env.GOOGLE_REDIRECT_URI = "http://localhost:3000/api/admin/auth/google/callback";
@@ -97,6 +99,85 @@ test("analytics rejects requests without a same-origin browser request", async (
       body: JSON.stringify({ event: "page_view", page: "home" }),
     });
     assert.equal(response.status, 403);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("password admin sign-in validates origin and CSRF, verifies credentials, and creates a protected session", async () => {
+  const server = app.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+
+  function sessionCookie(response) {
+    const cookie = response.headers.get("set-cookie")?.match(/morgan_admin=[^;]+/)?.[0];
+    assert.ok(cookie, "expected the API to set its session cookie");
+    return cookie;
+  }
+
+  try {
+    const csrfResponse = await fetch(`${baseUrl}/api/admin/csrf`);
+    const csrfCookie = sessionCookie(csrfResponse);
+    const { token } = await csrfResponse.json();
+    const payload = JSON.stringify({ email: "ADMIN@example.com", password: "correct horse battery staple" });
+
+    const missingCsrf = await fetch(`${baseUrl}/api/admin/auth/password`, {
+      method: "POST",
+      headers: { Cookie: csrfCookie, Origin: "http://localhost:3000", "Content-Type": "application/json" },
+      body: payload,
+    });
+    assert.equal(missingCsrf.status, 403);
+
+    const wrongPassword = await fetch(`${baseUrl}/api/admin/auth/password`, {
+      method: "POST",
+      headers: {
+        Cookie: csrfCookie,
+        Origin: "http://localhost:3000",
+        "Content-Type": "application/json",
+        "X-CSRF-Token": token,
+      },
+      body: JSON.stringify({ email: "admin@example.com", password: "incorrect password" }),
+    });
+    assert.equal(wrongPassword.status, 401);
+    assert.deepEqual(await wrongPassword.json(), { error: "Email or password is incorrect." });
+
+    const wrongEmail = await fetch(`${baseUrl}/api/admin/auth/password`, {
+      method: "POST",
+      headers: {
+        Cookie: csrfCookie,
+        Origin: "http://localhost:3000",
+        "Content-Type": "application/json",
+        "X-CSRF-Token": token,
+      },
+      body: JSON.stringify({ email: "other@example.com", password: "correct horse battery staple" }),
+    });
+    assert.equal(wrongEmail.status, 401);
+    assert.deepEqual(await wrongEmail.json(), { error: "Email or password is incorrect." });
+
+    const success = await fetch(`${baseUrl}/api/admin/auth/password`, {
+      method: "POST",
+      headers: {
+        Cookie: csrfCookie,
+        Origin: "http://localhost:3000",
+        "Content-Type": "application/json",
+        "X-CSRF-Token": token,
+      },
+      body: payload,
+    });
+    assert.equal(success.status, 200);
+    assert.deepEqual(await success.json(), { email: "admin@example.com" });
+    assert.match(success.headers.get("set-cookie") ?? "", /HttpOnly/i);
+    assert.match(success.headers.get("set-cookie") ?? "", /SameSite=Lax/i);
+    const adminCookie = sessionCookie(success);
+    assert.notEqual(adminCookie, csrfCookie, "sign-in should rotate the pre-authentication session");
+
+    const oldSession = await fetch(`${baseUrl}/api/admin/me`, { headers: { Cookie: csrfCookie } });
+    assert.equal(oldSession.status, 401);
+    const authorized = await fetch(`${baseUrl}/api/admin/me`, { headers: { Cookie: adminCookie } });
+    assert.equal(authorized.status, 200);
+    assert.deepEqual(await authorized.json(), { email: "admin@example.com" });
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
