@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash, randomBytes, scryptSync } from "node:crypto";
 import { once } from "node:events";
 import test from "node:test";
@@ -8,7 +9,8 @@ process.env.DATABASE_URL = "postgresql://127.0.0.1:1/test";
 process.env.ADMIN_EMAIL = " Admin@Example.com ";
 process.env.SESSION_SECRET = "test-session-secret-that-is-long-enough-to-run-tests";
 const passwordSalt = randomBytes(16);
-process.env.ADMIN_PASSWORD_HASH = `scrypt$${passwordSalt.toString("base64url")}$${scryptSync("correct horse battery staple", passwordSalt, 64).toString("base64url")}`;
+const testPasswordHash = `scrypt$${passwordSalt.toString("base64url")}$${scryptSync("correct horse battery staple", passwordSalt, 64).toString("base64url")}`;
+process.env.ADMIN_PASSWORD_HASH = testPasswordHash;
 process.env.GOOGLE_CLIENT_ID = "test-google-client-id";
 process.env.GOOGLE_CLIENT_SECRET = "test-google-client-secret";
 process.env.GOOGLE_REDIRECT_URI = "http://localhost:3000/api/admin/auth/google/callback";
@@ -19,6 +21,30 @@ const [{ app }, { pool }] = await Promise.all([
   import("../src/app.js"),
   import("../src/db.js"),
 ]);
+
+test("production accepts password-only admin configuration without Google OAuth", () => {
+  const environment = {
+    ...process.env,
+    NODE_ENV: "production",
+    DATABASE_URL: "postgresql://127.0.0.1:1/test",
+    ADMIN_EMAIL: "admin@example.com",
+    ADMIN_PASSWORD_HASH: testPasswordHash,
+    SESSION_SECRET: "production-password-only-test-session-secret",
+    WEB_ORIGINS: "https://portfolio.example",
+    DB_SSL: "true",
+  };
+  delete environment.GOOGLE_CLIENT_ID;
+  delete environment.GOOGLE_CLIENT_SECRET;
+  delete environment.GOOGLE_REDIRECT_URI;
+  delete environment.FRONTEND_URL;
+
+  const result = spawnSync(
+    process.execPath,
+    ["--input-type=module", "-e", `await import(${JSON.stringify(new URL("../src/app.js", import.meta.url).href)})`],
+    { env: environment, encoding: "utf8", timeout: 10_000 },
+  );
+  assert.equal(result.status, 0, result.stderr);
+});
 
 test("health check responds without requiring a database query", async () => {
   const server = app.listen(0, "127.0.0.1");
