@@ -1,0 +1,17 @@
+{
+  "data": [
+    {
+      "slug": "information-security-analyst",
+      "title": "Information Security Analyst",
+      "company_name": "Example Europe",
+      "location": "Berlin",
+      "remote": true,
+      "description": "<p>Review security incidents.</p>",
+      "url": "https://www.arbeitnow.com/jobs/information-security-analyst",
+      "created_at": "2026-10-20T08:00:00Z",
+      "tags": ["Information Security"]
+    },
+    { "slug": "other", "title": "Graphic Designer", "url": "https://www.arbeitnow.com/jobs/other" },
+    "malformed"
+  ]
+}

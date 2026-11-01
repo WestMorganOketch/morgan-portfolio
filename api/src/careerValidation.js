@@ -49,6 +49,35 @@ export const sourcePatchSchema = z.object({
 
 export const uuidSchema = z.string().uuid();
 
+export const careerJobsQuerySchema = z.object({
+  source: z.string().regex(/^[a-z0-9_]{1,60}$/).optional(),
+  status: z.enum(["discovered", "shortlisted", "maybe", "flagged", "passed", "duplicate", "expired", "closed"]).optional(),
+  q: z.string().trim().max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  cursor: z.string().regex(/^\d{1,8}$/).optional(),
+}).strict();
+
+export const careerImportSchema = z.object({
+  title: z.string().trim().min(1).max(300),
+  company: z.string().trim().max(200).optional(),
+  url: z.string().trim().max(2000).refine((value) => {
+    if (value === "") return true;
+    try {
+      const url = new URL(value);
+      return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password;
+    } catch {
+      return false;
+    }
+  }, "URL must use HTTP or HTTPS and must not include credentials.").optional(),
+  text: z.string().max(6000).default(""),
+}).strict();
+
+export const atsWatchlistCreateSchema = z.object({
+  provider: z.enum(["greenhouse", "lever"]),
+  token: z.string().regex(/^[A-Za-z0-9_-]{2,60}$/),
+  label: z.string().trim().min(1).max(120),
+}).strict();
+
 export function parseCareerInput(schema, input) {
   const result = schema.safeParse(input);
   return result.success ? { data: result.data } : { error: result.error.flatten() };

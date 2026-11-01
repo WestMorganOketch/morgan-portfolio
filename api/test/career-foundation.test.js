@@ -13,7 +13,10 @@ const tableNames = [
   "jr_source_state",
   "jr_runs",
   "jr_audit_events",
+  "jr_jobs",
+  "jr_ats_watchlist",
 ];
+const phaseOneTableNames = tableNames.slice(0, 6);
 const sourceRows = [
   { key: "jobicy", name: "Jobicy", private_use_allowed: true, enabled: true },
   { key: "reliefweb", name: "ReliefWeb", private_use_allowed: false, enabled: false },
@@ -98,6 +101,7 @@ class FakeCareerDatabase {
     if (statement.startsWith("SELECT id, trigger, status")) {
       return { rows: [...this.runs.values()].sort((a, b) => b.started_at.localeCompare(a.started_at)).slice(0, 100) };
     }
+    if (statement.startsWith("SELECT s.key, s.name, s.enabled")) return { rows: [] };
     if (statement.startsWith("UPDATE public.jr_runs") && statement.includes("stale run interrupted")) {
       for (const run of this.runs.values()) {
         if (run.status === "running" && Date.now() - Date.parse(run.started_at) > 15 * 60 * 1000) run.status = "interrupted";
@@ -111,18 +115,13 @@ class FakeCareerDatabase {
       this.audits.push({ action: statement.includes("run.started") ? "run.started" : "run.succeeded", detail: values[0] });
       return { rows: [] };
     }
-    if (statement.startsWith("UPDATE public.jr_runs") && statement.includes("SET status = 'succeeded'")) {
+    if (statement.startsWith("UPDATE public.jr_runs") && statement.includes("SET status = $2")) {
       const run = this.runs.get(values[0]);
       if (run?.status === "running") {
-        run.status = "succeeded";
+        run.status = values[1];
         run.finished_at = new Date().toISOString();
-        run.summary = JSON.parse(values[1]);
+        run.summary = JSON.parse(values[2]);
       }
-      return { rows: [] };
-    }
-    if (statement.startsWith("UPDATE public.jr_runs") && statement.includes("SET status = 'failed'")) {
-      const run = this.runs.get(values[0]);
-      if (run?.status === "running") run.status = "failed";
       return { rows: [] };
     }
     throw new Error(`Unexpected career query: ${statement}`);
@@ -229,6 +228,14 @@ test("all career admin routes require an admin session", async () => {
       ["/api/admin/career/sources", "GET"],
       ["/api/admin/career/sources/jobicy", "PATCH"],
       ["/api/admin/career/runs", "GET"],
+      ["/api/admin/career/scan-now", "POST"],
+      ["/api/admin/career/jobs", "GET"],
+      ["/api/admin/career/jobs/00000000-0000-4000-8000-000000000001", "GET"],
+      ["/api/admin/career/import", "POST"],
+      ["/api/admin/career/watchlist", "GET"],
+      ["/api/admin/career/watchlist", "POST"],
+      ["/api/admin/career/watchlist/00000000-0000-4000-8000-000000000001", "DELETE"],
+      ["/api/admin/career/search-links", "GET"],
     ];
     for (const [path, method] of routes) {
       const response = await fixture.request(path, { method, body: {}, admin: false });
@@ -249,6 +256,10 @@ test("career mutations require same-origin and CSRF", async () => {
       ["/api/admin/career/resume-profiles/00000000-0000-4000-8000-000000000001", "PATCH"],
       ["/api/admin/career/resume-profiles/00000000-0000-4000-8000-000000000001/archive", "POST"],
       ["/api/admin/career/sources/jobicy", "PATCH"],
+      ["/api/admin/career/scan-now", "POST"],
+      ["/api/admin/career/import", "POST"],
+      ["/api/admin/career/watchlist", "POST"],
+      ["/api/admin/career/watchlist/00000000-0000-4000-8000-000000000001", "DELETE"],
     ]) {
       const noOrigin = await fixture.request(path, { method, body: {}, ...authorized, origin: null });
       assert.equal(noOrigin.status, 403, `${method} ${path} without Origin`);
@@ -355,6 +366,9 @@ test("missing career tables return 409 without making unrelated routes unavailab
     const settings = await fixture.request("/api/admin/career/settings", authorized);
     assert.equal(settings.status, 409);
     assert.match((await settings.json()).error, /phase-1\.sql/);
+    const jobs = await fixture.request("/api/admin/career/jobs", authorized);
+    assert.equal(jobs.status, 409);
+    assert.match((await jobs.json()).error, /phase-1\.sql/);
     const setup = await fixture.request("/api/admin/career/setup", authorized);
     assert.equal(setup.status, 200);
     assert.equal((await setup.json()).tables.configured, false);
@@ -366,7 +380,7 @@ test("missing career tables return 409 without making unrelated routes unavailab
   }
 });
 
-test("worker trigger is secret protected, locked, audited, and records the no-adapter result", async () => {
+test("worker trigger is secret protected, locked, audited, and completes the scan", async () => {
   const previousSecret = process.env.JOB_CRON_SECRET;
   const secret = "local-test-worker-secret";
   try {
@@ -400,11 +414,11 @@ test("worker trigger is secret protected, locked, audited, and records the no-ad
       const responses = await Promise.all([first.json(), second.json()]);
       assert.equal(responses.filter((item) => item.status === "already_running").length, 1);
       const run = [...fixture.db.runs.values()][0];
-      assert.equal(run.status, "running");
+      assert.ok(["running", "succeeded"].includes(run.status));
       assert.ok(fixture.db.audits.some((event) => event.action === "run.started"));
       await new Promise((resolve) => setTimeout(resolve, 75));
       assert.equal(run.status, "succeeded");
-      assert.deepEqual(run.summary, { message: "no adapters yet" });
+      assert.deepEqual(run.summary, {});
     } finally {
       await fixture.close();
     }
@@ -425,7 +439,7 @@ test("phase 1 SQL is repeatable, isolated to jr_ tables, and locks table access"
   assert.doesNotMatch(sql, /\b(?:DROP|ALTER)\s+TABLE\s+public\.(?!jr_)[a-z_]+/i);
   assert.doesNotMatch(sql, /CREATE\s+POLICY/i);
   const tables = [...sql.matchAll(/CREATE TABLE IF NOT EXISTS public\.(jr_[a-z_]+)/gi)].map((match) => match[1]);
-  assert.deepEqual(tables, tableNames);
+  assert.deepEqual(tables, phaseOneTableNames);
   for (const table of tables) {
     const creation = sql.indexOf(`CREATE TABLE IF NOT EXISTS public.${table}`);
     const rls = sql.indexOf(`ALTER TABLE public.${table} ENABLE ROW LEVEL SECURITY`);
@@ -435,5 +449,5 @@ test("phase 1 SQL is repeatable, isolated to jr_ tables, and locks table access"
   }
   const rollback = readFileSync(new URL("../../docs/career-automation/sql/phase-1.rollback.sql", import.meta.url), "utf8");
   assert.match(rollback, /^-- manual, never auto-run/);
-  assert.deepEqual([...rollback.matchAll(/DROP TABLE IF EXISTS public\.(jr_[a-z_]+)/gi)].map((match) => match[1]), [...tableNames].reverse());
+  assert.deepEqual([...rollback.matchAll(/DROP TABLE IF EXISTS public\.(jr_[a-z_]+)/gi)].map((match) => match[1]), [...phaseOneTableNames].reverse());
 });

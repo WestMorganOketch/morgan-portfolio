@@ -1,0 +1,16 @@
+{
+  "jobs": [
+    {
+      "id": 301,
+      "title": "ICT Trainer",
+      "company_name": "Skills Lab",
+      "candidate_required_location": "Worldwide",
+      "description": "<p>Teach digital literacy.</p>",
+      "url": "https://remotive.com/remote-jobs/education/ict-trainer-301",
+      "publication_date": "2026-10-24T09:00:00Z",
+      "tags": ["Training"]
+    },
+    { "id": 302, "title": "Account Executive", "url": "https://remotive.com/remote-jobs/sales/302" },
+    {}
+  ]
+}

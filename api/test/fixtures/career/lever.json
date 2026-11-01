@@ -1,0 +1,12 @@
+[
+  {
+    "id": "lever-501",
+    "text": "Computer Instructor",
+    "categories": { "location": "Kampala", "team": "Training" },
+    "descriptionPlain": "Teach ICT skills.",
+    "hostedUrl": "https://jobs.lever.co/example/501",
+    "createdAt": 1793271600000
+  },
+  { "id": "lever-502", "text": "Recruiter", "hostedUrl": "https://jobs.lever.co/example/502" },
+  {}
+]

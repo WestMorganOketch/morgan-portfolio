@@ -325,6 +325,7 @@ app.use((error, _req, res, _next) => {
   if (process.env.NODE_ENV === "production") console.error("API request failed.");
   else console.error("API request failed:", error.message);
   if (res.headersSent) return;
+  if (error.status === 413) return res.status(413).json({ error: "The request body is too large." });
   res.status(500).json({ error: "The request could not be completed." });
 });
 

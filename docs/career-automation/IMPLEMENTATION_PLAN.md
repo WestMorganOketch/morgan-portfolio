@@ -41,20 +41,19 @@ There is no public scan trigger, arbitrary-URL proxy, or public access to career
 
 Every source entry must retain its terms/documentation URL, review date, authentication, polling limit, attribution rule, private-admin permission, and independent public-redisplay permission. Unknown permission disables that use. Recheck current official terms and record approval before enabling any adapter; the limits below are the requirements supplied in the project brief, not a substitute for that review.
 
-| Source | Initial treatment | Poll/permission gate | Attribution and public display |
-|---|---|---|---|
-| Jobicy | Candidate scheduled feed: `https://jobicy.com/api/jobs` | No more than once/hour; the four daily scans comply. Use the current endpoint, not the retired v2 path. | Link to Jobicy and its listing; public redisplay only after exact-use terms review. |
-| Remote OK | Candidate scheduled JSON or RSS feed | Apply documented provider limits and bounded timeouts/retries. | Credit Remote OK and link original listing; public redisplay separately verified. |
-| Remotive | Candidate private-admin feed | Maximum four requests/day; listings are delayed 24 hours. | Required attribution/linkback; do not gate feed data behind signup; keep public display disabled until confirmed compatible. |
-| Arbeitnow | Candidate feed, not East Africa coverage replacement | Follow official usage instructions; only accept remote eligibility that explicitly supports Kenya. | Link back; public display separately verified. |
-| MyJobMag Kenya | Disabled pending exact feed and terms verification | Read official feed directory, record exact URL and verify private-use/polling permission before automated fetch. Otherwise saved search/manual import only. | Retain attribution and original link; public display disabled absent explicit permission. |
-| Greenhouse / Lever public boards | Owner-managed official-employer watchlist | Verify each board's public, read-only endpoint; never use application submission endpoints. | Preserve source/employer link; public display requires source-specific approval. |
-| ReliefWeb | Disabled | Requires approved `appname`; confirm use/rights before enabling. | Preserve original-source credit; no public display unless exact use is confirmed. |
-| Careerjet Kenya | Manual-only, disabled without approval | Requires approved publisher key and true user IP/user agent from Morgan's initiating request; no spoofing, persistence, or scheduled calls without explicit approval. | Follow approved API attribution and use terms; do not public-display without approval. |
-| BrighterMonday, MyJobMag, Fuzu, LinkedIn, PSC, employer pages | Saved-search shortcuts and user-initiated URL/text import | No scraping, browser automation, inbox reading, or bypass of access controls. | Show original link and source credit; imported advert text is untrusted input. |
-| Jooble, Himalayas, Online Jobs, Adzuna | Not enabled initially | Reconsider only after quota, access, and exact-use terms are reviewed and approved. | Public redisplay remains off unless explicitly approved. |
+| Source | Phase 2 status | Last reviewed | Polling/request limits | Attribution |
+|---|---|---|---|---|
+| Jobicy | Enabled; current API first, legacy endpoint fallback | 2026-11-01 (implementation plan reviewed; official terms not independently rechecked) | Minimum 3,600 seconds between scans; 24 requests/day ceiling | “Jobicy” and preserve original listing URL |
+| Remote OK | Enabled; public JSON feed | 2026-11-01 (implementation plan reviewed; official terms not independently rechecked) | Minimum 21,600 seconds between scans; 4 requests/day ceiling | “Remote OK” and preserve original listing URL |
+| Remotive | Enabled for private admin only; public redisplay off | 2026-11-01 (implementation plan reviewed; official terms not independently rechecked) | Minimum 21,600 seconds between scans; maximum 4 requests/day and at least 30 seconds between request attempts; listings are delayed 24 hours | Retain Remotive attribution fields and original listing link |
+| Arbeitnow | Enabled; no Kenya eligibility is inferred | 2026-11-01 (implementation plan reviewed; official terms not independently rechecked) | Minimum 21,600 seconds between scans; 4 requests/day ceiling | Preserve source and listing link |
+| Greenhouse / Lever | Permission allowed; polling disabled until a board is added and the registry source is explicitly enabled | 2026-11-01 (implementation plan reviewed; official terms not independently rechecked) | Minimum 21,600 seconds between scans; 4 requests/day ceiling across watchlist | Preserve official board link and employer label |
+| Manual import | Enabled; URL/text is admin supplied and the URL is never fetched | 2026-11-01 | No network requests | “Manually imported by admin” |
+| MyJobMag Kenya RSS | Disabled; no adapter | 2026-11-01 (official feed directory fetch did not expose a feed URL; private polling terms not confirmed) | None until exact feed and private-use permission are verified | Keep MyJobMag attribution; public redisplay off |
+| ReliefWeb, Careerjet, Jooble, Himalayas, Online Jobs, Adzuna | Disabled; no adapter | Not re-reviewed | None | Do not enable until specific access and use permissions are verified |
+| BrighterMonday, MyJobMag, Fuzu, LinkedIn, PSC, employer pages | Saved-search links and user-initiated URL/text import only | 2026-11-01 (implementation plan reviewed; site query formats not independently reviewed) | No scraping, browser automation, or inbox reading | Show source and original listing link; treat imported text as untrusted |
 
-All adapters isolate failures, validate response shapes, cache, deduplicate across sources, preserve original URLs/attribution, apply bounded connection/read timeouts and limited retry/backoff honoring `Retry-After`, and use fixture-only tests without live network calls.
+All adapters isolate failures, validate response shapes, deduplicate across sources, preserve original URLs/attribution, apply bounded connection/read timeouts and limited retry/backoff honoring `Retry-After`, and use fixture-only tests without live network calls.
 
 ## Required tests and validation by phase
 
@@ -72,14 +71,21 @@ All adapters isolate failures, validate response shapes, cache, deduplicate acro
 1. Rotate/revoke the historical database credential, and review the other credential-like historical values. Do not paste secrets into chat or source control. Consider history rewriting only as a separate owner-approved operation after rotation; rotation is required regardless.
 2. No live admin account, database, session, storage bucket, OAuth, source API key, or deployment was accessed. The isolated test demonstrates conflict safety; it cannot attest to live account state.
 3. Before Phase 1 auth/recovery changes, agree on a safe recovery path that cannot expose first-claim takeover after accidental account loss, while preserving the already-claimed account and every existing session.
-4. Before Phase 2, verify official current source docs/terms and exact feed URLs; obtain approved ReliefWeb appname or Careerjet key only if Morgan chooses those sources; define the initial Greenhouse/Lever employer watchlist.
+4. Before enabling additional sources or deploying, verify official current source docs/terms and exact feed URLs; obtain approved ReliefWeb appname or Careerjet key only if Morgan chooses those sources; define the initial Greenhouse/Lever employer watchlist.
 5. Before Phase 5/6/7, Morgan configures encryption/OAuth/cron secrets server-side, explicitly opts in to any external drafting data processing, and approves any source-specific public redisplay. No secret values belong in this document.
 6. API/client audits have moderate `minimatch` dependency findings at baseline; do not run `npm audit fix --force` because its proposed ESLint downgrade is breaking. Address dependency findings in a separate reviewed dependency change.
 
-No phase after Phase 0 is authorized by this plan. Wait for the explicit instruction `Continue to Phase 1`.
+Phase 0 findings are retained as a record. Phase 1 and Phase 2 are recorded below; do not begin the next phase until Morgan explicitly authorizes it.
 
 ## Phase 1 status
 
 - Implemented the additive `jr_` schema, private admin foundation routes, protected worker stub, and opt-in first-claim guard; tests use only isolated in-memory fakes.
 - The SQL is available for Supabase SQL Editor and as migration `004`; `npm run db:migrate` applies numbered SQL files explicitly in its existing runner.
-- No production database, account, session, or deployment was accessed; Phase 2 remains unauthorized.
+- No production database, account, session, or deployment was accessed; Phase 2 proceeded only after explicit owner authorization.
+
+## Phase 2 status
+
+- Added fixture-tested fixed-host adapters, intake normalization/deduplication, source request accounting, and shared locked manual/worker scan processing; MyJobMag remains disabled.
+- Added private job/import/watchlist/search-link APIs, additive Phase 2 SQL, and a private-worker workflow template; no SQL was executed.
+- API lint passed and the complete test suite passed (61/61); adapter tests used injected fixtures rather than provider network calls.
+- MyJobMag's official directory did not confirm a feed URL or private-polling permission; Phase 3 remains unauthorized.
