@@ -95,6 +95,7 @@ try {
   `);
   await pool.query(readFileSync(new URL("../migrations/002_features.sql", import.meta.url), "utf8"));
   await pool.query(readFileSync(new URL("../migrations/003_enable_rls.sql", import.meta.url), "utf8"));
+  await pool.query(readFileSync(new URL("../migrations/004_career_foundation.sql", import.meta.url), "utf8"));
 
   const alerts = JSON.parse(readFileSync(new URL("../data/alerts.json", import.meta.url), "utf8"));
   const alertValues = alerts.flatMap((alert) => [
