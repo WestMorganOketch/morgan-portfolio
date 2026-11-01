@@ -53,16 +53,7 @@ Open the local Next.js address shown by the client dev server. See [`client/READ
 
 ## Admin sign-in
 
-The first visitor to `/admin` creates the single admin account with an email and password. The account is stored in Supabase; passwords use Node.js scrypt and sessions use random, database-backed tokens. No admin credentials, password hashes, or session secrets need to be configured as environment variables. Once claimed, setup stays closed unless the account is reset.
-
-To reset the admin account, run these statements in the Supabase SQL Editor:
-
-```sql
-DELETE FROM public.admin_sessions;
-DELETE FROM public.admin_account;
-```
-
-The next visitor can claim the account again. The API creates and secures the admin tables at startup.
+The first visitor to `/admin` can create the single admin account only while the API environment variable `ADMIN_CLAIM_ENABLED` is exactly `true`. Keep it unset or `false` otherwise; the claim endpoint then returns 404. After initial setup, disable claiming. The account is stored in Supabase; passwords use Node.js scrypt and sessions use random, database-backed tokens. Do not delete the account or session rows to reset access. Recover access through the existing authenticated credential-change flow or an owner-controlled recovery procedure that preserves the account and active sessions. The API creates and secures the admin tables at startup.
 
 ## Environment variable names
 

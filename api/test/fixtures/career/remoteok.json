@@ -1,0 +1,14 @@
+[
+  { "legal": "Remote OK terms notice" },
+  {
+    "id": "remoteok-201",
+    "position": "SOC Analyst",
+    "company": "Blue Team",
+    "location": "Remote",
+    "description": "<div>Monitor security events.</div>",
+    "url": "https://remoteok.com/remote-jobs/201-soc-analyst",
+    "tags": ["SOC", "Security Operations"]
+  },
+  { "id": "remoteok-202", "position": "Sales Representative", "url": "https://remoteok.com/remote-jobs/202" },
+  { "id": "remoteok-malformed", "url": "https://remoteok.com/remote-jobs/bad" }
+]

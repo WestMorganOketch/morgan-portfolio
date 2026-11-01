@@ -160,7 +160,7 @@ function rateLimiter(limit, message) {
   });
 }
 
-export function registerAdminAuth(app, db, requireSameOrigin) {
+export function registerAdminAuth(app, db, requireSameOrigin, { claimEnabled = process.env.ADMIN_CLAIM_ENABLED === "true" } = {}) {
   const router = express.Router();
 
   async function authenticate(req, _res, next) {
@@ -233,30 +233,36 @@ export function registerAdminAuth(app, db, requireSameOrigin) {
     }
   });
 
-  router.post("/claim", rateLimiter(5, "Too many setup attempts. Try again later."), requireSameOrigin, async (req, res) => {
-    const parsed = claimAdminSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: "Enter a valid email and matching passwords of at least 10 characters." });
-    let passwordHash;
-    try {
-      passwordHash = await hashAdminPassword(parsed.data.password);
-      const { rows } = await db.query(
-        `INSERT INTO public.admin_account (id, email, password_hash)
-         VALUES (1, $1, $2)
-         ON CONFLICT (id) DO NOTHING
-         RETURNING email`,
-        [parsed.data.email, passwordHash],
-      );
-      if (!rows[0]) {
-        res.status(409).json({ error: "Admin already set up" });
-        return;
+  router.post(
+    "/claim",
+    (_req, res, next) => claimEnabled ? next() : res.sendStatus(404),
+    rateLimiter(5, "Too many setup attempts. Try again later."),
+    requireSameOrigin,
+    async (req, res) => {
+      const parsed = claimAdminSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Enter a valid email and matching passwords of at least 10 characters." });
+      let passwordHash;
+      try {
+        passwordHash = await hashAdminPassword(parsed.data.password);
+        const { rows } = await db.query(
+          `INSERT INTO public.admin_account (id, email, password_hash)
+           VALUES (1, $1, $2)
+           ON CONFLICT (id) DO NOTHING
+           RETURNING email`,
+          [parsed.data.email, passwordHash],
+        );
+        if (!rows[0]) {
+          res.status(409).json({ error: "Admin already set up" });
+          return;
+        }
+        const session = await createSession(req, res, rows[0].email);
+        res.status(201).json(session);
+      } catch (error) {
+        logFailure("db_error", error, [parsed.data.password, parsed.data.confirmPassword, passwordHash]);
+        res.status(503).json({ error: "Admin setup is temporarily unavailable." });
       }
-      const session = await createSession(req, res, rows[0].email);
-      res.status(201).json(session);
-    } catch (error) {
-      logFailure("db_error", error, [parsed.data.password, parsed.data.confirmPassword, passwordHash]);
-      res.status(503).json({ error: "Admin setup is temporarily unavailable." });
-    }
-  });
+    },
+  );
 
   router.post("/login", requireSameOrigin, async (req, res) => {
     const parsed = loginSchema.safeParse(req.body);

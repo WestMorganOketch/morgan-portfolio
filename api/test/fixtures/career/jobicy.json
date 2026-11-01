@@ -1,0 +1,17 @@
+{
+  "jobs": [
+    {
+      "id": "jobicy-101",
+      "jobTitle": "Junior Security Analyst",
+      "companyName": "Acme Security",
+      "jobGeo": "Nairobi, Kenya",
+      "jobIndustry": ["Cybersecurity"],
+      "jobDescription": "<p>Monitor alerts &amp; investigate incidents.</p>",
+      "url": "https://jobicy.com/jobs/101",
+      "pubDate": "2026-10-25T10:00:00Z",
+      "jobSalary": "Confidential"
+    },
+    { "id": "jobicy-102", "jobTitle": "Marketing Manager", "url": "https://jobicy.com/jobs/102" },
+    null
+  ]
+}

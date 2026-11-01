@@ -5,6 +5,7 @@ import { pool } from "./db.js";
 import { analyticsSchema, contentCategories, contentSchema, parseInput, projectSchema, uuidSchema } from "./validation.js";
 import { registerFeatureRoutes } from "./featureRoutes.js";
 import { registerAdminAuth } from "./adminAuth.js";
+import { registerCareerRoutes } from "./careerRoutes.js";
 
 const app = express();
 const webOrigins = new Set(
@@ -81,6 +82,8 @@ const globalLimiter = rateLimit({
   message: { error: "Too many requests. Please try again later." },
 });
 app.use(globalLimiter);
+app.use("/api/admin/career/resume-profiles", express.json({ limit: "256kb", strict: true }));
+app.use("/api/internal/jobs/run", express.json({ limit: "1kb", strict: true }));
 app.use(express.json({ limit: "32kb", strict: true }));
 
 const analyticsLimiter = rateLimit({
@@ -100,6 +103,7 @@ function requireSameOrigin(req, res, next) {
 }
 
 const { requireAdmin, requireCsrfToken } = registerAdminAuth(app, pool, requireSameOrigin);
+registerCareerRoutes(app, pool, { requireAdmin, requireSameOrigin, requireCsrfToken });
 
 function invalidInput(res, parsed) {
   return res.status(400).json({ error: "Please check the submitted fields.", details: parsed.error });
@@ -321,6 +325,7 @@ app.use((error, _req, res, _next) => {
   if (process.env.NODE_ENV === "production") console.error("API request failed.");
   else console.error("API request failed:", error.message);
   if (res.headersSent) return;
+  if (error.status === 413) return res.status(413).json({ error: "The request body is too large." });
   res.status(500).json({ error: "The request could not be completed." });
 });
 

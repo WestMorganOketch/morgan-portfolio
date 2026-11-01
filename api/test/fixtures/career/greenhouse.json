@@ -1,0 +1,15 @@
+{
+  "jobs": [
+    {
+      "id": 401,
+      "title": "Cybersecurity Analyst",
+      "location": { "name": "Nairobi" },
+      "content": "<p>Analyze alerts.</p>",
+      "absolute_url": "https://boards.greenhouse.io/example/jobs/401",
+      "updated_at": "2026-10-29T11:00:00Z",
+      "departments": [{ "name": "Security" }]
+    },
+    { "id": 402, "title": "Office Manager", "absolute_url": "https://boards.greenhouse.io/example/jobs/402" },
+    {}
+  ]
+}

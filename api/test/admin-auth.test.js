@@ -69,7 +69,7 @@ class FakeAdminDatabase {
   }
 }
 
-async function createFixture() {
+async function createFixture({ claimEnabled = true, useEnvDefault = false } = {}) {
   const db = new FakeAdminDatabase();
   const app = express();
   app.use(express.json());
@@ -79,7 +79,12 @@ async function createFixture() {
     }
     next();
   };
-  const { requireAdmin } = registerAdminAuth(app, db, requireSameOrigin);
+  const { requireAdmin } = registerAdminAuth(
+    app,
+    db,
+    requireSameOrigin,
+    useEnvDefault ? undefined : { claimEnabled },
+  );
   app.get("/api/admin/protected", requireAdmin, (req, res) => res.json({ email: req.adminSession.email }));
   app.use((error, _req, res, _next) => res.status(500).json({ error: error.message }));
   const server = app.listen(0, "127.0.0.1");
@@ -90,8 +95,8 @@ async function createFixture() {
   return {
     db,
     close: () => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
-    request: (path, { body, cookie, csrf, forwardedProto } = {}) => {
-      const headers = { Origin: "http://localhost:3000" };
+    request: (path, { body, cookie, csrf, forwardedProto, origin = "http://localhost:3000" } = {}) => {
+      const headers = origin ? { Origin: origin } : {};
       if (body !== undefined) headers["Content-Type"] = "application/json";
       if (cookie) headers.Cookie = cookie;
       if (csrf) headers["X-CSRF-Token"] = csrf;
@@ -118,6 +123,26 @@ async function claim(fixture, email = "owner@example.test", password = "correct 
     forwardedProto,
   });
 }
+
+test("admin claim is disabled by default", async () => {
+  const priorSetting = process.env.ADMIN_CLAIM_ENABLED;
+  delete process.env.ADMIN_CLAIM_ENABLED;
+  const fixture = await createFixture({ useEnvDefault: true });
+  try {
+    assert.equal((await claim(fixture)).status, 404);
+    const noOrigin = await fixture.request("/api/admin/claim", {
+      body: { email: "owner@example.test", password: "correct horse battery", confirmPassword: "correct horse battery" },
+      origin: null,
+    });
+    assert.equal(fixture.db.account, null);
+    assert.equal(fixture.db.sessions.size, 0);
+    assert.equal(noOrigin.status, 404);
+  } finally {
+    await fixture.close();
+    if (priorSetting === undefined) delete process.env.ADMIN_CLAIM_ENABLED;
+    else process.env.ADMIN_CLAIM_ENABLED = priorSetting;
+  }
+});
 
 test("admin setup status, claim, login, protected routes, and logout", async () => {
   const fixture = await createFixture();

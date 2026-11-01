@@ -1,0 +1,48 @@
+name: Career scan trigger
+
+on:
+  schedule:
+    - cron: "7 1,7,13,19 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      API_BASE_URL: ${{ secrets.API_BASE_URL }}
+      JOB_CRON_SECRET: ${{ secrets.JOB_CRON_SECRET }}
+    steps:
+      - name: Validate configuration
+        shell: bash
+        run: |
+          test -n "$API_BASE_URL"
+          test -n "$JOB_CRON_SECRET"
+      - name: Wait for API cold start
+        shell: bash
+        run: |
+          base_url="${API_BASE_URL%/}"
+          ready=0
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error --max-time 10 "$base_url/api/health" >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 10
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "API health check did not succeed within the bounded wake window." >&2
+            exit 1
+          fi
+      - name: Trigger scan
+        shell: bash
+        run: |
+          base_url="${API_BASE_URL%/}"
+          curl --fail --silent --show-error --max-time 20 \
+            --request POST \
+            --header "X-Cron-Secret: $JOB_CRON_SECRET" \
+            --header "Content-Type: application/json" \
+            --data '{}' \
+            "$base_url/api/internal/jobs/run"
