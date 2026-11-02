@@ -9,7 +9,8 @@ const sourceHosts = new Map([
   ["lever", new Set(["api.lever.co"])],
 ]);
 const lastRequestAt = new Map();
-const maxResponseBytes = 2 * 1024 * 1024;
+const DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const ARBEITNOW_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const requestTimeoutMs = 15_000;
 const redirectStatuses = new Set([301, 302, 303, 307, 308]);
 
@@ -108,6 +109,7 @@ export async function fetchSourceJson(urlValue, {
   onRequest = async () => {},
   maxRequests = 3,
   minIntervalMs = 0,
+  maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
 } = {}) {
   const url = new URL(urlValue);
   const hosts = sourceHosts.get(source);
@@ -279,25 +281,49 @@ function normalizePayload(rows, sourceKey, defaults = {}) {
   const jobs = [];
   let malformed = 0;
   let discarded = 0;
+  const discard_reasons = { title_no_match: 0, malformed: 0, duplicate: 0, other: 0 };
+  const sample_discarded_titles = [];
+  const matched_titles = [];
+  const addTitle = (titles, value) => {
+    if (titles.length < 8) {
+      const title = stripHtml(value, 120);
+      if (title) titles.push(title);
+    }
+  };
   for (const raw of rows) {
     let job;
     try {
       job = normalizeJob(raw, sourceKey, defaults);
     } catch {
       malformed++;
+      discard_reasons.malformed++;
+      addTitle(sample_discarded_titles, raw?.title ?? raw?.jobTitle ?? raw?.position ?? raw?.text);
       continue;
     }
     if (!job) {
       malformed++;
+      discard_reasons.malformed++;
+      addTitle(sample_discarded_titles, raw?.title ?? raw?.jobTitle ?? raw?.position ?? raw?.text);
       continue;
     }
     if (!matchesRoleTitle(job.title, job.tags)) {
       discarded++;
+      discard_reasons.title_no_match++;
+      addTitle(sample_discarded_titles, raw.title ?? raw.jobTitle ?? raw.position ?? raw.text);
       continue;
     }
     jobs.push(job);
+    addTitle(matched_titles, job.title);
   }
-  return { jobs, fetched: rows.length, malformed, discarded };
+  return {
+    jobs,
+    fetched: rows.length,
+    malformed,
+    discarded,
+    discard_reasons,
+    sample_discarded_titles,
+    matched_titles,
+  };
 }
 
 async function requestJson(url, options) {
@@ -345,6 +371,7 @@ export async function fetchArbeitnow(options) {
   const payload = await requestJson("https://www.arbeitnow.com/api/job-board-api", {
     ...options,
     source: "arbeitnow",
+    maxResponseBytes: ARBEITNOW_MAX_RESPONSE_BYTES,
   });
   return normalizePayload(rowsFor(payload, "data"), "arbeitnow");
 }
@@ -354,10 +381,14 @@ export async function fetchAtsWatchlist(entries, options) {
   let fetched = 0;
   let malformed = 0;
   let discarded = 0;
+  const discard_reasons = { title_no_match: 0, malformed: 0, duplicate: 0, other: 0 };
+  const sample_discarded_titles = [];
+  const matched_titles = [];
   const errors = [];
   for (const entry of entries) {
     if (!/^[A-Za-z0-9_-]{2,60}$/.test(entry.token)) {
       malformed++;
+      discard_reasons.malformed++;
       continue;
     }
     const endpoint = entry.provider === "greenhouse"
@@ -367,6 +398,7 @@ export async function fetchAtsWatchlist(entries, options) {
         : null;
     if (!endpoint) {
       malformed++;
+      discard_reasons.malformed++;
       continue;
     }
     try {
@@ -380,15 +412,36 @@ export async function fetchAtsWatchlist(entries, options) {
       fetched += normalized.fetched;
       malformed += normalized.malformed;
       discarded += normalized.discarded;
+      for (const [reason, count] of Object.entries(normalized.discard_reasons)) {
+        discard_reasons[reason] += count;
+      }
+      for (const title of normalized.sample_discarded_titles) {
+        if (sample_discarded_titles.length >= 8) break;
+        sample_discarded_titles.push(title);
+      }
+      for (const title of normalized.matched_titles) {
+        if (matched_titles.length >= 8) break;
+        matched_titles.push(title);
+      }
       jobs.push(...normalized.jobs.map((job) => ({
         ...job,
         source_job_id: `${entry.provider}:${job.source_job_id}`,
       })));
     } catch (error) {
       errors.push(`${entry.provider}:${entry.label}: ${error.message}`);
+      discard_reasons.other++;
     }
   }
-  return { jobs, fetched, malformed, discarded, errors };
+  return {
+    jobs,
+    fetched,
+    malformed,
+    discarded,
+    discard_reasons,
+    sample_discarded_titles,
+    matched_titles,
+    errors,
+  };
 }
 
 const adapters = new Map([

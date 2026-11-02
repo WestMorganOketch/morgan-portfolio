@@ -37,6 +37,7 @@ test("Jobicy normalizes valid matches, skips malformed rows, and counts irreleva
   assert.equal(result.discarded, 1);
   assert.equal(result.malformed, 1);
   assert.equal(result.jobs[0].source_key, "jobicy");
+  assert.equal(result.jobs[0].title, "Junior Security Analyst");
   assert.equal(result.jobs[0].url, "https://jobicy.com/jobs/101");
   assert.equal(result.jobs[0].description_text, "Monitor alerts & investigate incidents.");
   assert.equal(result.jobs[0].salary_text, "Confidential");
@@ -85,6 +86,7 @@ test("Remotive preserves private-feed links and skips malformed or irrelevant li
   });
   assert.equal(result.jobs[0].source_key, "remotive");
   assert.equal(result.jobs[0].url, "https://remotive.com/remote-jobs/education/ict-trainer-301");
+  assert.equal(result.jobs[0].title, "ICT Trainer");
   assert.equal(result.discarded, 1);
   assert.equal(result.malformed, 1);
 });
@@ -101,6 +103,30 @@ test("Arbeitnow accepts the documented data array without inferring country elig
   assert.equal(result.jobs[0].location_text, "Berlin");
   assert.equal(result.jobs[0].remote_scope_text, "true");
   assert.equal(result.jobs[0].url, "https://www.arbeitnow.com/jobs/information-security-analyst");
+  assert.equal(result.jobs[0].title, "Information Security Analyst");
+});
+
+test("Arbeitnow accepts an injected response between two and eight megabytes", async () => {
+  resetRequestPacingForTests();
+  const padding = "x".repeat(3 * 1024 * 1024);
+  const payload = {
+    data: [{
+      slug: "security-analyst-large-response",
+      title: "Information Security Analyst",
+      company_name: "Example Security",
+      location: "Nairobi",
+      url: "https://www.arbeitnow.com/jobs/security-analyst",
+      description: "Monitor security events.",
+    }],
+    padding,
+  };
+  const result = await fetchArbeitnow({
+    fetchImpl: async () => new Response(JSON.stringify(payload), {
+      headers: { "content-type": "application/json" },
+    }),
+  });
+  assert.equal(result.jobs.length, 1);
+  assert.equal(result.jobs[0].title, "Information Security Analyst");
 });
 
 test("ATS adapters use fixed read-only endpoints and validate public board tokens", async () => {
@@ -136,6 +162,7 @@ test("role title and tag matching stays within the two requested tracks", () => 
   assert.equal(matchesRoleTitle("Senior IT Trainer"), true);
   assert.equal(matchesRoleTitle("Security Specialist", ["Security Operations Analyst"]), true);
   assert.equal(matchesRoleTitle("Business Intelligence Analyst", ["Power BI"]), false);
+  assert.equal(matchesRoleTitle("  sEcUrItY   aNaLySt  "), true);
 });
 
 test("HTML is reduced to bounded plain text and invalid links are rejected", () => {

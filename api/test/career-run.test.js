@@ -215,6 +215,38 @@ test("daily request caps are checked before calling source adapters", async () =
   assert.equal(run.summary.remotive.skipped_reason, "daily request cap reached");
 });
 
+test("run summaries retain sanitized bounded title diagnostics and discard reason counts", async () => {
+  const db = new FakeRunDatabase();
+  db.sources = [source("arbeitnow")];
+  const unsafeLongTitle = `<b>${"Security Analyst ".repeat(12)}</b>`;
+  const service = createCareerRunService({
+    db,
+    adapter: async () => ({
+      fetched: 3,
+      discarded: 1,
+      malformed: 1,
+      discard_reasons: { title_no_match: 1, malformed: 1, duplicate: 0, other: 0 },
+      sample_discarded_titles: [unsafeLongTitle],
+      matched_titles: [unsafeLongTitle],
+      jobs: [{ title: "Security Analyst", source_job_id: "duplicate" }],
+    }),
+    saveJob: async () => ({ result: "duplicate", id: randomUUID() }),
+  });
+  const started = await service.start("cron");
+  const run = await waitForRun(db, started.id);
+  const diagnostics = run.summary.arbeitnow;
+  assert.deepEqual(diagnostics.discard_reasons, {
+    title_no_match: 1,
+    malformed: 1,
+    duplicate: 1,
+    other: 0,
+  });
+  assert.equal(diagnostics.sample_discarded_titles[0].length, 120);
+  assert.ok(diagnostics.sample_discarded_titles[0].startsWith("Security Analyst "));
+  assert.equal(diagnostics.matched_titles[0], diagnostics.sample_discarded_titles[0]);
+  assert.equal(diagnostics.matched_titles.length <= 8, true);
+});
+
 test("runs stop as interrupted when their time budget is exceeded", async () => {
   const db = new FakeRunDatabase();
   db.sources = [source("remoteok")];

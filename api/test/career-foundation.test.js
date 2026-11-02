@@ -101,7 +101,10 @@ class FakeCareerDatabase {
     if (statement.startsWith("SELECT id, trigger, status")) {
       return { rows: [...this.runs.values()].sort((a, b) => b.started_at.localeCompare(a.started_at)).slice(0, 100) };
     }
-    if (statement.startsWith("SELECT s.key, s.name, s.enabled")) return { rows: [] };
+    if (statement.startsWith("SELECT s.key, s.name, s.enabled")) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return { rows: [] };
+    }
     if (statement.startsWith("UPDATE public.jr_runs") && statement.includes("stale run interrupted")) {
       for (const run of this.runs.values()) {
         if (run.status === "running" && Date.now() - Date.parse(run.started_at) > 15 * 60 * 1000) run.status = "interrupted";
