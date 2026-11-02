@@ -545,12 +545,14 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
             </div>
 
             {view !== "career" ? (
-              <section className="admin-stats" aria-label="Aggregate site activity for the last 30 days">
-              <article><span>PAGE VIEWS · 30 DAYS</span><strong>{pageViews}</strong></article>
-              <article><span>LINK CLICKS · 30 DAYS</span><strong>{linkClicks}</strong></article>
-              <article><span>PROJECTS</span><strong>{projects.length}</strong></article>
-            </section>
-              <p className="admin-privacy">Activity is stored as aggregate event counts only. The analytics table does not store visitor identities, IP addresses, or query strings.</p>
+              <>
+                <section className="admin-stats" aria-label="Aggregate site activity for the last 30 days">
+                  <article><span>PAGE VIEWS · 30 DAYS</span><strong>{pageViews}</strong></article>
+                  <article><span>LINK CLICKS · 30 DAYS</span><strong>{linkClicks}</strong></article>
+                  <article><span>PROJECTS</span><strong>{projects.length}</strong></article>
+                </section>
+                <p className="admin-privacy">Activity is stored as aggregate event counts only. The analytics table does not store visitor identities, IP addresses, or query strings.</p>
+              </>
             ) : null}
 
             {view === "career" ? (
