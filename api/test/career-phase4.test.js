@@ -37,7 +37,7 @@ const job = (id, fitScore, eligibility) => ({
   eligibility,
 });
 
-function createDb({ qualifiedRows = [], dailyCap = 2 } = {}) {
+function createDb({ qualifiedRows = [], dailyCap = 2, riskSqlInstalled = false, flaggedRows = [] } = {}) {
   const queries = [];
   return {
     queries,
@@ -46,6 +46,17 @@ function createDb({ qualifiedRows = [], dailyCap = 2 } = {}) {
       queries.push({ statement, values });
       if (statement.startsWith("SELECT table_name FROM information_schema.tables")) {
         return { rows: values[0].map((table_name) => ({ table_name })) };
+      }
+      if (statement.startsWith("SELECT table_name, column_name FROM information_schema.columns")) {
+        if (!riskSqlInstalled) return { rows: [] };
+        return {
+          rows: [
+            ...["risk_level", "risk_findings", "risk_confidence", "unknowns", "url_checks", "risk_assessed_at"]
+              .map((column_name) => ({ table_name: "jr_assessments", column_name })),
+            ...["domain", "checked_at", "rdap_age_days", "dns_ok", "https_ok", "ats_provider", "expires_at"]
+              .map((column_name) => ({ table_name: "jr_domain_cache", column_name })),
+          ],
+        };
       }
       if (statement.startsWith("SELECT score_threshold, max_packets_per_day")) {
         return { rows: [{ score_threshold: 65, max_packets_per_day: dailyCap }] };
@@ -60,11 +71,15 @@ function createDb({ qualifiedRows = [], dailyCap = 2 } = {}) {
         return { rows: [{ last_success_at: new Date().toISOString() }] };
       }
       if (statement.startsWith("SELECT s.key, s.name, s.enabled")) return { rows: [] };
-      if (statement.startsWith("SELECT count(*)::integer AS count FROM public.jr_jobs WHERE status")) {
+      if (statement.startsWith("SELECT count(*)::integer AS count FROM public.jr_jobs AS j WHERE status")) {
         return { rows: [{ count: 3 }] };
       }
       if (statement.startsWith("SELECT count(*)::integer AS count FROM public.jr_jobs WHERE first_seen_at")) {
         return { rows: [{ count: 4 }] };
+      }
+      if (statement.startsWith("SELECT j.id, j.source_key, s.name AS source_name")
+        && statement.includes("WHERE a.risk_level IN")) {
+        return { rows: flaggedRows };
       }
       if (statement.startsWith("SELECT j.id, j.source_key, s.name AS source_name")) {
         return { rows: qualifiedRows };
@@ -170,6 +185,61 @@ test("Phase 4 overview counts, shortlists to the cap, and does not pad", async (
     assert.equal((await response.json()).shortlist.length, 1);
   } finally {
     await second.close();
+  }
+});
+
+test("high-risk and blocked jobs are excluded from the shortlist and returned in Flagged", async () => {
+  const flagged = {
+    ...job("job-flagged", 96, "eligible"),
+    risk_assessment: {
+      risk_level: "high_risk",
+      risk_findings: [],
+      risk_confidence: 82,
+      unknowns: [],
+      url_checks: {
+        ok: true, error: null, hostname: "example.com", final_hostname: "example.com",
+        status: 200, redirect_count: 0, redirected_to_different_host: false,
+        dns_ok: true, https_ok: true, ats_provider: null, rdap_age_days: 15,
+      },
+      risk_assessed_at: new Date().toISOString(),
+    },
+  };
+  const safe = {
+    ...job("job-lower-risk", 88, "eligible"),
+    risk_assessment: {
+      risk_level: "needs_manual_verification",
+      risk_findings: [],
+      risk_confidence: 52,
+      unknowns: ["Employer details need confirmation."],
+      url_checks: {
+        ok: false, error: "not_inspected", hostname: null, final_hostname: null,
+        status: null, redirect_count: 0, redirected_to_different_host: false,
+        dns_ok: false, https_ok: false, ats_provider: null, rdap_age_days: null,
+      },
+      risk_assessed_at: null,
+    },
+  };
+  const fixture = await createFixture({
+    riskSqlInstalled: true,
+    qualifiedRows: [safe],
+    flaggedRows: [flagged],
+  });
+  try {
+    const response = await fixture.request("/api/admin/career/overview", admin);
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.deepEqual(result.shortlist.map((row) => row.id), ["job-lower-risk"]);
+    assert.deepEqual(result.flagged.map((row) => row.id), ["job-flagged"]);
+    assert.match(
+      fixture.db.queries.find(({ statement }) => statement.startsWith("SELECT j.id, j.source_key, s.name AS source_name")).statement,
+      /risk_level NOT IN \('high_risk', 'blocked_by_rule'\)/,
+    );
+    assert.match(
+      fixture.db.queries.find(({ statement }) => statement.includes("WHERE a.risk_level IN")).statement,
+      /'high_risk', 'blocked_by_rule'/,
+    );
+  } finally {
+    await fixture.close();
   }
 });
 

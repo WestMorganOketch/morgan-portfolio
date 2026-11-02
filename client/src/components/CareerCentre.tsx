@@ -14,6 +14,29 @@ type Assessment = {
   reason_codes: string[];
   uncertainty: string[];
 };
+type RiskFinding = { code: string; severity: string; confidence: number; evidence: string };
+type UrlChecks = {
+  ok: boolean;
+  error: string | null;
+  hostname: string | null;
+  final_hostname: string | null;
+  status: number | null;
+  redirect_count: number;
+  redirected_to_different_host: boolean;
+  dns_ok: boolean;
+  https_ok: boolean;
+  ats_provider: string | null;
+  rdap_age_days: number | null;
+};
+type RiskAssessment = {
+  risk_level: string;
+  risk_findings: RiskFinding[];
+  risk_confidence: number;
+  unknowns: string[];
+  url_checks: UrlChecks;
+  risk_assessed_at: string | null;
+};
+type RiskAssessmentValue = RiskAssessment | "not yet assessed" | null;
 type CareerJob = {
   id: string;
   title: string;
@@ -29,7 +52,7 @@ type CareerJob = {
   first_seen_at: string;
   status: string;
   assessment: Assessment | null;
-  risk_assessment?: string;
+  risk_assessment?: RiskAssessmentValue;
 };
 type SourceHealth = {
   key: string;
@@ -59,6 +82,7 @@ type Overview = {
   shortlist: CareerJob[];
   qualified: CareerJob[];
   maybe: CareerJob[];
+  flagged: CareerJob[];
 };
 type Profile = {
   id: string;
@@ -104,7 +128,7 @@ const careerTabs = [
   "Overview", "Review", "Import", "Resume profiles", "Preferences", "Sources and Setup", "Tracker",
 ] as const;
 type CareerTab = (typeof careerTabs)[number];
-const reviewLists = ["Shortlist", "Maybe", "Qualified", "Passed", "Dismissed"] as const;
+const reviewLists = ["Shortlist", "Maybe", "Qualified", "Flagged", "Passed", "Dismissed"] as const;
 type ReviewList = (typeof reviewLists)[number];
 const applicationStates = [
   "discovered", "screened", "match_review", "shortlisted", "preparation_in_progress",
@@ -160,6 +184,34 @@ function isAssessment(value: unknown): value is Assessment {
     && Array.isArray(value.uncertainty);
 }
 
+function isUrlChecks(value: unknown): value is UrlChecks {
+  return isRecord(value)
+    && typeof value.ok === "boolean"
+    && (value.error === null || string(value.error))
+    && (value.hostname === null || string(value.hostname))
+    && (value.final_hostname === null || string(value.final_hostname))
+    && (value.status === null || typeof value.status === "number")
+    && typeof value.redirect_count === "number"
+    && typeof value.redirected_to_different_host === "boolean"
+    && typeof value.dns_ok === "boolean"
+    && typeof value.https_ok === "boolean"
+    && (value.ats_provider === null || string(value.ats_provider))
+    && (value.rdap_age_days === null || typeof value.rdap_age_days === "number");
+}
+
+function isRiskAssessment(value: unknown): value is RiskAssessment {
+  return isRecord(value)
+    && string(value.risk_level)
+    && Array.isArray(value.risk_findings)
+    && value.risk_findings.every((finding) =>
+      isRecord(finding) && string(finding.code) && string(finding.severity)
+      && typeof finding.confidence === "number" && string(finding.evidence))
+    && typeof value.risk_confidence === "number"
+    && Array.isArray(value.unknowns) && value.unknowns.every(string)
+    && isUrlChecks(value.url_checks)
+    && (value.risk_assessed_at === null || string(value.risk_assessed_at));
+}
+
 function isCareerJob(value: unknown): value is CareerJob {
   return isRecord(value)
     && string(value.id)
@@ -171,6 +223,8 @@ function isCareerJob(value: unknown): value is CareerJob {
     && string(value.source_name)
     && string(value.attribution_text)
     && string(value.status)
+    && (value.risk_assessment === undefined || value.risk_assessment === null
+      || value.risk_assessment === "not yet assessed" || isRiskAssessment(value.risk_assessment))
     && (value.assessment === null || isAssessment(value));
 }
 
@@ -190,7 +244,9 @@ function isOverview(value: unknown): value is Overview {
     && Array.isArray(value.qualified)
     && value.qualified.every(isCareerJob)
     && Array.isArray(value.maybe)
-    && value.maybe.every(isCareerJob);
+    && value.maybe.every(isCareerJob)
+    && Array.isArray(value.flagged)
+    && value.flagged.every(isCareerJob);
 }
 
 function isProfile(value: unknown): value is Profile {
@@ -272,6 +328,11 @@ function safeHttpUrl(value: string | null): string | null {
   }
 }
 
+function riskLabel(value: RiskAssessmentValue | undefined): string {
+  if (!isRiskAssessment(value)) return "not yet assessed";
+  return `${value.risk_level.replaceAll("_", " ")}; not a safety guarantee`;
+}
+
 function readableDate(value: string | null | undefined): string {
   if (!value) return "Not recorded";
   const date = new Date(value);
@@ -319,7 +380,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   }, [csrfToken]);
 
   const loadReview = useCallback(async () => {
-    if (reviewList === "Shortlist" || reviewList === "Maybe" || reviewList === "Qualified") {
+    if (reviewList === "Shortlist" || reviewList === "Maybe" || reviewList === "Qualified" || reviewList === "Flagged") {
       if (!overview) await loadOverview();
       return;
     }
@@ -462,6 +523,21 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
       await loadOverview();
       await loadReview();
     }, "Review status updated.");
+  }
+
+  async function inspectJobLink(job: CareerJob) {
+    await runAction(async () => {
+      const result = await request(`/api/admin/career/jobs/${job.id}/inspect-link`, csrfToken, {
+        method: "POST",
+        body: "{}",
+      });
+      if (isRecord(result) && result.skipped === true) {
+        setMessage("Link inspection skipped because this job is below the saved fit threshold.");
+        return;
+      }
+      await loadOverview();
+      setMessage("Link inspection saved. Review the evidence manually; no result proves a listing is safe.");
+    });
   }
 
   async function openNotes(job: CareerJob) {
@@ -644,6 +720,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   const reviewJobs = reviewList === "Shortlist" ? overview?.shortlist ?? []
     : reviewList === "Maybe" ? overview?.maybe ?? []
       : reviewList === "Qualified" ? overview?.qualified ?? []
+        : reviewList === "Flagged" ? overview?.flagged ?? []
         : jobs;
   const filteredApplications = applications.filter((application) =>
     applicationFilter === "all" || application.state === applicationFilter);
@@ -722,7 +799,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
             </div>
             <section className="career-subpanel">
               <div className="career-review-heading">
-                <div><h3>Jobs needing review</h3><p>{overview?.shortlist_count ?? 0} daily shortlist items · risk is not yet assessed</p></div>
+                <div><h3>Jobs needing review</h3><p>{overview?.shortlist_count ?? 0} daily shortlist items · risk signals are not a safety guarantee</p></div>
                 <button className="text-link" onClick={() => changeTab("Review")} type="button">Open review queue</button>
               </div>
               {overview?.shortlist.length ? (
@@ -730,7 +807,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                   {overview.shortlist.map((job) => {
                     const href = safeHttpUrl(job.url);
                     return <li key={job.id}>
-                      <div><strong>{job.title}</strong><span>{job.location_text || job.remote_scope_text || "Location not specified"} · {job.assessment?.fit_score ?? "—"}/100 · risk: not yet assessed</span></div>
+                      <div><strong>{job.title}</strong><span>{job.location_text || job.remote_scope_text || "Location not specified"} · {job.assessment?.fit_score ?? "—"}/100 · risk signals: {riskLabel(job.risk_assessment)}</span></div>
                       {href ? <a href={href} rel="noopener noreferrer" target="_blank">{job.attribution_text}</a> : <span>{job.attribution_text}</span>}
                     </li>;
                   })}
@@ -756,31 +833,44 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
               ))}
             </div>
             {reviewList === "Maybe" ? <p className="career-warning">These listings need location or work-permission verification before any decision.</p> : null}
+            {reviewList === "Flagged" ? (
+            <section className="career-warning" aria-label="Manual listing checks">
+              <strong>Flagged signals require independent review; they are not a final determination.</strong>
+              <ol>
+                <li>Find the employer's careers page independently and verify the vacancy there.</li>
+                <li>Confirm recruiter identity and contact details through the employer's official channels.</li>
+                <li>Never pay an application, placement, training, visa, or processing fee to obtain a job.</li>
+                <li>Do not send financial credentials or identity documents before confirming the process and necessity.</li>
+                <li>Verify location, work-permission requirements, duties, and compensation directly with the employer.</li>
+              </ol>
+            </section>
+            ) : null}
             {reviewJobs.length ? (
-              <div className="career-job-list">
+            <div className="career-job-list">
                 {reviewJobs.map((job) => (
                   <CareerJobCard
                     busy={busy}
                     job={job}
                     key={job.id}
                     onApplication={() => void createApplication(job)}
+                    onInspect={() => void inspectJobLink(job)}
                     onNotes={() => void openNotes(job)}
                     onStatus={(status) => void updateJobStatus(job, status)}
                   />
                 ))}
               </div>
-            ) : <p className="admin-help">No jobs in this list yet. The shortlist is capped by your daily packet limit and is never padded.</p>}
+            ) : <p className="admin-help">{reviewList === "Flagged" ? "No high-risk signals are currently flagged. This is not a guarantee of safety." : "No jobs in this list yet. The shortlist is capped by your daily packet limit and is never padded."}</p>}
           </div>
         ) : null}
 
         {tab === "Import" ? (
           <form className="career-form" onSubmit={(event) => void submitImport(event)}>
-            <p className="admin-help">Paste a job advert or job-alert email text. The URL is stored as supplied and is not fetched.</p>
+            <p className="admin-help">Paste a job advert or job-alert email text. A URL is stored as supplied and is fetched only if you explicitly choose Check link on the job card.</p>
             <label htmlFor="career-import-title">Job title</label>
             <input id="career-import-title" maxLength={300} onChange={(event) => setImportForm({ ...importForm, title: event.target.value })} required value={importForm.title} />
             <label htmlFor="career-import-company">Company</label>
             <input id="career-import-company" maxLength={200} onChange={(event) => setImportForm({ ...importForm, company: event.target.value })} value={importForm.company} />
-            <label htmlFor="career-import-url">Original listing URL <span>optional · HTTP(S); stored, never fetched</span></label>
+            <label htmlFor="career-import-url">Original listing URL <span>optional · HTTP(S); stored until you explicitly inspect it</span></label>
             <input id="career-import-url" maxLength={2000} onChange={(event) => setImportForm({ ...importForm, url: event.target.value })} type="url" value={importForm.url} />
             <label htmlFor="career-import-text">Advert or alert text <span>plain text · max 6,000 characters</span></label>
             <textarea id="career-import-text" maxLength={6000} onChange={(event) => setImportForm({ ...importForm, text: event.target.value })} rows={8} value={importForm.text} />
@@ -1004,15 +1094,18 @@ function CareerJobCard({
   onStatus,
   onNotes,
   onApplication,
+  onInspect,
 }: {
   job: CareerJob;
   busy: boolean;
   onStatus: (status: string) => void;
   onNotes: () => void;
   onApplication: () => void;
+  onInspect: () => void;
 }) {
   const assessment = job.assessment;
   const externalUrl = safeHttpUrl(job.url);
+  const risk = isRiskAssessment(job.risk_assessment) ? job.risk_assessment : null;
   const breakdown = assessment?.fit_breakdown ?? {};
   const breakdownItems = Object.entries(breakdown).flatMap(([label, value]) =>
     isRecord(value) && typeof value.weight === "number" && typeof value.points === "number"
@@ -1037,11 +1130,36 @@ function CareerJobCard({
         <div className="career-assessment-details">
           <p><strong>Eligibility:</strong> {assessment.eligibility}</p>
           <p><strong>Eligibility evidence:</strong> {assessment.eligibility_evidence.map((item) => item.phrase ?? item.rule ?? "").filter(Boolean).join("; ") || "No explicit phrase recorded."}</p>
-          <p><strong>Risk:</strong> {job.risk_assessment ?? "not yet assessed"} — no safety conclusion is implied.</p>
+          <p><strong>Risk signals:</strong> {risk?.risk_level.replaceAll("_", " ") ?? "not yet assessed"} — no result verifies that a listing is safe.</p>
           <p><strong>Matched:</strong> {assessment.matched.map((item) => item.value ?? item.phrase ?? "").filter(Boolean).join(", ") || "None recorded"}</p>
           <p><strong>Missing:</strong> {assessment.missing.map((item) => item.value ?? "").filter(Boolean).join(", ") || "None recorded"}</p>
           <p><strong>Reason codes:</strong> {assessment.reason_codes.join(", ") || "None"}</p>
           {assessment.uncertainty.length ? <p><strong>Uncertainty:</strong> {assessment.uncertainty.join(" ")}</p> : null}
+          {risk ? (
+            <details>
+              <summary>Risk evidence and link diagnostics</summary>
+              <p><strong>Confidence:</strong> {risk.risk_confidence}/100; this is not a probability or safety certification.</p>
+              {risk.risk_findings.length ? (
+                <ul>{risk.risk_findings.map((finding, index) => (
+                  <li key={`${finding.code}-${index}`}>
+                    {finding.code.replaceAll("_", " ")} ({finding.severity}, {finding.confidence}/100): {finding.evidence}
+                  </li>
+                ))}</ul>
+              ) : <p>No risk findings were identified by these rules.</p>}
+              {risk.unknowns.length ? <p><strong>Unknowns:</strong> {risk.unknowns.join(" ")}</p> : null}
+              <p>
+                <strong>URL diagnostics:</strong> {risk.url_checks.ok ? `HTTP ${risk.url_checks.status}` : risk.url_checks.error ?? "not inspected"}
+                {" · "}{risk.url_checks.hostname ?? "no host"}
+                {risk.url_checks.final_hostname && risk.url_checks.final_hostname !== risk.url_checks.hostname
+                  ? ` → ${risk.url_checks.final_hostname}` : ""}
+                {" · "}{risk.url_checks.redirect_count} redirects
+                {" · DNS "}{risk.url_checks.dns_ok ? "public" : "unconfirmed"}
+                {" · HTTPS "}{risk.url_checks.https_ok ? "yes" : "no"}
+                {risk.url_checks.ats_provider ? ` · ATS: ${risk.url_checks.ats_provider}` : ""}
+                {risk.url_checks.rdap_age_days === null ? " · domain age unknown" : ` · domain age ${risk.url_checks.rdap_age_days} days`}
+              </p>
+            </details>
+          ) : <p className="admin-help">Run Check link for jobs meeting the saved fit threshold. Inspection is skipped below that threshold.</p>}
           <details>
             <summary>Fit score breakdown</summary>
             <ul>{breakdownItems.map(({ label, points, weight }) => <li key={label}>{label.replaceAll("_", " ")}: {points} / {weight}</li>)}</ul>
@@ -1050,6 +1168,7 @@ function CareerJobCard({
       ) : <p className="career-warning">No fit assessment is available yet.</p>}
       <div className="career-actions">
         {externalUrl ? <a className="button button-quiet" href={externalUrl} rel="noopener noreferrer" target="_blank">Open original</a> : <span className="admin-help">No valid original link</span>}
+        <button className="button button-quiet" disabled={busy || !externalUrl} onClick={onInspect} type="button">Check link</button>
         <button className="button button-quiet" disabled={busy} onClick={() => onStatus("shortlisted")} type="button">Shortlist</button>
         <button className="button button-quiet" disabled={busy} onClick={() => onStatus("not_a_fit")} type="button">Not a fit</button>
         <button className="button button-quiet" disabled={busy} onClick={() => onStatus("duplicate")} type="button">Mark duplicate</button>

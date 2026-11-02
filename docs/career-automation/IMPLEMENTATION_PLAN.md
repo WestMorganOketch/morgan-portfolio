@@ -99,5 +99,11 @@ Phase 0 findings are retained as a record. Phase 1 and Phase 2 are recorded belo
 ## Phase 4 status
 
 - Added the private admin Career Centre, including overview, review queues, import, profile and preference management, source setup, and the application tracker.
-- Added the additive application/event SQL, protected tracker and review-status operations, and a Nairobi-day shortlist capped by the saved daily limit; risk remains explicitly unassessed.
+- Added the additive application/event SQL, protected tracker and review-status operations, and a Nairobi-day shortlist capped by the saved daily limit; Phase 3B adds the separate risk review.
 - No SQL was applied and no production database, source, application submission, or external service was accessed.
+
+## Phase 3B status
+
+- Added deterministic authenticity-risk signals and an HTTP(S)-only URL inspector with DNS/public-IP checks, redirect revalidation, bounded responses, timeouts, and a 30-day RDAP cache.
+- Added protected manual inspection, isolated post-ingest risk assessment, and a private Flagged review queue; risk output is evidence for manual review and never a safety guarantee.
+- Phase 3B SQL remains paste-ready and has not been applied; fixture tests use injected resolver/fetch implementations without contacting external services.

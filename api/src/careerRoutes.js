@@ -4,6 +4,7 @@ import { rateLimit } from "express-rate-limit";
 import { createCareerRunService, findMissingCareerTables, findMissingJobTables } from "./careerRun.js";
 import { createCareerAssessmentService } from "./careerAssessment.js";
 import { createCareerApplicationService, applicationStates } from "./careerApplications.js";
+import { createCareerRiskService } from "./careerRisk.js";
 import { normalizeImportedJob, saveCareerJob } from "./careerImport.js";
 import { matchesRoleTitle, normalizeHttpUrl } from "./careerSources.js";
 import {
@@ -100,6 +101,36 @@ function sendMissingAssessmentTable(res) {
   });
 }
 
+const riskAssessmentColumns = [
+  "risk_level", "risk_findings", "risk_confidence", "unknowns", "url_checks", "risk_assessed_at",
+];
+const riskCacheColumns = [
+  "domain", "checked_at", "rdap_age_days", "dns_ok", "https_ok", "ats_provider", "expires_at",
+];
+
+async function findMissingRiskTables(db) {
+  const { rows } = await db.query(
+    `SELECT table_name, column_name FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND ((table_name = 'jr_domain_cache' AND column_name = ANY($1::text[]))
+         OR (table_name = 'jr_assessments' AND column_name = ANY($2::text[])))`,
+    [riskCacheColumns, riskAssessmentColumns],
+  );
+  const cacheColumns = new Set(rows.filter((row) => row.table_name === "jr_domain_cache").map((row) => row.column_name));
+  const assessmentColumns = new Set(rows.filter((row) => row.table_name === "jr_assessments").map((row) => row.column_name));
+  return [
+    ...riskCacheColumns.filter((column) => !cacheColumns.has(column)).map((column) => `jr_domain_cache.${column}`),
+    ...riskAssessmentColumns.filter((column) => !assessmentColumns.has(column)).map((column) => `jr_assessments.${column}`),
+  ];
+}
+
+function sendMissingRiskTables(res, missing) {
+  return res.status(409).json({
+    error: "Career authenticity-risk tables are missing. Run docs/career-automation/sql/phase-3b.sql in Supabase SQL Editor.",
+    missingTables: missing,
+  });
+}
+
 const applicationTableNames = ["jr_applications", "jr_application_events"];
 const phase4MissingTablesError = {
   error: "Career application tables are missing. Run docs/career-automation/sql/phase-4.sql in Supabase SQL Editor.",
@@ -160,10 +191,13 @@ function requestBodyIsSmall(req) {
 }
 
 export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin, requireCsrfToken }, {
-  runService = createCareerRunService({ db }),
+  runService: configuredRunService,
   assessmentService = createCareerAssessmentService({ db }),
   applicationService = createCareerApplicationService({ db }),
+  riskService: configuredRiskService,
 } = {}) {
+  const riskService = configuredRiskService ?? createCareerRiskService({ db });
+  const runService = configuredRunService ?? createCareerRunService({ db, assessRisk: riskService.assessJob });
   const admin = express.Router();
   admin.use(noStore, requireAdmin);
 
@@ -415,6 +449,15 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
       if (missingAssessments.length) return sendMissingAssessmentTable(res);
       const missingApplications = await findMissingApplicationTables(db);
       if (missingApplications.length) return sendMissingApplicationTables(res, missingApplications);
+      const missingRisk = await findMissingRiskTables(db);
+      const riskAvailable = missingRisk.length === 0;
+      const riskReviewPredicate = riskAvailable
+        ? ` OR EXISTS (
+              SELECT 1 FROM public.jr_assessments AS flagged_assessment
+              WHERE flagged_assessment.job_id = j.id
+                AND flagged_assessment.risk_level IN ('high_risk', 'blocked_by_rule')
+            )`
+        : "";
       const today = nairobiDate();
       const [{ rows: settingsRows }, { rows: jobCounts }, { rows: applicationCounts },
         { rows: scanRows }, { rows: sourceRows }, { rows: reviewRows }, { rows: newRows }] = await Promise.all([
@@ -431,8 +474,8 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
            ORDER BY s.name`,
         ),
         db.query(
-          `SELECT count(*)::integer AS count FROM public.jr_jobs
-           WHERE status IN ('screened', 'match_review', 'needs_manual_attention')`,
+          `SELECT count(*)::integer AS count FROM public.jr_jobs AS j
+           WHERE status IN ('screened', 'match_review', 'needs_manual_attention')${riskReviewPredicate}`,
         ),
         db.query(
           `SELECT count(*)::integer AS count FROM public.jr_jobs
@@ -444,11 +487,32 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
       if (!settingsRows[0]) return sendMissingTables(res, ["jr_settings (seed row id=1)"]);
       const threshold = Number(settingsRows[0].score_threshold);
       const dailyCap = Number(settingsRows[0].max_packets_per_day);
+      const riskJsonFields = riskAvailable
+        ? `, 'risk_level', a.risk_level,
+           'risk_findings', a.risk_findings,
+           'risk_confidence', a.risk_confidence,
+           'unknowns', a.unknowns,
+           'url_checks', a.url_checks,
+           'risk_assessed_at', a.risk_assessed_at`
+        : "";
+      const riskEligiblePredicate = riskAvailable
+        ? `AND (a.risk_level IS NULL OR a.risk_level NOT IN ('high_risk', 'blocked_by_rule'))`
+        : "";
+      const riskAssessmentProjection = riskAvailable
+        ? `CASE WHEN a.risk_level IS NULL THEN to_jsonb('not yet assessed'::text)
+                ELSE jsonb_build_object(
+                  'risk_level', a.risk_level, 'risk_findings', a.risk_findings,
+                  'risk_confidence', a.risk_confidence, 'unknowns', a.unknowns,
+                  'url_checks', a.url_checks, 'risk_assessed_at', a.risk_assessed_at
+                )
+           END AS risk_assessment`
+        : `to_jsonb('not yet assessed'::text) AS risk_assessment`;
       const { rows: qualifiedRows } = await db.query(
         `SELECT j.id, j.source_key, s.name AS source_name, s.attribution_text,
                 j.source_job_id, j.url, j.title, j.company, j.location_text,
                 j.remote_scope_text, j.description_text, j.tags, j.posted_at,
-                j.first_seen_at, j.status, 'not yet assessed'::text AS risk_assessment,
+                j.first_seen_at, j.status,
+                ${riskAssessmentProjection},
                 jsonb_build_object(
                   'eligibility', a.eligibility,
                   'eligibility_evidence', a.eligibility_evidence,
@@ -457,7 +521,7 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
                   'matched', a.matched,
                   'missing', a.missing,
                   'reason_codes', a.reason_codes,
-                  'uncertainty', a.uncertainty
+                  'uncertainty', a.uncertainty${riskJsonFields}
                 ) AS assessment,
                 a.fit_score, a.eligibility
          FROM public.jr_jobs AS j
@@ -465,17 +529,60 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
          JOIN LATERAL (
            SELECT * FROM public.jr_assessments
            WHERE job_id = j.id
-           ORDER BY assessed_at DESC LIMIT 1
+           ORDER BY assessed_at DESC, id DESC LIMIT 1
          ) AS a ON true
          WHERE j.first_seen_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Nairobi')
            AND j.first_seen_at < (($1::date + 1)::timestamp AT TIME ZONE 'Africa/Nairobi')
            AND a.fit_score >= $2
            AND a.eligibility IN ('eligible', 'unknown')
-           AND j.status NOT IN ('duplicate', 'expired', 'not_a_fit', 'passed', 'closed')
+           AND j.status NOT IN ('duplicate', 'expired', 'not_a_fit', 'passed', 'closed', 'blocked_risk')
+           ${riskEligiblePredicate}
          ORDER BY a.fit_score DESC, j.first_seen_at DESC, j.id
          LIMIT 5000`,
         [today, threshold],
       );
+      const flaggedRows = riskAvailable
+        ? await db.query(
+          `SELECT j.id, j.source_key, s.name AS source_name, s.attribution_text,
+                  j.source_job_id, j.url, j.title, j.company, j.location_text,
+                  j.remote_scope_text, j.description_text, j.tags, j.posted_at,
+                  j.first_seen_at, j.status,
+                  jsonb_build_object(
+                    'risk_level', a.risk_level,
+                    'risk_findings', a.risk_findings,
+                    'risk_confidence', a.risk_confidence,
+                    'unknowns', a.unknowns,
+                    'url_checks', a.url_checks,
+                    'risk_assessed_at', a.risk_assessed_at
+                  ) AS risk_assessment,
+                  jsonb_build_object(
+                    'eligibility', a.eligibility,
+                    'eligibility_evidence', a.eligibility_evidence,
+                    'fit_score', a.fit_score,
+                    'fit_breakdown', a.fit_breakdown,
+                    'matched', a.matched,
+                    'missing', a.missing,
+                    'reason_codes', a.reason_codes,
+                    'uncertainty', a.uncertainty,
+                    'risk_level', a.risk_level,
+                    'risk_findings', a.risk_findings,
+                    'risk_confidence', a.risk_confidence,
+                    'unknowns', a.unknowns,
+                    'url_checks', a.url_checks,
+                    'risk_assessed_at', a.risk_assessed_at
+                  ) AS assessment
+           FROM public.jr_jobs AS j
+           JOIN public.jr_sources AS s ON s.key = j.source_key
+           JOIN LATERAL (
+             SELECT * FROM public.jr_assessments
+             WHERE job_id = j.id
+             ORDER BY assessed_at DESC, id DESC LIMIT 1
+           ) AS a ON true
+           WHERE a.risk_level IN ('high_risk', 'blocked_by_rule')
+           ORDER BY a.risk_confidence DESC, j.first_seen_at DESC, j.id
+           LIMIT 500`,
+        )
+        : { rows: [] };
       const shortlist = qualifiedRows.slice(0, dailyCap);
       const remaining = qualifiedRows.slice(dailyCap);
       const byStatus = Object.fromEntries(jobCounts.map((row) => [row.status, Number(row.count)]));
@@ -498,6 +605,7 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         shortlist,
         qualified: remaining.filter((job) => job.eligibility === "eligible"),
         maybe: remaining.filter((job) => job.eligibility === "unknown"),
+        flagged: flaggedRows.rows,
       });
     } catch (error) {
       next(error);
@@ -529,6 +637,24 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
       const { source, status, q, limit, cursor } = parsed.data;
       const missingAssessments = await findMissingAssessmentTable(db);
       if (missingAssessments.length) return sendMissingAssessmentTable(res);
+      const missingRisk = await findMissingRiskTables(db);
+      const riskJsonFields = missingRisk.length === 0
+        ? `, 'risk_level', a.risk_level,
+           'risk_findings', a.risk_findings,
+           'risk_confidence', a.risk_confidence,
+           'unknowns', a.unknowns,
+           'url_checks', a.url_checks,
+           'risk_assessed_at', a.risk_assessed_at`
+        : "";
+      const riskProjection = missingRisk.length === 0
+        ? `CASE WHEN a.risk_level IS NULL THEN to_jsonb('not yet assessed'::text)
+                ELSE jsonb_build_object(
+                  'risk_level', a.risk_level, 'risk_findings', a.risk_findings,
+                  'risk_confidence', a.risk_confidence, 'unknowns', a.unknowns,
+                  'url_checks', a.url_checks, 'risk_assessed_at', a.risk_assessed_at
+                )
+           END AS risk_assessment`
+        : `to_jsonb('not yet assessed'::text) AS risk_assessment`;
       const values = [];
       const predicates = [];
       if (source) {
@@ -568,14 +694,15 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
                   'fit_score', a.fit_score, 'fit_breakdown', a.fit_breakdown,
                   'matched', a.matched, 'missing', a.missing, 'reason_codes', a.reason_codes,
                   'uncertainty', a.uncertainty, 'rules_version', a.rules_version,
-                  'assessed_at', a.assessed_at
-                ) END AS assessment
+                  'assessed_at', a.assessed_at${riskJsonFields}
+                ) END AS assessment,
+                ${riskProjection}
          FROM public.jr_jobs AS j
          JOIN public.jr_sources AS s ON s.key = j.source_key
          LEFT JOIN LATERAL (
            SELECT * FROM public.jr_assessments
            WHERE job_id = j.id
-           ORDER BY assessed_at DESC LIMIT 1
+           ORDER BY assessed_at DESC, id DESC LIMIT 1
          ) AS a ON true
          ${where}
          ORDER BY j.first_seen_at DESC, j.id
@@ -601,6 +728,24 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
       if (missing.length) return sendMissingIntakeTables(res, missing);
       const missingAssessments = await findMissingAssessmentTable(db);
       if (missingAssessments.length) return sendMissingAssessmentTable(res);
+      const missingRisk = await findMissingRiskTables(db);
+      const riskJsonFields = missingRisk.length === 0
+        ? `, 'risk_level', a.risk_level,
+           'risk_findings', a.risk_findings,
+           'risk_confidence', a.risk_confidence,
+           'unknowns', a.unknowns,
+           'url_checks', a.url_checks,
+           'risk_assessed_at', a.risk_assessed_at`
+        : "";
+      const riskProjection = missingRisk.length === 0
+        ? `CASE WHEN a.risk_level IS NULL THEN to_jsonb('not yet assessed'::text)
+                ELSE jsonb_build_object(
+                  'risk_level', a.risk_level, 'risk_findings', a.risk_findings,
+                  'risk_confidence', a.risk_confidence, 'unknowns', a.unknowns,
+                  'url_checks', a.url_checks, 'risk_assessed_at', a.risk_assessed_at
+                )
+           END AS risk_assessment`
+        : `to_jsonb('not yet assessed'::text) AS risk_assessment`;
       const { rows } = await db.query(
         `SELECT j.id, j.source_key, s.name AS source_name, s.attribution_text,
                 j.source_job_id, j.url, j.title, j.company, j.location_text,
@@ -613,14 +758,15 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
                   'fit_score', a.fit_score, 'fit_breakdown', a.fit_breakdown,
                   'matched', a.matched, 'missing', a.missing, 'reason_codes', a.reason_codes,
                   'uncertainty', a.uncertainty, 'rules_version', a.rules_version,
-                  'assessed_at', a.assessed_at
-                ) END AS assessment
+                  'assessed_at', a.assessed_at${riskJsonFields}
+                ) END AS assessment,
+                ${riskProjection}
          FROM public.jr_jobs AS j
          JOIN public.jr_sources AS s ON s.key = j.source_key
          LEFT JOIN LATERAL (
            SELECT * FROM public.jr_assessments
            WHERE job_id = j.id
-           ORDER BY assessed_at DESC LIMIT 1
+           ORDER BY assessed_at DESC, id DESC LIMIT 1
          ) AS a ON true
          WHERE j.id = $1`,
         [parsedId.data],
@@ -631,6 +777,37 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
       next(error);
     }
   });
+
+  admin.post(
+    "/jobs/:id/inspect-link",
+    createRateLimiter(12, "Too many link inspections. Try again later."),
+    requireSameOrigin,
+    requireCsrfToken,
+    async (req, res, next) => {
+      const parsedId = parseCareerInput(uuidSchema, req.params.id);
+      if (parsedId.error) return res.status(400).json({ error: "Job ID is invalid." });
+      try {
+        const missing = await findMissingCareerTables(db);
+        if (missing.length) return sendMissingIntakeTables(res, missing);
+        const missingAssessments = await findMissingAssessmentTable(db);
+        if (missingAssessments.length) return sendMissingAssessmentTable(res);
+        const missingRisk = await findMissingRiskTables(db);
+        if (missingRisk.length) return sendMissingRiskTables(res, missingRisk);
+        const result = await riskService.assessJob(parsedId.data);
+        if (result.notFound) return res.status(404).json({ error: "Job was not found." });
+        if (!result.skipped) {
+          await db.query(
+            `INSERT INTO public.jr_audit_events (actor, action, detail)
+             VALUES ('admin', 'job.link_inspected', $1::jsonb)`,
+            [JSON.stringify({ job_id: parsedId.data, risk_level: result.risk_level })],
+          );
+        }
+        res.json(result);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
 
   admin.patch(
     "/jobs/:id/status",

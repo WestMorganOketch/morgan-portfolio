@@ -198,6 +198,38 @@ test("assessment failures do not undo ingestion or fail a source run", async () 
   assert.equal(run.summary.remoteok.assessment_errors, 1);
 });
 
+test("risk assessment failures are isolated from ingestion and later sources", async () => {
+  const db = new FakeRunDatabase();
+  db.sources = [source("jobicy"), source("arbeitnow")];
+  const saved = [];
+  const service = createCareerRunService({
+    db,
+    adapter: async (key, options) => {
+      await options.onRequest();
+      return {
+        fetched: 1,
+        jobs: [{ source_key: key, source_job_id: `${key}-job`, title: "Security analyst" }],
+      };
+    },
+    saveJob: async (_database, job) => {
+      saved.push(job.source_job_id);
+      return { result: "new", id: `${job.source_key}-id` };
+    },
+    assessJob: async () => {},
+    assessRisk: async (id) => {
+      if (id === "jobicy-id") throw new Error("risk columns are unavailable");
+    },
+  });
+  const started = await service.start("cron");
+  const run = await waitForRun(db, started.id);
+  assert.equal(run.status, "succeeded");
+  assert.deepEqual(saved, ["jobicy-job", "arbeitnow-job"]);
+  assert.equal(run.summary.jobicy.new, 1);
+  assert.equal(run.summary.jobicy.risk_assessment_errors, 1);
+  assert.equal(run.summary.arbeitnow.new, 1);
+  assert.equal(run.summary.arbeitnow.risk_assessment_errors, 0);
+});
+
 test("the durable running lock rejects concurrent triggers", async () => {
   const db = new FakeRunDatabase();
   const service = createCareerRunService({ db });

@@ -55,6 +55,7 @@ function emptySummary() {
     matched_titles: [],
     queries: [],
     assessment_errors: 0,
+    risk_assessment_errors: 0,
     skipped_reason: null,
     error: null,
   };
@@ -114,6 +115,7 @@ export function createCareerRunService({
   adapter = fetchCareerSource,
   saveJob = saveCareerJob,
   assessJob = createCareerAssessmentService({ db, now }).assessJob,
+  assessRisk = async () => {},
 } = {}) {
   if (!db) throw new TypeError("Career run service requires a database.");
 
@@ -311,6 +313,12 @@ export function createCareerRunService({
               entry[saved.result === "new" ? "new" : "updated"]++;
               try {
                 await assessJob(saved.id);
+                try {
+                  await assessRisk(saved.id, { signal });
+                } catch {
+                  entry.risk_assessment_errors++;
+                  console.warn(`Career risk assessment for job ${saved.id} failed.`);
+                }
               } catch (error) {
                 entry.assessment_errors++;
                 console.warn(`Career assessment for job ${saved.id} failed: ${errorText(error)}`);
