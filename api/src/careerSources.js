@@ -30,6 +30,12 @@ const roleTitleVariants = [
   "computer instructor",
   "ict tutor",
 ];
+export const jobicyQueryTerms = [
+  "security analyst",
+  "soc analyst",
+  "ict trainer",
+  "computer skills trainer",
+];
 
 function delay(milliseconds, signal) {
   if (milliseconds <= 0) return Promise.resolve();
@@ -331,31 +337,40 @@ async function requestJson(url, options) {
 }
 
 export async function fetchJobicy(options) {
-  const endpoints = [
-    "https://jobicy.com/api/jobs",
-    "https://jobicy.com/api/v2/remote-jobs",
-  ];
-  let lastError;
-  for (const endpoint of endpoints) {
-    try {
-      const payload = await requestJson(endpoint, { ...options, source: "jobicy" });
-      const rows = rowsFor(payload, "jobs");
-      if (rows.length === 0) {
-        lastError = new Error("Jobicy response contained no job rows.");
-        continue;
-      }
-      return normalizePayload(rows, "jobicy");
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw lastError ?? new Error("Jobicy feed was unavailable.");
+  const term = options.queryTerm ?? jobicyQueryTerms[0];
+  if (!jobicyQueryTerms.includes(term)) throw new TypeError("Unsupported Jobicy query term.");
+  const url = new URL("https://jobicy.com/api/jobs");
+  url.searchParams.set("tag", term);
+  const payload = await requestJson(url, {
+    ...options,
+    source: "jobicy",
+    maxRequests: Math.min(1, options.maxRequests ?? 3),
+  });
+  const result = normalizePayload(rowsFor(payload, "jobs"), "jobicy");
+  return {
+    ...result,
+    query_results: [{
+      label: `tag:${term}`,
+      fetched: result.fetched,
+      matched: result.jobs.length,
+      discarded: result.discarded + result.malformed,
+    }],
+  };
 }
 
 export async function fetchRemoteOk(options) {
   const payload = await requestJson("https://remoteok.com/api", { ...options, source: "remoteok" });
   const rows = rowsFor(payload, "jobs");
-  return normalizePayload(rows.slice(1), "remoteok");
+  const result = normalizePayload(rows.slice(1), "remoteok");
+  return {
+    ...result,
+    query_results: [{
+      label: "latest",
+      fetched: result.fetched,
+      matched: result.jobs.length,
+      discarded: result.discarded + result.malformed,
+    }],
+  };
 }
 
 export async function fetchRemotive(options) {
@@ -364,7 +379,16 @@ export async function fetchRemotive(options) {
     source: "remotive",
     minIntervalMs: 30_000,
   });
-  return normalizePayload(rowsFor(payload, "jobs"), "remotive");
+  const result = normalizePayload(rowsFor(payload, "jobs"), "remotive");
+  return {
+    ...result,
+    query_results: [{
+      label: "latest",
+      fetched: result.fetched,
+      matched: result.jobs.length,
+      discarded: result.discarded + result.malformed,
+    }],
+  };
 }
 
 export async function fetchArbeitnow(options) {

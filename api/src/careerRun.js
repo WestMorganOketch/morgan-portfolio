@@ -1,4 +1,4 @@
-import { fetchCareerSource, stripHtml } from "./careerSources.js";
+import { fetchCareerSource, jobicyQueryTerms, stripHtml } from "./careerSources.js";
 import { saveCareerJob } from "./careerImport.js";
 
 const runBudgetMs = 4 * 60 * 1000;
@@ -52,6 +52,7 @@ function emptySummary() {
     discard_reasons: { title_no_match: 0, malformed: 0, duplicate: 0, other: 0 },
     sample_discarded_titles: [],
     matched_titles: [],
+    queries: [],
     skipped_reason: null,
     error: null,
   };
@@ -254,6 +255,12 @@ export function createCareerRunService({
         remainingRequests--;
         await recordRequest(source.key, today, minimumDelaySeconds);
       };
+      const queryTerm = source.key === "jobicy"
+        ? jobicyQueryTerms[used % jobicyQueryTerms.length]
+        : undefined;
+      const queryLabel = queryTerm ? `tag:${queryTerm}` : source.key === "remoteok" || source.key === "remotive"
+        ? "latest"
+        : "feed";
 
       try {
         const result = await adapter(source.key, {
@@ -263,9 +270,21 @@ export function createCareerRunService({
           onRequest,
           maxRequests: Math.min(3, source.max_requests_per_day - used),
           watchlist,
+          ...(queryTerm ? { queryTerm } : {}),
         });
         entry.fetched = Number(result.fetched ?? 0);
         entry.discarded = Number(result.discarded ?? 0) + Number(result.malformed ?? 0);
+        entry.queries = result.query_results?.map((query) => ({
+          label: String(query.label).slice(0, 80),
+          fetched: Number(query.fetched ?? 0),
+          matched: Number(query.matched ?? 0),
+          discarded: Number(query.discarded ?? 0),
+        })) ?? [{
+          label: "feed",
+          fetched: entry.fetched,
+          matched: Number(result.jobs?.length ?? 0),
+          discarded: entry.discarded,
+        }];
         for (const [reason, count] of Object.entries(result.discard_reasons ?? {})) {
           addDiscardReason(entry, reason, Number(count) || 0);
         }
@@ -291,10 +310,24 @@ export function createCareerRunService({
             addDiscardReason(entry, "other");
           }
         }
+        if (entry.queries.length === 0) {
+          entry.queries.push({
+            label: queryLabel,
+            fetched: 0,
+            matched: 0,
+            discarded: 0,
+          });
+        }
         if (result.errors?.length) entry.error = result.errors.map((error) => String(error).slice(0, 200)).join("; ").slice(0, 500);
         const status = entry.error ? "partial" : "succeeded";
         await updateSourceState(source, status, entry.error ? new Error(entry.error) : null);
       } catch (error) {
+        entry.queries = [{
+          label: queryLabel,
+          fetched: 0,
+          matched: 0,
+          discarded: 0,
+        }];
         entry.error = requestLimitHit ? "daily request cap reached" : errorText(error);
         await updateSourceState(source, signal.aborted ? "interrupted" : "failed", error);
         if (signal.aborted) break;

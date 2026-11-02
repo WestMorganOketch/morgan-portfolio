@@ -215,6 +215,72 @@ test("daily request caps are checked before calling source adapters", async () =
   assert.equal(run.summary.remotive.skipped_reason, "daily request cap reached");
 });
 
+test("Jobicy rotates one documented tag query per scan at the hourly interval", async () => {
+  const db = new FakeRunDatabase();
+  db.sources = [source("jobicy", { min_interval_seconds: 3600, max_requests_per_day: 24 })];
+  const terms = [];
+  const service = createCareerRunService({
+    db,
+    adapter: async (_key, options) => {
+      terms.push(options.queryTerm);
+      await options.onRequest();
+      return {
+        jobs: [],
+        fetched: 0,
+        query_results: [{ label: `tag:${options.queryTerm}`, fetched: 0, matched: 0, discarded: 0 }],
+      };
+    },
+  });
+  const expected = ["security analyst", "soc analyst", "ict trainer", "computer skills trainer"];
+  for (const [index] of expected.entries()) {
+    if (index > 0) {
+      const state = db.states.get("jobicy");
+      state.last_attempt_at = new Date(Date.now() - 3_600_001).toISOString();
+      state.next_allowed_at = new Date(Date.now() - 1).toISOString();
+    }
+    const started = await service.start("cron");
+    const run = await waitForRun(db, started.id);
+    assert.equal(run.status, "succeeded");
+    assert.match(run.summary.jobicy.queries[0].label, /^tag:/);
+  }
+  assert.deepEqual(terms, expected);
+  assert.equal(db.states.get("jobicy").requests_today, 4);
+});
+
+test("Remotive uses at most the remaining daily request budget in one scan", async () => {
+  const db = new FakeRunDatabase();
+  db.sources = [source("remotive", { min_interval_seconds: 21_600, max_requests_per_day: 4 })];
+  const dateParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const date = Object.fromEntries(dateParts.map(({ type, value }) => [type, value]));
+  const today = `${date.year}-${date.month}-${date.day}`;
+  db.states.set("remotive", { requests_today: 3, window_date: today });
+  let adapterCalls = 0;
+  const service = createCareerRunService({
+    db,
+    adapter: async (_key, options) => {
+      adapterCalls++;
+      await options.onRequest();
+      return { jobs: [], fetched: 0, query_results: [{ label: "latest", fetched: 0, matched: 0, discarded: 0 }] };
+    },
+  });
+  const started = await service.start("cron");
+  const run = await waitForRun(db, started.id);
+  assert.equal(run.summary.remotive.queries.length, 1);
+  assert.equal(adapterCalls, 1);
+  assert.equal(db.states.get("remotive").requests_today, 4);
+  const capped = await service.start("cron");
+  assert.equal(capped.status, "running");
+  const cappedRun = await waitForRun(db, capped.id);
+  assert.equal(cappedRun.summary.remotive.skipped_reason, "daily request cap reached");
+  assert.equal(cappedRun.summary.remotive.queries.length, 0);
+  assert.equal(adapterCalls, 1);
+});
+
 test("run summaries retain sanitized bounded title diagnostics and discard reason counts", async () => {
   const db = new FakeRunDatabase();
   db.sources = [source("arbeitnow")];
