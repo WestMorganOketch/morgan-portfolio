@@ -1,4 +1,5 @@
-import { fetchCareerSource, jobicyQueryTerms, stripHtml } from "./careerSources.js";
+import { createCareerAssessmentService } from "./careerAssessment.js";
+import { fetchCareerSource, jobicyQueryTerms, remotiveQueryTerms, stripHtml } from "./careerSources.js";
 import { saveCareerJob } from "./careerImport.js";
 
 const runBudgetMs = 4 * 60 * 1000;
@@ -53,6 +54,7 @@ function emptySummary() {
     sample_discarded_titles: [],
     matched_titles: [],
     queries: [],
+    assessment_errors: 0,
     skipped_reason: null,
     error: null,
   };
@@ -111,6 +113,7 @@ export function createCareerRunService({
   budgetMs = runBudgetMs,
   adapter = fetchCareerSource,
   saveJob = saveCareerJob,
+  assessJob = createCareerAssessmentService({ db, now }).assessJob,
 } = {}) {
   if (!db) throw new TypeError("Career run service requires a database.");
 
@@ -257,10 +260,12 @@ export function createCareerRunService({
       };
       const queryTerm = source.key === "jobicy"
         ? jobicyQueryTerms[used % jobicyQueryTerms.length]
-        : undefined;
-      const queryLabel = queryTerm ? `tag:${queryTerm}` : source.key === "remoteok" || source.key === "remotive"
-        ? "latest"
-        : "feed";
+        : source.key === "remotive"
+          ? remotiveQueryTerms[used % remotiveQueryTerms.length]
+          : undefined;
+      const queryLabel = source.key === "jobicy" ? `tag:${queryTerm}`
+        : source.key === "remotive" ? `search:${queryTerm}`
+          : source.key === "remoteok" ? "latest" : "feed";
 
       try {
         const result = await adapter(source.key, {
@@ -304,6 +309,12 @@ export function createCareerRunService({
               addDiagnosticTitles(entry.sample_discarded_titles, [job.title]);
             } else {
               entry[saved.result === "new" ? "new" : "updated"]++;
+              try {
+                await assessJob(saved.id);
+              } catch (error) {
+                entry.assessment_errors++;
+                console.warn(`Career assessment for job ${saved.id} failed: ${errorText(error)}`);
+              }
             }
           } catch (error) {
             entry.error = errorText(error);

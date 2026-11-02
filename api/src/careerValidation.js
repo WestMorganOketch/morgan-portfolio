@@ -20,6 +20,8 @@ export const careerSettingsSchema = z.object({
   timezone: z.literal("Africa/Nairobi"),
   show_company_name: z.boolean(),
   public_publishing: z.boolean(),
+  excluded_keywords: z.array(z.string().trim().min(1).max(100)).max(100).optional(),
+  excluded_companies: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
 }).strict().superRefine((value, context) => {
   if (new Set(value.role_tracks).size !== value.role_tracks.length) {
     context.addIssue({ code: "custom", path: ["role_tracks"], message: "Role tracks must be unique." });
@@ -51,10 +53,16 @@ export const uuidSchema = z.string().uuid();
 
 export const careerJobsQuerySchema = z.object({
   source: z.string().regex(/^[a-z0-9_]{1,60}$/).optional(),
-  status: z.enum(["discovered", "shortlisted", "maybe", "flagged", "passed", "duplicate", "expired", "closed"]).optional(),
+  status: z.enum([
+    "discovered", "screened", "match_review", "shortlisted", "blocked_risk",
+    "not_a_fit", "duplicate", "expired", "needs_manual_attention",
+    "maybe", "flagged", "passed", "closed",
+  ]).optional(),
   q: z.string().trim().max(100).optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
   cursor: z.string().regex(/^\d{1,8}$/).optional(),
+  min_score: z.coerce.number().int().min(0).max(100).optional(),
+  eligibility: z.enum(["eligible", "unknown", "ineligible"]).optional(),
 }).strict();
 
 export const careerImportSchema = z.object({

@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import express from "express";
 import { rateLimit } from "express-rate-limit";
 import { createCareerRunService, findMissingCareerTables, findMissingJobTables } from "./careerRun.js";
+import { createCareerAssessmentService } from "./careerAssessment.js";
 import { normalizeImportedJob, saveCareerJob } from "./careerImport.js";
 import { matchesRoleTitle, normalizeHttpUrl } from "./careerSources.js";
 import {
@@ -76,6 +77,23 @@ function sendMissingIntakeTables(res, missing) {
   });
 }
 
+function findMissingAssessmentTable(db) {
+  return db.query(
+    `SELECT table_name FROM information_schema.tables
+     WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
+    [["jr_assessments"]],
+  ).then(({ rows }) => rows.some((row) => row.table_name === "jr_assessments")
+    ? []
+    : ["jr_assessments"]);
+}
+
+function sendMissingAssessmentTable(res) {
+  return res.status(409).json({
+    error: "Career assessment table is missing. Run docs/career-automation/sql/phase-3a.sql in Supabase SQL Editor.",
+    missingTables: ["jr_assessments"],
+  });
+}
+
 function serializeSettings(row) {
   return {
     role_tracks: row.role_tracks,
@@ -87,6 +105,8 @@ function serializeSettings(row) {
     timezone: row.timezone,
     show_company_name: row.show_company_name,
     public_publishing: row.public_publishing,
+    excluded_keywords: row.excluded_keywords ?? [],
+    excluded_companies: row.excluded_companies ?? [],
     updated_at: row.updated_at,
   };
 }
@@ -103,14 +123,26 @@ function requestBodyIsSmall(req) {
   return Buffer.byteLength(JSON.stringify(req.body ?? {}), "utf8") <= 1024;
 }
 
-export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin, requireCsrfToken }, { runService = createCareerRunService({ db }) } = {}) {
+export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin, requireCsrfToken }, {
+  runService = createCareerRunService({ db }),
+  assessmentService = createCareerAssessmentService({ db }),
+} = {}) {
   const admin = express.Router();
   admin.use(noStore, requireAdmin);
+
+  const scheduleAssessmentRerun = () => {
+    setTimeout(() => {
+      assessmentService.reassessAll().catch((error) => {
+        console.error(`Career profile change reassessment failed: ${String(error?.message ?? "Assessment failed.").slice(0, 300)}`);
+      });
+    }, 0);
+  };
 
   admin.get("/setup", async (_req, res, next) => {
     try {
       const missing = await findMissingTables(db);
       const missingIntake = await findMissingJobTables(db);
+      const missingAssessments = await findMissingAssessmentTable(db);
       const configuration = Object.fromEntries(setupSecretNames.map((name) => [
         name,
         { configured: typeof process.env[name] === "string" && process.env[name].length > 0 },
@@ -121,6 +153,7 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         JR_SEND_MODE: sendMode,
         tables: { configured: missing.length === 0, missing },
         intakeTables: { configured: missingIntake.length === 0, missing: missingIntake },
+        assessmentTables: { configured: missingAssessments.length === 0, missing: missingAssessments },
       });
     } catch (error) {
       next(error);
@@ -131,9 +164,12 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
     try {
       const missing = await findMissingTables(db);
       if (missing.length) return sendMissingTables(res, missing);
+      const missingAssessments = await findMissingAssessmentTable(db);
+      if (missingAssessments.length) return sendMissingAssessmentTable(res);
       const { rows } = await db.query(
         `SELECT role_tracks, countries, remote_eligibility, score_threshold,
                 max_packets_per_day, max_sends_per_day, timezone,
+                excluded_keywords, excluded_companies,
                 show_company_name, public_publishing, updated_at
          FROM public.jr_settings WHERE id = 1`,
       );
@@ -150,20 +186,27 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
     try {
       const missing = await findMissingTables(db);
       if (missing.length) return sendMissingTables(res, missing);
+      const missingAssessments = await findMissingAssessmentTable(db);
+      if (missingAssessments.length) return sendMissingAssessmentTable(res);
       const value = parsed.data;
       const { rows } = await db.query(
         `UPDATE public.jr_settings
          SET role_tracks = $1, countries = $2, remote_eligibility = $3::jsonb,
              score_threshold = $4, max_packets_per_day = $5, max_sends_per_day = $6,
-             timezone = $7, show_company_name = $8, public_publishing = $9, updated_at = now()
+             timezone = $7, show_company_name = $8, public_publishing = $9,
+             excluded_keywords = COALESCE($10::text[], excluded_keywords),
+             excluded_companies = COALESCE($11::text[], excluded_companies),
+             updated_at = now()
          WHERE id = 1
          RETURNING role_tracks, countries, remote_eligibility, score_threshold,
                    max_packets_per_day, max_sends_per_day, timezone,
+                   excluded_keywords, excluded_companies,
                    show_company_name, public_publishing, updated_at`,
         [
           value.role_tracks, value.countries, JSON.stringify(value.remote_eligibility),
           value.score_threshold, value.max_packets_per_day, value.max_sends_per_day,
           value.timezone, value.show_company_name, value.public_publishing,
+          value.excluded_keywords ?? null, value.excluded_companies ?? null,
         ],
       );
       if (!rows[0]) return sendMissingTables(res, ["jr_settings (seed row id=1)"]);
@@ -200,6 +243,7 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
          RETURNING id, name, track, original_text, verified_facts, created_at, updated_at, archived_at`,
         [value.name, value.track, value.original_text, JSON.stringify(value.verified_facts)],
       );
+      scheduleAssessmentRerun();
       res.status(201).json(rows[0]);
     } catch (error) {
       next(error);
@@ -229,6 +273,7 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         ],
       );
       if (!rows[0]) return res.status(404).json({ error: "Active resume profile was not found." });
+      scheduleAssessmentRerun();
       res.json(rows[0]);
     } catch (error) {
       next(error);
@@ -248,6 +293,7 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         [parsedId.data],
       );
       if (!rows[0]) return res.status(404).json({ error: "Active resume profile was not found." });
+      scheduleAssessmentRerun();
       res.json(rows[0]);
     } catch (error) {
       next(error);
@@ -347,6 +393,8 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
       const missing = await findMissingCareerTables(db);
       if (missing.length) return sendMissingIntakeTables(res, missing);
       const { source, status, q, limit, cursor } = parsed.data;
+      const missingAssessments = await findMissingAssessmentTable(db);
+      if (missingAssessments.length) return sendMissingAssessmentTable(res);
       const values = [];
       const predicates = [];
       if (source) {
@@ -361,6 +409,14 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         values.push(`%${q}%`);
         predicates.push(`(j.title ILIKE $${values.length} OR j.company ILIKE $${values.length} OR j.location_text ILIKE $${values.length})`);
       }
+      if (parsed.data.min_score !== undefined) {
+        values.push(parsed.data.min_score);
+        predicates.push(`a.fit_score >= $${values.length}`);
+      }
+      if (parsed.data.eligibility) {
+        values.push(parsed.data.eligibility);
+        predicates.push(`a.eligibility = $${values.length}`);
+      }
       const offset = Number(cursor ?? 0);
       values.push(limit + 1);
       const limitParameter = values.length;
@@ -371,9 +427,22 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         `SELECT j.id, j.source_key, s.name AS source_name, s.attribution_text,
                 j.source_job_id, j.url, j.title, j.company, j.location_text,
                 j.remote_scope_text, j.description_text, j.salary_text, j.tags,
-                j.posted_at, j.first_seen_at, j.last_seen_at, j.status, j.also_listed_on
+                j.posted_at, j.first_seen_at, j.last_seen_at, j.status, j.also_listed_on,
+                CASE WHEN a.id IS NULL THEN NULL ELSE jsonb_build_object(
+                  'id', a.id, 'profile_id', a.profile_id, 'track', a.track,
+                  'eligibility', a.eligibility, 'eligibility_evidence', a.eligibility_evidence,
+                  'fit_score', a.fit_score, 'fit_breakdown', a.fit_breakdown,
+                  'matched', a.matched, 'missing', a.missing, 'reason_codes', a.reason_codes,
+                  'uncertainty', a.uncertainty, 'rules_version', a.rules_version,
+                  'assessed_at', a.assessed_at
+                ) END AS assessment
          FROM public.jr_jobs AS j
          JOIN public.jr_sources AS s ON s.key = j.source_key
+         LEFT JOIN LATERAL (
+           SELECT * FROM public.jr_assessments
+           WHERE job_id = j.id
+           ORDER BY assessed_at DESC LIMIT 1
+         ) AS a ON true
          ${where}
          ORDER BY j.first_seen_at DESC, j.id
          LIMIT $${limitParameter} OFFSET $${offsetParameter}`,
@@ -396,14 +465,29 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
     try {
       const missing = await findMissingCareerTables(db);
       if (missing.length) return sendMissingIntakeTables(res, missing);
+      const missingAssessments = await findMissingAssessmentTable(db);
+      if (missingAssessments.length) return sendMissingAssessmentTable(res);
       const { rows } = await db.query(
         `SELECT j.id, j.source_key, s.name AS source_name, s.attribution_text,
                 j.source_job_id, j.url, j.title, j.company, j.location_text,
                 j.remote_scope_text, j.description_text, j.salary_text, j.tags,
                 j.posted_at, j.first_seen_at, j.last_seen_at, j.content_hash,
-                j.canonical_key, j.also_listed_on, j.status
+                j.canonical_key, j.also_listed_on, j.status,
+                CASE WHEN a.id IS NULL THEN NULL ELSE jsonb_build_object(
+                  'id', a.id, 'profile_id', a.profile_id, 'track', a.track,
+                  'eligibility', a.eligibility, 'eligibility_evidence', a.eligibility_evidence,
+                  'fit_score', a.fit_score, 'fit_breakdown', a.fit_breakdown,
+                  'matched', a.matched, 'missing', a.missing, 'reason_codes', a.reason_codes,
+                  'uncertainty', a.uncertainty, 'rules_version', a.rules_version,
+                  'assessed_at', a.assessed_at
+                ) END AS assessment
          FROM public.jr_jobs AS j
          JOIN public.jr_sources AS s ON s.key = j.source_key
+         LEFT JOIN LATERAL (
+           SELECT * FROM public.jr_assessments
+           WHERE job_id = j.id
+           ORDER BY assessed_at DESC LIMIT 1
+         ) AS a ON true
          WHERE j.id = $1`,
         [parsedId.data],
       );
@@ -433,7 +517,32 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         if (missing.length) return sendMissingIntakeTables(res, missing);
         const job = normalizeImportedJob(parsed.data);
         const saved = await saveCareerJob(db, job);
+        if (saved.result === "new" || saved.result === "updated") {
+          try {
+            await assessmentService.assessJob(saved.id);
+          } catch (error) {
+            console.warn(`Career assessment for imported job ${saved.id} failed: ${String(error?.message ?? "Assessment failed.").slice(0, 300)}`);
+          }
+        }
         res.status(saved.result === "new" ? 201 : 200).json({ id: saved.id, status: saved.result });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  admin.post(
+    "/assessments/rerun",
+    createRateLimiter(4, "The assessment rerun limit has been reached.", 60 * 60 * 1000),
+    requireSameOrigin,
+    requireCsrfToken,
+    async (_req, res, next) => {
+      try {
+        const missing = await findMissingCareerTables(db);
+        if (missing.length) return sendMissingIntakeTables(res, missing);
+        const missingAssessments = await findMissingAssessmentTable(db);
+        if (missingAssessments.length) return sendMissingAssessmentTable(res);
+        res.json(await assessmentService.reassessAll());
       } catch (error) {
         next(error);
       }

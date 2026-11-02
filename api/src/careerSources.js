@@ -14,28 +14,34 @@ const ARBEITNOW_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const requestTimeoutMs = 15_000;
 const redirectStatuses = new Set([301, 302, 303, 307, 308]);
 
-const roleTitleVariants = [
-  "junior security analyst",
-  "security analyst",
-  "cybersecurity analyst",
-  "cyber security analyst",
-  "soc analyst",
-  "security operations analyst",
-  "information security analyst",
-  "security monitoring analyst",
-  "computer skills trainer",
-  "ict trainer",
-  "digital skills trainer",
-  "it trainer",
-  "computer instructor",
-  "ict tutor",
-];
+export const careerRoleTrackTerms = {
+  "Security Analyst/SOC": [
+    "junior security analyst",
+    "security analyst",
+    "cybersecurity analyst",
+    "cyber security analyst",
+    "soc analyst",
+    "security operations analyst",
+    "information security analyst",
+    "security monitoring analyst",
+  ],
+  "Computer Skills/ICT Trainer": [
+    "computer skills trainer",
+    "ict trainer",
+    "digital skills trainer",
+    "it trainer",
+    "computer instructor",
+    "ict tutor",
+  ],
+};
+const roleTitleVariants = Object.values(careerRoleTrackTerms).flat();
 export const jobicyQueryTerms = [
   "security analyst",
   "soc analyst",
   "ict trainer",
   "computer skills trainer",
 ];
+export const remotiveQueryTerms = Object.freeze([...jobicyQueryTerms]);
 
 function delay(milliseconds, signal) {
   if (milliseconds <= 0) return Promise.resolve();
@@ -374,7 +380,11 @@ export async function fetchRemoteOk(options) {
 }
 
 export async function fetchRemotive(options) {
-  const payload = await requestJson("https://remotive.com/api/remote-jobs", {
+  const term = options.queryTerm ?? remotiveQueryTerms[0];
+  if (!remotiveQueryTerms.includes(term)) throw new TypeError("Unsupported Remotive query term.");
+  const url = new URL("https://remotive.com/api/remote-jobs");
+  url.searchParams.set("search", term);
+  const payload = await requestJson(url, {
     ...options,
     source: "remotive",
     minIntervalMs: 30_000,
@@ -383,7 +393,7 @@ export async function fetchRemotive(options) {
   return {
     ...result,
     query_results: [{
-      label: "latest",
+      label: `search:${term}`,
       fetched: result.fetched,
       matched: result.jobs.length,
       discarded: result.discarded + result.malformed,

@@ -20,6 +20,10 @@ class FakeRunDatabase {
     if (statement.startsWith("SELECT table_name FROM information_schema.tables")) {
       return { rows: values[0].filter((name) => this.tables.has(name)).map((table_name) => ({ table_name })) };
     }
+    if (statement.startsWith("SELECT id, title, company")) return { rows: [] };
+    if (statement.startsWith("SELECT score_threshold")) {
+      return { rows: [{ score_threshold: 65, excluded_keywords: [], excluded_companies: [] }] };
+    }
     if (statement.startsWith("SELECT s.key, s.name, s.enabled")) {
       return {
         rows: this.sources.filter((source) => source.enabled).map((source) => ({
@@ -167,6 +171,33 @@ test("one source outage is isolated and the next source completes", async () => 
   assert.ok(db.audit.some((event) => event.actor === "system"));
 });
 
+test("assessment failures do not undo ingestion or fail a source run", async () => {
+  const db = new FakeRunDatabase();
+  db.sources = [source("remoteok")];
+  const saved = [];
+  const service = createCareerRunService({
+    db,
+    adapter: async (_key, options) => {
+      await options.onRequest();
+      return {
+        fetched: 1,
+        jobs: [{ source_key: "remoteok", source_job_id: "job-1", title: "Security Analyst" }],
+      };
+    },
+    saveJob: async (_database, job) => {
+      saved.push(job.source_job_id);
+      return { result: "new", id: "job-1" };
+    },
+    assessJob: async () => { throw new Error("assessment store unavailable"); },
+  });
+  const started = await service.start("cron");
+  const run = await waitForRun(db, started.id);
+  assert.equal(run.status, "succeeded");
+  assert.deepEqual(saved, ["job-1"]);
+  assert.equal(run.summary.remoteok.new, 1);
+  assert.equal(run.summary.remoteok.assessment_errors, 1);
+});
+
 test("the durable running lock rejects concurrent triggers", async () => {
   const db = new FakeRunDatabase();
   const service = createCareerRunService({ db });
@@ -279,6 +310,42 @@ test("Remotive uses at most the remaining daily request budget in one scan", asy
   assert.equal(cappedRun.summary.remotive.skipped_reason, "daily request cap reached");
   assert.equal(cappedRun.summary.remotive.queries.length, 0);
   assert.equal(adapterCalls, 1);
+});
+
+test("Remotive rotates only four search terms within the daily request cap", async () => {
+  const db = new FakeRunDatabase();
+  db.sources = [source("remotive", { min_interval_seconds: 21_600, max_requests_per_day: 4 })];
+  const terms = [];
+  const service = createCareerRunService({
+    db,
+    adapter: async (_key, options) => {
+      terms.push(options.queryTerm);
+      await options.onRequest();
+      return {
+        jobs: [],
+        fetched: 0,
+        query_results: [{ label: `search:${options.queryTerm}`, fetched: 0, matched: 0, discarded: 0 }],
+      };
+    },
+  });
+  const expected = ["security analyst", "soc analyst", "ict trainer", "computer skills trainer"];
+  for (const [index] of expected.entries()) {
+    if (index > 0) {
+      const state = db.states.get("remotive");
+      state.last_attempt_at = new Date(Date.now() - 21_600_001).toISOString();
+      state.next_allowed_at = new Date(Date.now() - 1).toISOString();
+    }
+    const started = await service.start("cron");
+    const run = await waitForRun(db, started.id);
+    assert.equal(run.status, "succeeded");
+    assert.equal(run.summary.remotive.queries[0].label, `search:${expected[index]}`);
+  }
+  assert.deepEqual(terms, expected);
+  assert.equal(db.states.get("remotive").requests_today, 4);
+  const capped = await service.start("cron");
+  const cappedRun = await waitForRun(db, capped.id);
+  assert.equal(cappedRun.summary.remotive.skipped_reason, "daily request cap reached");
+  assert.equal(terms.length, 4);
 });
 
 test("run summaries retain sanitized bounded title diagnostics and discard reason counts", async () => {

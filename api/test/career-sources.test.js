@@ -13,6 +13,7 @@ import {
   jobicyQueryTerms,
   matchesRoleTitle,
   normalizeHttpUrl,
+  remotiveQueryTerms,
   resetRequestPacingForTests,
   stripHtml,
 } from "../src/careerSources.js";
@@ -112,11 +113,14 @@ test("Remote OK skips its legal notice and retains valid security matches", asyn
   assert.deepEqual(result.query_results.map(({ label }) => label), ["latest"]);
 });
 
-test("Remotive stays on the generic API feed without a documented API search parameter", async () => {
+test("Remotive uses its documented, URL-encoded search parameter", async () => {
   resetRequestPacingForTests();
   const result = await fetchRemotive({
+    queryTerm: "ict trainer",
     fetchImpl: async (url) => {
-      assert.equal(url.href, "https://remotive.com/api/remote-jobs");
+      assert.equal(url.origin + url.pathname, "https://remotive.com/api/remote-jobs");
+      assert.equal(url.searchParams.get("search"), "ict trainer");
+      assert.match(url.href, /search=ict\+trainer/);
       return jsonResponse(fixture("remotive"));
     },
   });
@@ -125,7 +129,8 @@ test("Remotive stays on the generic API feed without a documented API search par
   assert.equal(result.jobs[0].title, "ICT Trainer");
   assert.equal(result.discarded, 1);
   assert.equal(result.malformed, 1);
-  assert.deepEqual(result.query_results.map(({ label }) => label), ["latest"]);
+  assert.deepEqual(remotiveQueryTerms, jobicyQueryTerms);
+  assert.deepEqual(result.query_results.map(({ label }) => label), ["search:ict trainer"]);
 });
 
 test("Arbeitnow accepts the documented data array without inferring country eligibility", async () => {
