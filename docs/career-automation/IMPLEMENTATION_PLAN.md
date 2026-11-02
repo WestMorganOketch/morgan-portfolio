@@ -95,3 +95,9 @@ Phase 0 findings are retained as a record. Phase 1 and Phase 2 are recorded belo
 - Added deterministic, fixture-tested Kenya eligibility evidence and weighted fit assessments; the latest active profile for a matching track is treated as its selected master profile.
 - Added private assessment APIs, filters, profile-change reassessment, ingestion screening, configurable hard filters, and the paste-ready Phase 3A SQL; no SQL was executed.
 - Corrected Remotive to use its documented `search` parameter with daily rotation within the existing request ledger and provider caps.
+
+## Phase 4 status
+
+- Added the private admin Career Centre, including overview, review queues, import, profile and preference management, source setup, and the application tracker.
+- Added the additive application/event SQL, protected tracker and review-status operations, and a Nairobi-day shortlist capped by the saved daily limit; risk remains explicitly unassessed.
+- No SQL was applied and no production database, source, application submission, or external service was accessed.

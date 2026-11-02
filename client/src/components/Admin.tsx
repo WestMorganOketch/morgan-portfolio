@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import AdminExtensions from "@/components/AdminExtensions";
+import CareerCentre from "@/components/CareerCentre";
 
 type Project = {
   id: string;
@@ -530,6 +531,7 @@ export default function Admin() {
               <article><span>PROJECTS</span><strong>{projects.length}</strong></article>
             </section>
             <p className="admin-privacy">Activity is stored as aggregate event counts only. The analytics table does not store visitor identities, IP addresses, or query strings.</p>
+            <CareerCentre csrfToken={csrfToken} />
 
             <section className="admin-panel">
               <div className="admin-panel-heading"><div><p className="eyebrow">ACCOUNT</p><h2>Account settings</h2></div></div>

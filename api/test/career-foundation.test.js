@@ -560,5 +560,5 @@ test("phase 3A SQL is additive, repeatable, and protects its new table", () => {
   const verify = readFileSync(new URL("../../docs/career-automation/sql/phase-3a.verify.sql", import.meta.url), "utf8");
   assert.match(verify, /has_table_privilege\('anon'/);
   assert.match(verify, /has_table_privilege\('authenticated'/);
-  assert.match(verify.trim(), /ORDER BY table_name;$/);
+  assert.match(verify.trim(), /ORDER BY c\.relname;$/);
 });

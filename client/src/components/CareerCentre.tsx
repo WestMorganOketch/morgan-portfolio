@@ -1,0 +1,1076 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+
+type JsonRecord = Record<string, unknown>;
+type Eligibility = "eligible" | "unknown" | "ineligible";
+type Assessment = {
+  eligibility: Eligibility;
+  eligibility_evidence: { phrase?: string; rule?: string }[];
+  fit_score: number;
+  fit_breakdown: JsonRecord;
+  matched: { type?: string; value?: string; phrase?: string }[];
+  missing: { type?: string; value?: string }[];
+  reason_codes: string[];
+  uncertainty: string[];
+};
+type CareerJob = {
+  id: string;
+  title: string;
+  company: string | null;
+  location_text: string;
+  remote_scope_text?: string;
+  description_text?: string;
+  url: string | null;
+  source_key: string;
+  source_name: string;
+  attribution_text: string;
+  posted_at: string | null;
+  first_seen_at: string;
+  status: string;
+  assessment: Assessment | null;
+  risk_assessment?: string;
+};
+type SourceHealth = {
+  key: string;
+  name: string;
+  enabled: boolean;
+  min_interval_seconds: number;
+  max_requests_per_day: number;
+  attribution_text: string;
+  last_attempt_at: string | null;
+  last_success_at: string | null;
+  last_status: string | null;
+  consecutive_failures: number;
+  requests_today: number | null;
+  window_date: string;
+  next_allowed_at: string | null;
+};
+type Overview = {
+  last_success_at: string | null;
+  stale: boolean;
+  new_jobs_count: number;
+  shortlist_count: number;
+  drafts_waiting: number;
+  review_count: number;
+  job_counts: Record<string, number>;
+  applications_by_state: Record<string, number>;
+  sources: SourceHealth[];
+  shortlist: CareerJob[];
+  qualified: CareerJob[];
+  maybe: CareerJob[];
+};
+type Profile = {
+  id: string;
+  name: string;
+  track: string;
+  original_text: string;
+  verified_facts: JsonRecord;
+  archived_at: string | null;
+};
+type Application = {
+  id: string;
+  job_id: string;
+  state: string;
+  private_notes: string;
+  followup_at: string | null;
+  title: string;
+  company: string | null;
+  location_text: string;
+  url: string | null;
+  source_name: string;
+};
+type ApplicationEvent = { id: string; at: string; event: string; detail: JsonRecord };
+type Settings = {
+  role_tracks: string[];
+  countries: string[];
+  score_threshold: number;
+  max_packets_per_day: number;
+  max_sends_per_day: number;
+  timezone: "Africa/Nairobi";
+  show_company_name: boolean;
+  public_publishing: boolean;
+  excluded_keywords: string[];
+  excluded_companies: string[];
+};
+type SetupStatus = {
+  configuration: Record<string, { configured: boolean }>;
+  JR_SEND_MODE: "draft" | "live";
+};
+type WatchlistEntry = { id: string; provider: "greenhouse" | "lever"; token: string; label: string; enabled: boolean };
+type SearchLink = { name: string; url: string };
+
+const careerTabs = [
+  "Overview", "Review", "Import", "Resume profiles", "Preferences", "Sources and Setup", "Tracker",
+] as const;
+type CareerTab = (typeof careerTabs)[number];
+const reviewLists = ["Shortlist", "Maybe", "Qualified", "Passed", "Dismissed"] as const;
+type ReviewList = (typeof reviewLists)[number];
+const applicationStates = [
+  "discovered", "screened", "match_review", "shortlisted", "preparation_in_progress",
+  "ready_for_review", "approved_to_send", "sent", "failed_send", "submitted",
+  "expired", "duplicate", "blocked_risk", "not_a_fit", "withdrawn", "needs_manual_attention",
+];
+const tracks = ["Security Analyst/SOC", "Computer Skills/ICT Trainer"];
+const countries = ["Kenya", "Tanzania", "Uganda"];
+const secretNames = [
+  "JOB_CRON_SECRET", "DOC_ENCRYPTION_KEY", "GMAIL_USER", "GMAIL_APP_PASSWORD",
+  "GEMINI_API_KEY", "JOOBLE_API_KEY", "CAREERJET_API_KEY", "RELIEFWEB_APPNAME",
+];
+const emptySettings: Settings = {
+  role_tracks: [...tracks],
+  countries: [...countries],
+  score_threshold: 65,
+  max_packets_per_day: 5,
+  max_sends_per_day: 5,
+  timezone: "Africa/Nairobi",
+  show_company_name: false,
+  public_publishing: false,
+  excluded_keywords: [],
+  excluded_companies: [],
+};
+const emptyProfileForm = {
+  id: "",
+  name: "",
+  track: tracks[0],
+  original_text: "",
+  requiredSkills: "",
+  tasks: "",
+  preferredSkills: "",
+};
+const emptyImport = { title: "", company: "", url: "", text: "" };
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function string(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isAssessment(value: unknown): value is Assessment {
+  return isRecord(value)
+    && ["eligible", "unknown", "ineligible"].includes(String(value.eligibility))
+    && typeof value.fit_score === "number"
+    && Array.isArray(value.eligibility_evidence)
+    && isRecord(value.fit_breakdown)
+    && Array.isArray(value.matched)
+    && Array.isArray(value.missing)
+    && Array.isArray(value.reason_codes)
+    && Array.isArray(value.uncertainty);
+}
+
+function isCareerJob(value: unknown): value is CareerJob {
+  return isRecord(value)
+    && string(value.id)
+    && string(value.title)
+    && (value.company === null || string(value.company))
+    && string(value.location_text)
+    && (value.url === null || string(value.url))
+    && string(value.source_key)
+    && string(value.source_name)
+    && string(value.attribution_text)
+    && string(value.status)
+    && (value.assessment === null || isAssessment(value));
+}
+
+function isOverview(value: unknown): value is Overview {
+  return isRecord(value)
+    && (value.last_success_at === null || string(value.last_success_at))
+    && typeof value.stale === "boolean"
+    && typeof value.new_jobs_count === "number"
+    && typeof value.shortlist_count === "number"
+    && typeof value.drafts_waiting === "number"
+    && typeof value.review_count === "number"
+    && isRecord(value.job_counts)
+    && isRecord(value.applications_by_state)
+    && Array.isArray(value.sources)
+    && Array.isArray(value.shortlist)
+    && value.shortlist.every(isCareerJob)
+    && Array.isArray(value.qualified)
+    && value.qualified.every(isCareerJob)
+    && Array.isArray(value.maybe)
+    && value.maybe.every(isCareerJob);
+}
+
+function isProfile(value: unknown): value is Profile {
+  return isRecord(value)
+    && string(value.id)
+    && string(value.name)
+    && string(value.track)
+    && string(value.original_text)
+    && isRecord(value.verified_facts)
+    && (value.archived_at === null || string(value.archived_at));
+}
+
+function isApplication(value: unknown): value is Application {
+  return isRecord(value)
+    && string(value.id)
+    && string(value.job_id)
+    && string(value.state)
+    && string(value.private_notes)
+    && (value.followup_at === null || string(value.followup_at))
+    && string(value.title)
+    && (value.company === null || string(value.company))
+    && string(value.location_text)
+    && (value.url === null || string(value.url))
+    && string(value.source_name);
+}
+
+function isSource(value: unknown): value is SourceHealth {
+  return isRecord(value)
+    && string(value.key)
+    && string(value.name)
+    && typeof value.enabled === "boolean"
+    && typeof value.min_interval_seconds === "number"
+    && typeof value.max_requests_per_day === "number"
+    && string(value.attribution_text)
+    && typeof value.consecutive_failures === "number"
+    && (value.requests_today === null || typeof value.requests_today === "number");
+}
+
+async function request(path: string, csrfToken: string, init?: RequestInit): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      ...init,
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: {
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+        ...(init?.method && init.method !== "GET" ? { "X-CSRF-Token": csrfToken } : {}),
+        ...init?.headers,
+      },
+    });
+  } catch {
+    throw new Error("Could not reach the career service. Check your connection and try again.");
+  }
+  const text = await response.text();
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error("The career service returned an unreadable response.");
+    }
+  }
+  if (!response.ok) {
+    throw new Error(isRecord(data) && string(data.error)
+      ? data.error
+      : `The request failed (${response.status}).`);
+  }
+  return data;
+}
+
+function safeHttpUrl(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function readableDate(value: string | null | undefined): string {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Not recorded" : date.toLocaleString();
+}
+
+function valuesFromFacts(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter(string) : [];
+}
+
+export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
+  const [tab, setTab] = useState<CareerTab>("Overview");
+  const [reviewList, setReviewList] = useState<ReviewList>("Shortlist");
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [jobs, setJobs] = useState<CareerJob[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [sources, setSources] = useState<SourceHealth[]>([]);
+  const [setup, setSetup] = useState<SetupStatus | null>(null);
+  const [watchlist, setWatchlist] = useState<WatchlistEntry[]>([]);
+  const [searchLinks, setSearchLinks] = useState<SearchLink[]>([]);
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [applicationFilter, setApplicationFilter] = useState("all");
+  const [applicationEvents, setApplicationEvents] = useState<ApplicationEvent[]>([]);
+  const [activeApplication, setActiveApplication] = useState("");
+  const [activeProfile, setActiveProfile] = useState("");
+  const [profileForm, setProfileForm] = useState(emptyProfileForm);
+  const [settings, setSettings] = useState(emptySettings);
+  const [importForm, setImportForm] = useState(emptyImport);
+  const [watchForm, setWatchForm] = useState({ provider: "greenhouse", token: "", label: "" });
+  const [noteTarget, setNoteTarget] = useState<CareerJob | null>(null);
+  const [noteText, setNoteText] = useState("");
+  const [noteApplicationId, setNoteApplicationId] = useState("");
+  const [notesByApplication, setNotesByApplication] = useState<Record<string, string>>({});
+  const [followupsByApplication, setFollowupsByApplication] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  const loadOverview = useCallback(async () => {
+    const value = await request("/api/admin/career/overview", csrfToken);
+    if (!isOverview(value) || !value.sources.every(isSource)) throw new Error("The career service returned unexpected overview data.");
+    setOverview(value);
+  }, [csrfToken]);
+
+  const loadReview = useCallback(async () => {
+    if (reviewList === "Shortlist" || reviewList === "Maybe" || reviewList === "Qualified") {
+      if (!overview) await loadOverview();
+      return;
+    }
+    const statuses = reviewList === "Passed" ? ["not_a_fit", "passed"] : ["duplicate"];
+    const responses = await Promise.all(statuses.map((status) =>
+      request(`/api/admin/career/jobs?status=${status}&limit=50`, csrfToken)));
+    const found = responses.flatMap((data) => isRecord(data) && Array.isArray(data.jobs) ? data.jobs.filter(isCareerJob) : []);
+    setJobs(found);
+  }, [csrfToken, loadOverview, overview, reviewList]);
+
+  const loadProfiles = useCallback(async () => {
+    const value = await request("/api/admin/career/resume-profiles", csrfToken);
+    if (!Array.isArray(value) || !value.every(isProfile)) throw new Error("The career service returned unexpected profile data.");
+    setProfiles(value);
+  }, [csrfToken]);
+
+  const loadSources = useCallback(async () => {
+    const [sourceData, setupData, watchData, linkData] = await Promise.all([
+      request("/api/admin/career/sources", csrfToken),
+      request("/api/admin/career/setup", csrfToken),
+      request("/api/admin/career/watchlist", csrfToken),
+      request("/api/admin/career/search-links", csrfToken),
+    ]);
+    if (!Array.isArray(sourceData) || !sourceData.every(isSource)) throw new Error("The career service returned unexpected source data.");
+    if (!isRecord(setupData) || !isRecord(setupData.configuration)) throw new Error("The setup status could not be read.");
+    if (!Array.isArray(watchData) || !Array.isArray(linkData)) throw new Error("The source tools returned unexpected data.");
+    setSources(sourceData);
+    setSetup({
+      configuration: Object.fromEntries(
+        Object.entries(setupData.configuration).map(([name, value]) => [
+          name,
+          { configured: isRecord(value) && value.configured === true },
+        ]),
+      ),
+      JR_SEND_MODE: setupData.JR_SEND_MODE === "live" ? "live" : "draft",
+    });
+    setWatchlist(watchData.filter((row): row is WatchlistEntry =>
+      isRecord(row) && string(row.id) && string(row.token) && string(row.label)
+      && (row.provider === "greenhouse" || row.provider === "lever") && typeof row.enabled === "boolean"));
+    setSearchLinks(linkData.filter((row): row is SearchLink =>
+      isRecord(row) && string(row.name) && string(row.url)));
+  }, [csrfToken]);
+
+  const loadApplications = useCallback(async () => {
+    const value = await request("/api/admin/career/applications", csrfToken);
+    if (!Array.isArray(value) || !value.every(isApplication)) throw new Error("The career service returned unexpected application data.");
+    setApplications(value);
+  }, [csrfToken]);
+
+  useEffect(() => {
+    let active = true;
+    const timer = window.setTimeout(() => {
+      loadOverview().catch((cause: unknown) => {
+        if (active) setError(cause instanceof Error ? cause.message : "The career centre could not be loaded.");
+      }).finally(() => {
+        if (active) setLoading(false);
+      });
+    }, 0);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [loadOverview]);
+
+  useEffect(() => {
+    let active = true;
+    const timer = window.setTimeout(() => {
+      const reportError = (cause: unknown, fallback: string) => {
+        if (active) setError(cause instanceof Error ? cause.message : fallback);
+      };
+      if (tab === "Review") void loadReview().catch((cause: unknown) => reportError(cause, "Review jobs could not be loaded."));
+      if (tab === "Resume profiles") void loadProfiles().catch((cause: unknown) => reportError(cause, "Resume profiles could not be loaded."));
+      if (tab === "Preferences") {
+        void request("/api/admin/career/settings", csrfToken).then((value) => {
+          if (!isRecord(value)) throw new Error("The career service returned unexpected preferences.");
+          if (!active) return;
+          setSettings({
+            role_tracks: Array.isArray(value.role_tracks) ? value.role_tracks.filter(string) : emptySettings.role_tracks,
+            countries: Array.isArray(value.countries) ? value.countries.filter(string) : emptySettings.countries,
+            score_threshold: typeof value.score_threshold === "number" ? value.score_threshold : emptySettings.score_threshold,
+            max_packets_per_day: typeof value.max_packets_per_day === "number" ? value.max_packets_per_day : emptySettings.max_packets_per_day,
+            max_sends_per_day: typeof value.max_sends_per_day === "number" ? value.max_sends_per_day : emptySettings.max_sends_per_day,
+            timezone: "Africa/Nairobi",
+            show_company_name: value.show_company_name === true,
+            public_publishing: value.public_publishing === true,
+            excluded_keywords: Array.isArray(value.excluded_keywords) ? value.excluded_keywords.filter(string) : [],
+            excluded_companies: Array.isArray(value.excluded_companies) ? value.excluded_companies.filter(string) : [],
+          });
+        }).catch((cause: unknown) => reportError(cause, "Preferences could not be loaded."));
+      }
+      if (tab === "Sources and Setup") void loadSources().catch((cause: unknown) => reportError(cause, "Source settings could not be loaded."));
+      if (tab === "Tracker") void loadApplications().catch((cause: unknown) => reportError(cause, "Applications could not be loaded."));
+    }, 0);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [csrfToken, loadApplications, loadProfiles, loadReview, loadSources, tab]);
+
+  async function runAction(action: () => Promise<void>, success?: string) {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await action();
+      if (success) setMessage(success);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The request could not be completed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function changeTab(next: CareerTab, focus = false) {
+    setTab(next);
+    setError("");
+    if (focus) tabRefs.current[careerTabs.indexOf(next)]?.focus();
+  }
+
+  function handleTabKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      const next = event.key === "Home" ? 0 : careerTabs.length - 1;
+      changeTab(careerTabs[next], true);
+      return;
+    }
+    const offset = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    if (!offset) return;
+    event.preventDefault();
+    const next = (index + offset + careerTabs.length) % careerTabs.length;
+    changeTab(careerTabs[next], true);
+  }
+
+  async function updateJobStatus(job: CareerJob, status: string) {
+    await runAction(async () => {
+      await request(`/api/admin/career/jobs/${job.id}/status`, csrfToken, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      await loadOverview();
+      await loadReview();
+    }, "Review status updated.");
+  }
+
+  async function openNotes(job: CareerJob) {
+    try {
+      const value = await request("/api/admin/career/applications", csrfToken);
+      if (!Array.isArray(value) || !value.every(isApplication)) {
+        throw new Error("The career service returned unexpected application data.");
+      }
+      setApplications(value);
+      const current = value.find((application) => application.job_id === job.id);
+      setNoteApplicationId(current?.id ?? "");
+      setNoteText(current?.private_notes ?? "");
+      setNoteTarget(job);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The private note could not be opened.");
+    }
+  }
+
+  async function saveJobNotes(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!noteTarget) return;
+    await runAction(async () => {
+      let applicationId = noteApplicationId;
+      if (!applicationId) {
+        const created = await request("/api/admin/career/applications", csrfToken, {
+          method: "POST",
+          body: JSON.stringify({ job_id: noteTarget.id }),
+        });
+        if (!isRecord(created) || !string(created.id)) throw new Error("The application tracker returned an invalid record.");
+        applicationId = created.id;
+      }
+      await request(`/api/admin/career/applications/${applicationId}`, csrfToken, {
+        method: "PATCH",
+        body: JSON.stringify({ private_notes: noteText }),
+      });
+      await loadApplications();
+      setNoteTarget(null);
+      setNoteApplicationId("");
+    }, "Private note saved in the tracker.");
+  }
+
+  async function submitImport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await runAction(async () => {
+      await request("/api/admin/career/import", csrfToken, {
+        method: "POST",
+        body: JSON.stringify(importForm),
+      });
+      setImportForm(emptyImport);
+      await loadOverview();
+      setTab("Review");
+      setReviewList("Shortlist");
+    }, "Advert imported for private review.");
+  }
+
+  async function saveProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await runAction(async () => {
+      const verified_facts = {
+        required_skills: profileForm.requiredSkills.split(",").map((item) => item.trim()).filter(Boolean),
+        tasks: profileForm.tasks.split(",").map((item) => item.trim()).filter(Boolean),
+        preferred_skills: profileForm.preferredSkills.split(",").map((item) => item.trim()).filter(Boolean),
+      };
+      if (activeProfile) {
+        await request(`/api/admin/career/resume-profiles/${activeProfile}`, csrfToken, {
+          method: "PATCH",
+          body: JSON.stringify({ name: profileForm.name, track: profileForm.track, verified_facts }),
+        });
+      } else {
+        await request("/api/admin/career/resume-profiles", csrfToken, {
+          method: "POST",
+          body: JSON.stringify({
+            name: profileForm.name,
+            track: profileForm.track,
+            original_text: profileForm.original_text,
+            verified_facts,
+          }),
+        });
+      }
+      await request("/api/admin/career/assessments/rerun", csrfToken, { method: "POST", body: "{}" });
+      await loadProfiles();
+      setActiveProfile("");
+      setProfileForm(emptyProfileForm);
+    }, activeProfile ? "Profile updated and assessments refreshed." : "Profile created and assessments refreshed.");
+  }
+
+  async function archiveProfile(id: string) {
+    await runAction(async () => {
+      await request(`/api/admin/career/resume-profiles/${id}/archive`, csrfToken, { method: "POST", body: "{}" });
+      await request("/api/admin/career/assessments/rerun", csrfToken, { method: "POST", body: "{}" });
+      await loadProfiles();
+    }, "Profile archived and assessments refreshed.");
+  }
+
+  async function saveSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await runAction(async () => {
+      const result = await request("/api/admin/career/settings", csrfToken, {
+        method: "PUT",
+        body: JSON.stringify({ ...settings, remote_eligibility: { Kenya: true } }),
+      });
+      if (!isRecord(result)) throw new Error("The career service returned invalid preferences.");
+      await request("/api/admin/career/assessments/rerun", csrfToken, { method: "POST", body: "{}" });
+    }, "Preferences saved.");
+  }
+
+  async function saveWatchlist(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!/^[A-Za-z0-9_-]{2,60}$/.test(watchForm.token)) {
+      setError("Tokens must contain 2–60 letters, numbers, underscores, or hyphens.");
+      return;
+    }
+    await runAction(async () => {
+      await request("/api/admin/career/watchlist", csrfToken, {
+        method: "POST",
+        body: JSON.stringify(watchForm),
+      });
+      setWatchForm({ provider: "greenhouse", token: "", label: "" });
+      await loadSources();
+    }, "ATS board added to the private watchlist.");
+  }
+
+  async function deleteWatchlist(id: string) {
+    await runAction(async () => {
+      await request(`/api/admin/career/watchlist/${id}`, csrfToken, { method: "DELETE" });
+      await loadSources();
+    }, "ATS board removed.");
+  }
+
+  async function changeApplicationState(application: Application, state: string) {
+    await runAction(async () => {
+      await request(`/api/admin/career/applications/${application.id}/state`, csrfToken, {
+        method: "PATCH",
+        body: JSON.stringify({ state }),
+      });
+      await loadApplications();
+      await loadOverview();
+      if (activeApplication === application.id) await loadApplicationEvents(application.id);
+    }, "Application state updated.");
+  }
+
+  async function saveApplicationDetails(application: Application) {
+    await runAction(async () => {
+      const followup = followupsByApplication[application.id];
+      await request(`/api/admin/career/applications/${application.id}`, csrfToken, {
+        method: "PATCH",
+        body: JSON.stringify({
+          private_notes: notesByApplication[application.id] ?? application.private_notes,
+          ...(followup !== undefined
+            ? { followup_at: followup ? new Date(followup).toISOString() : null }
+            : {}),
+        }),
+      });
+      await loadApplications();
+      await loadApplicationEvents(application.id);
+    }, "Application notes and follow-up saved.");
+  }
+
+  async function loadApplicationEvents(id: string) {
+    const value = await request(`/api/admin/career/applications/${id}/events`, csrfToken);
+    if (!Array.isArray(value) || !value.every((row) =>
+      isRecord(row) && string(row.id) && string(row.at) && string(row.event) && isRecord(row.detail))) {
+      throw new Error("The tracker returned invalid timeline data.");
+    }
+    setApplicationEvents(value as ApplicationEvent[]);
+    setActiveApplication(id);
+  }
+
+  async function createApplication(job: CareerJob) {
+    await runAction(async () => {
+      await request("/api/admin/career/applications", csrfToken, {
+        method: "POST",
+        body: JSON.stringify({ job_id: job.id }),
+      });
+      await loadApplications();
+      setTab("Tracker");
+    }, "Job added to the application tracker.");
+  }
+
+  const reviewJobs = reviewList === "Shortlist" ? overview?.shortlist ?? []
+    : reviewList === "Maybe" ? overview?.maybe ?? []
+      : reviewList === "Qualified" ? overview?.qualified ?? []
+        : jobs;
+  const filteredApplications = applications.filter((application) =>
+    applicationFilter === "all" || application.state === applicationFilter);
+
+  return (
+    <section className="career-centre admin-panel" aria-labelledby="career-centre-title">
+      <div className="admin-panel-heading career-heading">
+        <div>
+          <p className="eyebrow">PRIVATE CAREER WORKSPACE</p>
+          <h2 id="career-centre-title">Career review centre</h2>
+        </div>
+        {overview ? <span className="career-review-badge" aria-label={`${overview.review_count} jobs needing review`}>{overview.review_count} to review</span> : null}
+      </div>
+
+      <div className="career-tabs" role="tablist" aria-label="Career centre sections">
+        {careerTabs.map((name, index) => (
+          <button
+            aria-controls={`career-panel-${index}`}
+            aria-selected={tab === name}
+            className={tab === name ? "career-tab active" : "career-tab"}
+            id={`career-tab-${index}`}
+            key={name}
+            onClick={() => changeTab(name)}
+            onKeyDown={(event) => handleTabKey(event, index)}
+            ref={(element) => { tabRefs.current[index] = element; }}
+            role="tab"
+            tabIndex={tab === name ? 0 : -1}
+            type="button"
+          >
+            {name}
+            {name === "Overview" && overview?.review_count ? <span className="career-tab-count">{overview.review_count}</span> : null}
+          </button>
+        ))}
+      </div>
+
+      {error ? <p className="admin-message admin-error" role="alert">{error}</p> : null}
+      {message ? <p className="admin-message" role="status">{message}</p> : null}
+      {loading ? <p className="admin-notice" role="status">Loading private career data…</p> : null}
+
+      <div
+        aria-labelledby={`career-tab-${careerTabs.indexOf(tab)}`}
+        className="career-panel"
+        id={`career-panel-${careerTabs.indexOf(tab)}`}
+        role="tabpanel"
+        tabIndex={0}
+      >
+        {tab === "Overview" ? (
+          <div className="career-stack">
+            <div className="career-stat-grid">
+              <article><span>LAST SUCCESSFUL SCAN</span><strong>{readableDate(overview?.last_success_at)}</strong></article>
+              <article><span>NEW TODAY</span><strong>{overview?.new_jobs_count ?? 0}</strong></article>
+              <article><span>DAILY SHORTLIST</span><strong>{overview?.shortlist_count ?? 0}</strong></article>
+              <article><span>DRAFTS WAITING</span><strong>{overview?.drafts_waiting ?? 0}</strong></article>
+            </div>
+            {overview?.stale ? <p className="career-warning" role="status">No successful scan in the last 12 hours. Source results may be stale.</p> : null}
+            <div className="career-actions">
+              <button className="button button-primary" disabled={busy} onClick={() => void runAction(async () => {
+                await request("/api/admin/career/scan-now", csrfToken, { method: "POST", body: "{}" });
+                await loadOverview();
+              }, "Scan requested. Results will appear as sources finish.")} type="button">Scan now</button>
+              <button className="button button-quiet" disabled={busy} onClick={() => void runAction(loadOverview)} type="button">Refresh overview</button>
+            </div>
+            <div className="career-two-columns">
+              <section className="career-subpanel">
+                <h3>Source health</h3>
+                <SourceHealthList sources={overview?.sources ?? []} />
+              </section>
+              <section className="career-subpanel">
+                <h3>Applications by state</h3>
+                <div className="career-count-grid">
+                  {Object.entries(overview?.applications_by_state ?? {}).map(([state, count]) => (
+                    <div key={state}><span>{state.replaceAll("_", " ")}</span><strong>{count}</strong></div>
+                  ))}
+                </div>
+              </section>
+            </div>
+            <section className="career-subpanel">
+              <div className="career-review-heading">
+                <div><h3>Jobs needing review</h3><p>{overview?.shortlist_count ?? 0} daily shortlist items · risk is not yet assessed</p></div>
+                <button className="text-link" onClick={() => changeTab("Review")} type="button">Open review queue</button>
+              </div>
+              {overview?.shortlist.length ? (
+                <ul className="career-overview-jobs">
+                  {overview.shortlist.map((job) => {
+                    const href = safeHttpUrl(job.url);
+                    return <li key={job.id}>
+                      <div><strong>{job.title}</strong><span>{job.location_text || job.remote_scope_text || "Location not specified"} · {job.assessment?.fit_score ?? "—"}/100 · risk: not yet assessed</span></div>
+                      {href ? <a href={href} rel="noopener noreferrer" target="_blank">{job.attribution_text}</a> : <span>{job.attribution_text}</span>}
+                    </li>;
+                  })}
+                </ul>
+              ) : <p className="admin-help">No jobs currently meet the shortlist threshold. The list is never padded.</p>}
+            </section>
+          </div>
+        ) : null}
+
+        {tab === "Review" ? (
+          <div className="career-stack">
+            <div className="career-subtabs" role="group" aria-label="Review queue">
+              {reviewLists.map((name) => (
+                <button aria-pressed={reviewList === name} className={reviewList === name ? "career-chip active" : "career-chip"} key={name} onClick={() => {
+                  setReviewList(name);
+                  setError("");
+                  if (name === "Passed" || name === "Dismissed") {
+                    void request(`/api/admin/career/jobs?status=${name === "Passed" ? "not_a_fit" : "duplicate"}&limit=50`, csrfToken)
+                      .then((data) => setJobs(isRecord(data) && Array.isArray(data.jobs) ? data.jobs.filter(isCareerJob) : []))
+                      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "The review list could not be loaded."));
+                  }
+                }} type="button">{name}</button>
+              ))}
+            </div>
+            {reviewList === "Maybe" ? <p className="career-warning">These listings need location or work-permission verification before any decision.</p> : null}
+            {reviewJobs.length ? (
+              <div className="career-job-list">
+                {reviewJobs.map((job) => (
+                  <CareerJobCard
+                    busy={busy}
+                    job={job}
+                    key={job.id}
+                    onApplication={() => void createApplication(job)}
+                    onNotes={() => void openNotes(job)}
+                    onStatus={(status) => void updateJobStatus(job, status)}
+                  />
+                ))}
+              </div>
+            ) : <p className="admin-help">No jobs in this list yet. The shortlist is capped by your daily packet limit and is never padded.</p>}
+          </div>
+        ) : null}
+
+        {tab === "Import" ? (
+          <form className="career-form" onSubmit={(event) => void submitImport(event)}>
+            <p className="admin-help">Paste a job advert or job-alert email text. The URL is stored as supplied and is not fetched.</p>
+            <label htmlFor="career-import-title">Job title</label>
+            <input id="career-import-title" maxLength={300} onChange={(event) => setImportForm({ ...importForm, title: event.target.value })} required value={importForm.title} />
+            <label htmlFor="career-import-company">Company</label>
+            <input id="career-import-company" maxLength={200} onChange={(event) => setImportForm({ ...importForm, company: event.target.value })} value={importForm.company} />
+            <label htmlFor="career-import-url">Original listing URL <span>optional · HTTP(S); stored, never fetched</span></label>
+            <input id="career-import-url" maxLength={2000} onChange={(event) => setImportForm({ ...importForm, url: event.target.value })} type="url" value={importForm.url} />
+            <label htmlFor="career-import-text">Advert or alert text <span>plain text · max 6,000 characters</span></label>
+            <textarea id="career-import-text" maxLength={6000} onChange={(event) => setImportForm({ ...importForm, text: event.target.value })} rows={8} value={importForm.text} />
+            <button className="button button-primary" disabled={busy} type="submit">Import for review</button>
+          </form>
+        ) : null}
+
+        {tab === "Resume profiles" ? (
+          <div className="career-two-columns career-profile-layout">
+            <form className="career-form" onSubmit={(event) => void saveProfile(event)}>
+              <h3>{activeProfile ? "Edit verified profile" : "Create master profile"}</h3>
+              <label htmlFor="career-profile-name">Profile name</label>
+              <input id="career-profile-name" maxLength={120} onChange={(event) => setProfileForm({ ...profileForm, name: event.target.value })} required value={profileForm.name} />
+              <label htmlFor="career-profile-track">Role track</label>
+              <select id="career-profile-track" onChange={(event) => setProfileForm({ ...profileForm, track: event.target.value })} value={profileForm.track}>
+                {tracks.map((track) => <option key={track} value={track}>{track}</option>)}
+              </select>
+              {!activeProfile ? (
+                <>
+                  <label htmlFor="career-profile-original">Master resume text <span>immutable after creation</span></label>
+                  <textarea id="career-profile-original" maxLength={60000} onChange={(event) => setProfileForm({ ...profileForm, original_text: event.target.value })} required rows={7} value={profileForm.original_text} />
+                </>
+              ) : <p className="career-warning">Original resume text is immutable. Update only verified skills, tasks, and preferences below.</p>}
+              <label htmlFor="career-profile-required">Verified required skills <span>comma-separated</span></label>
+              <input id="career-profile-required" onChange={(event) => setProfileForm({ ...profileForm, requiredSkills: event.target.value })} value={profileForm.requiredSkills} />
+              <label htmlFor="career-profile-tasks">Verified tasks <span>comma-separated</span></label>
+              <input id="career-profile-tasks" onChange={(event) => setProfileForm({ ...profileForm, tasks: event.target.value })} value={profileForm.tasks} />
+              <label htmlFor="career-profile-preferred">Preferred skills <span>comma-separated</span></label>
+              <input id="career-profile-preferred" onChange={(event) => setProfileForm({ ...profileForm, preferredSkills: event.target.value })} value={profileForm.preferredSkills} />
+              <div className="career-actions">
+                <button className="button button-primary" disabled={busy} type="submit">{activeProfile ? "Save verified facts" : "Create profile"}</button>
+                {activeProfile ? <button className="button button-quiet" onClick={() => { setActiveProfile(""); setProfileForm(emptyProfileForm); }} type="button">Cancel edit</button> : null}
+              </div>
+            </form>
+            <section className="career-subpanel">
+              <h3>Saved profiles</h3>
+              {profiles.filter((profile) => !profile.archived_at).length ? profiles.filter((profile) => !profile.archived_at).map((profile) => (
+                <article className="career-profile-row" key={profile.id}>
+                  <div><strong>{profile.name}</strong><p>{profile.track}</p></div>
+                  <div className="career-actions">
+                    <button className="text-link" onClick={() => {
+                      setActiveProfile(profile.id);
+                      setProfileForm({
+                        id: profile.id,
+                        name: profile.name,
+                        track: profile.track,
+                        original_text: profile.original_text,
+                        requiredSkills: valuesFromFacts(profile.verified_facts.required_skills).join(", "),
+                        tasks: valuesFromFacts(profile.verified_facts.tasks).join(", "),
+                        preferredSkills: valuesFromFacts(profile.verified_facts.preferred_skills).join(", "),
+                      });
+                    }} type="button">Edit verified facts</button>
+                    <button className="text-link delete-action" disabled={busy} onClick={() => {
+                      if (window.confirm(`Archive ${profile.name}?`)) void archiveProfile(profile.id);
+                    }} type="button">Archive</button>
+                  </div>
+                </article>
+              )) : <p className="admin-help">No active resume profiles. Add a verified master profile to improve fit assessments.</p>}
+            </section>
+          </div>
+        ) : null}
+
+        {tab === "Preferences" ? (
+          <form className="career-form career-preferences" onSubmit={(event) => void saveSettings(event)}>
+            <fieldset>
+              <legend>Role tracks</legend>
+              {tracks.map((track) => <label className="career-check" key={track}><input checked={settings.role_tracks.includes(track)} onChange={(event) => setSettings({
+                ...settings,
+                role_tracks: event.target.checked ? [...settings.role_tracks, track] : settings.role_tracks.filter((item) => item !== track),
+              })} type="checkbox" />{track}</label>)}
+            </fieldset>
+            <fieldset>
+              <legend>Priority countries</legend>
+              {countries.map((country) => <label className="career-check" key={country}><input checked={settings.countries.includes(country)} onChange={(event) => setSettings({
+                ...settings,
+                countries: event.target.checked ? [...settings.countries, country] : settings.countries.filter((item) => item !== country),
+              })} type="checkbox" />{country}</label>)}
+            </fieldset>
+            <label htmlFor="career-threshold">Fit score threshold: {settings.score_threshold}</label>
+            <input id="career-threshold" max={100} min={0} onChange={(event) => setSettings({ ...settings, score_threshold: Number(event.target.value) })} type="range" value={settings.score_threshold} />
+            <label htmlFor="career-excluded-keywords">Excluded keywords <span>comma-separated</span></label>
+            <input id="career-excluded-keywords" onChange={(event) => setSettings({ ...settings, excluded_keywords: event.target.value.split(",").map((item) => item.trim()).filter(Boolean) })} value={settings.excluded_keywords.join(", ")} />
+            <label htmlFor="career-excluded-companies">Excluded companies <span>comma-separated</span></label>
+            <input id="career-excluded-companies" onChange={(event) => setSettings({ ...settings, excluded_companies: event.target.value.split(",").map((item) => item.trim()).filter(Boolean) })} value={settings.excluded_companies.join(", ")} />
+            <div className="form-row">
+              <div><label htmlFor="career-packet-cap">Daily shortlist cap</label><input id="career-packet-cap" max={5} min={1} onChange={(event) => setSettings({ ...settings, max_packets_per_day: Number(event.target.value) })} type="number" value={settings.max_packets_per_day} /></div>
+              <div><label htmlFor="career-send-cap">Daily send cap <span>reserved for later phase</span></label><input id="career-send-cap" max={5} min={1} onChange={(event) => setSettings({ ...settings, max_sends_per_day: Number(event.target.value) })} type="number" value={settings.max_sends_per_day} /></div>
+            </div>
+            <label className="career-check"><input checked={settings.show_company_name} onChange={(event) => setSettings({ ...settings, show_company_name: event.target.checked })} type="checkbox" />Show company name in any future public view (off by default)</label>
+            <p className="career-warning">Timezone is fixed to Africa/Nairobi. Public publishing remains disabled in this phase.</p>
+            <button className="button button-primary" disabled={busy} type="submit">Save preferences</button>
+          </form>
+        ) : null}
+
+        {tab === "Sources and Setup" ? (
+          <div className="career-stack">
+            <section className="career-subpanel">
+              <h3>Environment setup checklist</h3>
+              <p className="admin-help">Only configured / not configured is shown. Secret values are never read into this page.</p>
+              <ul className="career-config-list">
+                {secretNames.map((name) => <li key={name}><span>{name}</span><strong>{setup?.configuration[name]?.configured ? "Configured" : "Not configured"}</strong></li>)}
+                <li><span>JR_SEND_MODE</span><strong>{setup?.JR_SEND_MODE ?? "draft"}</strong></li>
+              </ul>
+            </section>
+            <section className="career-subpanel">
+              <h3>Sources</h3>
+              <SourceHealthList sources={sources} />
+            </section>
+            <section className="career-subpanel">
+              <h3>ATS watchlist</h3>
+              <form className="career-inline-form" onSubmit={(event) => void saveWatchlist(event)}>
+                <label htmlFor="career-watch-provider">Provider</label>
+                <select id="career-watch-provider" onChange={(event) => setWatchForm({ ...watchForm, provider: event.target.value })} value={watchForm.provider}>
+                  <option value="greenhouse">Greenhouse</option><option value="lever">Lever</option>
+                </select>
+                <label htmlFor="career-watch-token">Board token</label>
+                <input id="career-watch-token" maxLength={60} minLength={2} onChange={(event) => setWatchForm({ ...watchForm, token: event.target.value })} pattern="[A-Za-z0-9_-]{2,60}" required value={watchForm.token} />
+                <label htmlFor="career-watch-label">Employer label</label>
+                <input id="career-watch-label" maxLength={120} onChange={(event) => setWatchForm({ ...watchForm, label: event.target.value })} required value={watchForm.label} />
+                <button className="button button-primary" disabled={busy} type="submit">Add board</button>
+              </form>
+              {watchlist.map((entry) => <article className="career-profile-row" key={entry.id}>
+                <span>{entry.label} · {entry.provider} · {entry.token} · {entry.enabled ? "enabled" : "disabled"}</span>
+                <button className="text-link delete-action" disabled={busy} onClick={() => void deleteWatchlist(entry.id)} type="button">Remove</button>
+              </article>)}
+            </section>
+            <section className="career-subpanel">
+              <h3>Saved search links</h3>
+              <div className="career-actions">
+                {searchLinks.map((link) => {
+                  const href = safeHttpUrl(link.url);
+                  return href ? <a className="button button-quiet" href={href} key={link.name} rel="noopener noreferrer" target="_blank">{link.name}</a> : null;
+                })}
+              </div>
+            </section>
+          </div>
+        ) : null}
+
+        {tab === "Tracker" ? (
+          <div className="career-stack">
+            <p className="admin-help">Private application tracker. No documents are attached or sent in this phase.</p>
+            <label className="career-filter-label" htmlFor="career-application-filter">Filter by application state
+              <select id="career-application-filter" onChange={(event) => setApplicationFilter(event.target.value)} value={applicationFilter}>
+                <option value="all">All states</option>
+                {applicationStates.map((state) => <option key={state} value={state}>{state.replaceAll("_", " ")}</option>)}
+              </select>
+            </label>
+            {filteredApplications.length ? filteredApplications.map((application) => (
+              <article className="career-application" key={application.id}>
+                <div className="career-application-heading">
+                  <div><h3>{application.title}</h3><p>{application.company ?? "Company not listed"} · {application.location_text} · {application.source_name}</p></div>
+                  <label>State
+                    <select onChange={(event) => void changeApplicationState(application, event.target.value)} value={application.state}>
+                      {applicationStates.map((state) => <option disabled={state === "approved_to_send" || state === "sent"} key={state} value={state}>{state.replaceAll("_", " ")}{state === "approved_to_send" || state === "sent" ? " (Phase 6)" : ""}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <div className="career-two-columns">
+                  <div>
+                    <label htmlFor={`application-notes-${application.id}`}>Private notes</label>
+                    <textarea id={`application-notes-${application.id}`} maxLength={12000} onChange={(event) => setNotesByApplication({ ...notesByApplication, [application.id]: event.target.value })} rows={3} value={notesByApplication[application.id] ?? application.private_notes} />
+                  </div>
+                  <div>
+                    <label htmlFor={`application-followup-${application.id}`}>Follow-up date</label>
+                    <input id={`application-followup-${application.id}`} onChange={(event) => setFollowupsByApplication({ ...followupsByApplication, [application.id]: event.target.value })} type="datetime-local" value={followupsByApplication[application.id] ?? (application.followup_at ? application.followup_at.slice(0, 16) : "")} />
+                    <div className="career-actions">
+                      <button className="button button-quiet" disabled={busy} onClick={() => void saveApplicationDetails(application)} type="button">Save notes and follow-up</button>
+                      <button className="text-link" onClick={() => void loadApplicationEvents(application.id).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Timeline could not be loaded."))} type="button">View timeline</button>
+                    </div>
+                  </div>
+                </div>
+                {activeApplication === application.id ? <ApplicationTimeline events={applicationEvents} /> : null}
+              </article>
+            )) : <p className="admin-help">{applications.length ? "No applications match this state." : "No applications in the tracker yet. Add a reviewed job from a job card."}</p>}
+          </div>
+        ) : null}
+      </div>
+
+      {noteTarget ? (
+        <div className="career-modal-backdrop" role="presentation">
+          <section aria-labelledby="career-note-title" aria-modal="true" className="career-note-modal" onKeyDown={(event) => {
+            if (event.key === "Escape") setNoteTarget(null);
+          }} role="dialog">
+            <h3 id="career-note-title">Private job note</h3>
+            <p>{noteTarget.title}</p>
+            <form className="career-form" onSubmit={(event) => void saveJobNotes(event)}>
+              <label htmlFor="career-job-note">Notes</label>
+              <textarea autoFocus id="career-job-note" maxLength={12000} onChange={(event) => setNoteText(event.target.value)} rows={6} value={noteText} />
+              <div className="career-actions">
+                <button className="button button-primary" disabled={busy} type="submit">Save note</button>
+                <button className="button button-quiet" onClick={() => setNoteTarget(null)} type="button">Cancel</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function SourceHealthList({ sources }: { sources: SourceHealth[] }) {
+  return sources.length ? (
+    <div className="career-source-list">
+      {sources.map((source) => (
+        <article className="career-source" key={source.key}>
+          <div>
+            <strong>{source.name}</strong>
+            <p>{source.enabled ? "Enabled" : "Disabled"} · {source.last_status ?? "not polled"} · {source.consecutive_failures} consecutive failures</p>
+            <p>Every {Math.round(source.min_interval_seconds / 60)} min · {source.requests_today ?? 0}/{source.max_requests_per_day} requests today · {source.attribution_text}</p>
+            <small>Last attempt: {readableDate(source.last_attempt_at)} · Last success: {readableDate(source.last_success_at)}</small>
+          </div>
+        </article>
+      ))}
+    </div>
+  ) : <p className="admin-help">Source health is not available until the career tables are installed.</p>;
+}
+
+function CareerJobCard({
+  job,
+  busy,
+  onStatus,
+  onNotes,
+  onApplication,
+}: {
+  job: CareerJob;
+  busy: boolean;
+  onStatus: (status: string) => void;
+  onNotes: () => void;
+  onApplication: () => void;
+}) {
+  const assessment = job.assessment;
+  const externalUrl = safeHttpUrl(job.url);
+  const breakdown = assessment?.fit_breakdown ?? {};
+  const breakdownItems = Object.entries(breakdown).flatMap(([label, value]) =>
+    isRecord(value) && typeof value.weight === "number" && typeof value.points === "number"
+      ? [{ label, points: value.points, weight: value.weight }]
+      : []);
+  return (
+    <article className="career-job-card">
+      <div className="career-job-head">
+        <div>
+          <p className="eyebrow">
+            {externalUrl ? <a href={externalUrl} rel="noopener noreferrer" target="_blank">{job.attribution_text}</a> : job.attribution_text}
+            {" · "}{job.source_key}
+          </p>
+          <h3>{job.title}</h3>
+          <p>{job.company ?? "Company not listed"} · {job.location_text || job.remote_scope_text || "Location not specified"}</p>
+          <small>Posted: {readableDate(job.posted_at)} · Attribution: {job.attribution_text}</small>
+        </div>
+        <div className="career-score"><strong>{assessment?.fit_score ?? "—"}</strong><span>FIT / 100</span></div>
+      </div>
+      {job.description_text ? <p className="career-advert-text">{job.description_text}</p> : null}
+      {assessment ? (
+        <div className="career-assessment-details">
+          <p><strong>Eligibility:</strong> {assessment.eligibility}</p>
+          <p><strong>Eligibility evidence:</strong> {assessment.eligibility_evidence.map((item) => item.phrase ?? item.rule ?? "").filter(Boolean).join("; ") || "No explicit phrase recorded."}</p>
+          <p><strong>Risk:</strong> {job.risk_assessment ?? "not yet assessed"} — no safety conclusion is implied.</p>
+          <p><strong>Matched:</strong> {assessment.matched.map((item) => item.value ?? item.phrase ?? "").filter(Boolean).join(", ") || "None recorded"}</p>
+          <p><strong>Missing:</strong> {assessment.missing.map((item) => item.value ?? "").filter(Boolean).join(", ") || "None recorded"}</p>
+          <p><strong>Reason codes:</strong> {assessment.reason_codes.join(", ") || "None"}</p>
+          {assessment.uncertainty.length ? <p><strong>Uncertainty:</strong> {assessment.uncertainty.join(" ")}</p> : null}
+          <details>
+            <summary>Fit score breakdown</summary>
+            <ul>{breakdownItems.map(({ label, points, weight }) => <li key={label}>{label.replaceAll("_", " ")}: {points} / {weight}</li>)}</ul>
+          </details>
+        </div>
+      ) : <p className="career-warning">No fit assessment is available yet.</p>}
+      <div className="career-actions">
+        {externalUrl ? <a className="button button-quiet" href={externalUrl} rel="noopener noreferrer" target="_blank">Open original</a> : <span className="admin-help">No valid original link</span>}
+        <button className="button button-quiet" disabled={busy} onClick={() => onStatus("shortlisted")} type="button">Shortlist</button>
+        <button className="button button-quiet" disabled={busy} onClick={() => onStatus("not_a_fit")} type="button">Not a fit</button>
+        <button className="button button-quiet" disabled={busy} onClick={() => onStatus("duplicate")} type="button">Mark duplicate</button>
+        <button className="button button-quiet" disabled={busy} onClick={onNotes} type="button">Add notes</button>
+        <button className="button button-quiet" disabled={busy} onClick={onApplication} type="button">Add to tracker</button>
+      </div>
+    </article>
+  );
+}
+
+function ApplicationTimeline({ events }: { events: ApplicationEvent[] }) {
+  return (
+    <section className="career-timeline" aria-label="Application event timeline">
+      <h4>Event timeline</h4>
+      {events.length ? <ol>{events.map((event) => (
+        <li key={event.id}>
+          <time dateTime={event.at}>{readableDate(event.at)}</time>
+          <strong>{event.event.replaceAll(".", " ").replaceAll("_", " ")}</strong>
+          {Object.keys(event.detail).length ? <span>{Object.entries(event.detail).map(([key, value]) => `${key.replaceAll("_", " ")}: ${String(value)}`).join(" · ")}</span> : null}
+        </li>
+      ))}</ol> : <p className="admin-help">No timeline events have been recorded.</p>}
+    </section>
+  );
+}
