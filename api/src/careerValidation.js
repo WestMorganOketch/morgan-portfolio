@@ -50,6 +50,33 @@ export const sourcePatchSchema = z.object({
 }).strict().refine((value) => Object.keys(value).length > 0, "Provide enabled or notes.");
 
 export const uuidSchema = z.string().uuid();
+export const applicationCreateSchema = z.object({
+  job_id: z.string().uuid(),
+}).strict();
+export const applicationStateSchema = z.object({
+  state: z.enum([
+    "discovered", "screened", "match_review", "shortlisted",
+    "preparation_in_progress", "ready_for_review", "approved_to_send",
+    "sent", "failed_send", "submitted", "expired", "duplicate",
+    "blocked_risk", "not_a_fit", "withdrawn", "needs_manual_attention",
+  ]),
+  detail: z.string().max(1000).optional(),
+}).strict();
+export const applicationPatchSchema = z.object({
+  private_notes: z.string().max(12_000).optional(),
+  followup_at: z.string().datetime({ offset: true }).nullable().optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, "Provide notes or a follow-up date.");
+export const jobReviewStatusSchema = z.object({
+  status: z.enum(["match_review", "shortlisted", "duplicate", "not_a_fit", "needs_manual_attention"]),
+}).strict();
+export const applicationsQuerySchema = z.object({
+  state: z.enum([
+    "discovered", "screened", "match_review", "shortlisted",
+    "preparation_in_progress", "ready_for_review", "approved_to_send",
+    "sent", "failed_send", "submitted", "expired", "duplicate",
+    "blocked_risk", "not_a_fit", "withdrawn", "needs_manual_attention",
+  ]).optional(),
+}).strict();
 
 export const careerJobsQuerySchema = z.object({
   source: z.string().regex(/^[a-z0-9_]{1,60}$/).optional(),

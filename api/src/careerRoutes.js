@@ -3,13 +3,19 @@ import express from "express";
 import { rateLimit } from "express-rate-limit";
 import { createCareerRunService, findMissingCareerTables, findMissingJobTables } from "./careerRun.js";
 import { createCareerAssessmentService } from "./careerAssessment.js";
+import { createCareerApplicationService, applicationStates } from "./careerApplications.js";
 import { normalizeImportedJob, saveCareerJob } from "./careerImport.js";
 import { matchesRoleTitle, normalizeHttpUrl } from "./careerSources.js";
 import {
   atsWatchlistCreateSchema,
+  applicationCreateSchema,
+  applicationPatchSchema,
+  applicationStateSchema,
+  applicationsQuerySchema,
   careerImportSchema,
   careerJobsQuerySchema,
   careerSettingsSchema,
+  jobReviewStatusSchema,
   parseCareerInput,
   resumeProfileCreateSchema,
   resumeProfilePatchSchema,
@@ -94,6 +100,36 @@ function sendMissingAssessmentTable(res) {
   });
 }
 
+const applicationTableNames = ["jr_applications", "jr_application_events"];
+const phase4MissingTablesError = {
+  error: "Career application tables are missing. Run docs/career-automation/sql/phase-4.sql in Supabase SQL Editor.",
+};
+
+async function findMissingApplicationTables(db) {
+  const { rows } = await db.query(
+    `SELECT table_name FROM information_schema.tables
+     WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
+    [applicationTableNames],
+  );
+  const found = new Set(rows.map((row) => row.table_name));
+  return applicationTableNames.filter((name) => !found.has(name));
+}
+
+function sendMissingApplicationTables(res, missing) {
+  return res.status(409).json({ ...phase4MissingTablesError, missingTables: missing });
+}
+
+function nairobiDate(value = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+  const values = Object.fromEntries(parts.map(({ type, value: part }) => [type, part]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
 function serializeSettings(row) {
   return {
     role_tracks: row.role_tracks,
@@ -126,6 +162,7 @@ function requestBodyIsSmall(req) {
 export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin, requireCsrfToken }, {
   runService = createCareerRunService({ db }),
   assessmentService = createCareerAssessmentService({ db }),
+  applicationService = createCareerApplicationService({ db }),
 } = {}) {
   const admin = express.Router();
   admin.use(noStore, requireAdmin);
@@ -370,6 +407,103 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
     }
   });
 
+  admin.get("/overview", async (_req, res, next) => {
+    try {
+      const missing = await findMissingCareerTables(db);
+      if (missing.length) return sendMissingIntakeTables(res, missing);
+      const missingAssessments = await findMissingAssessmentTable(db);
+      if (missingAssessments.length) return sendMissingAssessmentTable(res);
+      const missingApplications = await findMissingApplicationTables(db);
+      if (missingApplications.length) return sendMissingApplicationTables(res, missingApplications);
+      const today = nairobiDate();
+      const [{ rows: settingsRows }, { rows: jobCounts }, { rows: applicationCounts },
+        { rows: scanRows }, { rows: sourceRows }, { rows: reviewRows }, { rows: newRows }] = await Promise.all([
+        db.query("SELECT score_threshold, max_packets_per_day FROM public.jr_settings WHERE id = 1"),
+        db.query("SELECT status, count(*)::integer AS count FROM public.jr_jobs GROUP BY status"),
+        db.query("SELECT state, count(*)::integer AS count FROM public.jr_applications GROUP BY state"),
+        db.query("SELECT max(finished_at) AS last_success_at FROM public.jr_runs WHERE status = 'succeeded'"),
+        db.query(
+          `SELECT s.key, s.name, s.enabled, s.min_interval_seconds, s.max_requests_per_day,
+                  s.attribution_text, st.last_attempt_at, st.last_success_at, st.last_status,
+                  st.consecutive_failures, st.requests_today, st.window_date, st.next_allowed_at
+           FROM public.jr_sources AS s
+           LEFT JOIN public.jr_source_state AS st ON st.source_key = s.key
+           ORDER BY s.name`,
+        ),
+        db.query(
+          `SELECT count(*)::integer AS count FROM public.jr_jobs
+           WHERE status IN ('screened', 'match_review', 'needs_manual_attention')`,
+        ),
+        db.query(
+          `SELECT count(*)::integer AS count FROM public.jr_jobs
+           WHERE first_seen_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Nairobi')
+             AND first_seen_at < (($1::date + 1)::timestamp AT TIME ZONE 'Africa/Nairobi')`,
+          [today],
+        ),
+      ]);
+      if (!settingsRows[0]) return sendMissingTables(res, ["jr_settings (seed row id=1)"]);
+      const threshold = Number(settingsRows[0].score_threshold);
+      const dailyCap = Number(settingsRows[0].max_packets_per_day);
+      const { rows: qualifiedRows } = await db.query(
+        `SELECT j.id, j.source_key, s.name AS source_name, s.attribution_text,
+                j.source_job_id, j.url, j.title, j.company, j.location_text,
+                j.remote_scope_text, j.description_text, j.tags, j.posted_at,
+                j.first_seen_at, j.status, 'not yet assessed'::text AS risk_assessment,
+                jsonb_build_object(
+                  'eligibility', a.eligibility,
+                  'eligibility_evidence', a.eligibility_evidence,
+                  'fit_score', a.fit_score,
+                  'fit_breakdown', a.fit_breakdown,
+                  'matched', a.matched,
+                  'missing', a.missing,
+                  'reason_codes', a.reason_codes,
+                  'uncertainty', a.uncertainty
+                ) AS assessment,
+                a.fit_score, a.eligibility
+         FROM public.jr_jobs AS j
+         JOIN public.jr_sources AS s ON s.key = j.source_key
+         JOIN LATERAL (
+           SELECT * FROM public.jr_assessments
+           WHERE job_id = j.id
+           ORDER BY assessed_at DESC LIMIT 1
+         ) AS a ON true
+         WHERE j.first_seen_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Nairobi')
+           AND j.first_seen_at < (($1::date + 1)::timestamp AT TIME ZONE 'Africa/Nairobi')
+           AND a.fit_score >= $2
+           AND a.eligibility IN ('eligible', 'unknown')
+           AND j.status NOT IN ('duplicate', 'expired', 'not_a_fit', 'passed', 'closed')
+         ORDER BY a.fit_score DESC, j.first_seen_at DESC, j.id
+         LIMIT 5000`,
+        [today, threshold],
+      );
+      const shortlist = qualifiedRows.slice(0, dailyCap);
+      const remaining = qualifiedRows.slice(dailyCap);
+      const byStatus = Object.fromEntries(jobCounts.map((row) => [row.status, Number(row.count)]));
+      const applicationsByState = Object.fromEntries(
+        applicationStates.map((state) => [state, 0]),
+      );
+      for (const row of applicationCounts) applicationsByState[row.state] = Number(row.count);
+      const lastSuccess = scanRows[0]?.last_success_at ?? null;
+      const stale = !lastSuccess || Date.now() - new Date(lastSuccess).getTime() >= 12 * 60 * 60 * 1000;
+      res.json({
+        last_success_at: lastSuccess,
+        stale,
+        new_jobs_count: Number(newRows[0]?.count ?? 0),
+        shortlist_count: shortlist.length,
+        drafts_waiting: 0,
+        review_count: Number(reviewRows[0]?.count ?? 0),
+        job_counts: byStatus,
+        applications_by_state: applicationsByState,
+        sources: sourceRows,
+        shortlist,
+        qualified: remaining.filter((job) => job.eligibility === "eligible"),
+        maybe: remaining.filter((job) => job.eligibility === "unknown"),
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   admin.post(
     "/scan-now",
     requireSameOrigin,
@@ -497,6 +631,155 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
       next(error);
     }
   });
+
+  admin.patch(
+    "/jobs/:id/status",
+    createRateLimiter(60, "Too many job review changes."),
+    requireSameOrigin,
+    requireCsrfToken,
+    async (req, res, next) => {
+      const parsedId = parseCareerInput(uuidSchema, req.params.id);
+      const parsed = parseCareerInput(jobReviewStatusSchema, req.body);
+      if (parsedId.error || parsed.error) {
+        return res.status(400).json({ error: "Please check the job review status.", details: parsed.error ?? parsedId.error });
+      }
+      try {
+        const missing = await findMissingJobTables(db);
+        if (missing.length) return sendMissingIntakeTables(res, missing);
+        const { rows } = await db.query(
+          `UPDATE public.jr_jobs SET status = $1
+           WHERE id = $2 AND status NOT IN ('duplicate', 'expired', 'closed')
+           RETURNING id, status`,
+          [parsed.data.status, parsedId.data],
+        );
+        if (!rows[0]) return res.status(404).json({ error: "Active job was not found." });
+        await db.query(
+          `INSERT INTO public.jr_audit_events (actor, action, detail)
+           VALUES ('admin', 'job.status_changed', $1::jsonb)`,
+          [JSON.stringify({ job_id: rows[0].id, status: rows[0].status })],
+        );
+        res.json(rows[0]);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  admin.get("/applications", async (req, res, next) => {
+    const parsed = parseCareerInput(applicationsQuerySchema, req.query);
+    if (parsed.error) return res.status(400).json({ error: "Please check the application filters.", details: parsed.error });
+    try {
+      const missing = await findMissingApplicationTables(db);
+      if (missing.length) return sendMissingApplicationTables(res, missing);
+      res.json(await applicationService.list(parsed.data.state));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  admin.post(
+    "/applications",
+    createRateLimiter(30, "Too many application tracker changes."),
+    requireSameOrigin,
+    requireCsrfToken,
+    async (req, res, next) => {
+      const parsed = parseCareerInput(applicationCreateSchema, req.body);
+      if (parsed.error) return res.status(400).json({ error: "Please provide a valid job ID.", details: parsed.error });
+      try {
+        const missing = await findMissingApplicationTables(db);
+        if (missing.length) return sendMissingApplicationTables(res, missing);
+        const result = await applicationService.create(parsed.data.job_id);
+        if (result.notFound) return res.status(404).json({ error: "Job was not found." });
+        if (result.conflict) return res.status(409).json({ error: "This job is already in the application tracker." });
+        res.status(201).json(result.application);
+      } catch (error) {
+        if (error?.code === "23505") return res.status(409).json({ error: "This job is already in the application tracker." });
+        next(error);
+      }
+    },
+  );
+
+  admin.get("/applications/:id/events", async (req, res, next) => {
+    const parsedId = parseCareerInput(uuidSchema, req.params.id);
+    if (parsedId.error) return res.status(400).json({ error: "Application ID is invalid." });
+    try {
+      const missing = await findMissingApplicationTables(db);
+      if (missing.length) return sendMissingApplicationTables(res, missing);
+      const application = await applicationService.get(parsedId.data);
+      if (!application) return res.status(404).json({ error: "Application was not found." });
+      res.json(await applicationService.events(parsedId.data));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  admin.get("/applications/:id", async (req, res, next) => {
+    const parsedId = parseCareerInput(uuidSchema, req.params.id);
+    if (parsedId.error) return res.status(400).json({ error: "Application ID is invalid." });
+    try {
+      const missing = await findMissingApplicationTables(db);
+      if (missing.length) return sendMissingApplicationTables(res, missing);
+      const application = await applicationService.get(parsedId.data);
+      if (!application) return res.status(404).json({ error: "Application was not found." });
+      res.json({ application, events: await applicationService.events(parsedId.data) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  admin.patch(
+    "/applications/:id/state",
+    createRateLimiter(60, "Too many application tracker changes."),
+    requireSameOrigin,
+    requireCsrfToken,
+    async (req, res, next) => {
+      const parsedId = parseCareerInput(uuidSchema, req.params.id);
+      const parsed = parseCareerInput(applicationStateSchema, req.body);
+      if (parsedId.error || parsed.error) {
+        return res.status(400).json({ error: "Please check the application state.", details: parsed.error ?? parsedId.error });
+      }
+      if (["approved_to_send", "sent"].includes(parsed.data.state)) {
+        return res.status(409).json({ error: "This state is reserved for the explicitly authorized Phase 6 send workflow." });
+      }
+      try {
+        const missing = await findMissingApplicationTables(db);
+        if (missing.length) return sendMissingApplicationTables(res, missing);
+        const result = await applicationService.changeState(parsedId.data, parsed.data.state, parsed.data.detail);
+        if (result.notFound) return res.status(404).json({ error: "Application was not found." });
+        if (result.invalidTransition) {
+          return res.status(409).json({
+            error: `The application cannot move from ${result.previousState} to ${parsed.data.state}.`,
+          });
+        }
+        res.json(result.application);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  admin.patch(
+    "/applications/:id",
+    createRateLimiter(60, "Too many application tracker changes."),
+    requireSameOrigin,
+    requireCsrfToken,
+    async (req, res, next) => {
+      const parsedId = parseCareerInput(uuidSchema, req.params.id);
+      const parsed = parseCareerInput(applicationPatchSchema, req.body);
+      if (parsedId.error || parsed.error) {
+        return res.status(400).json({ error: "Please check the application details.", details: parsed.error ?? parsedId.error });
+      }
+      try {
+        const missing = await findMissingApplicationTables(db);
+        if (missing.length) return sendMissingApplicationTables(res, missing);
+        const application = await applicationService.updateDetails(parsedId.data, parsed.data);
+        if (!application) return res.status(404).json({ error: "Application was not found." });
+        res.json(application);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
 
   admin.post(
     "/import",
