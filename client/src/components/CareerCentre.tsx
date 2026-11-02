@@ -282,6 +282,75 @@ function valuesFromFacts(value: unknown): string[] {
   return Array.isArray(value) ? value.filter(string) : [];
 }
 
+function CareerListEditor({
+  id,
+  label,
+  helper,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  helper: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const items = value.split(",").map((item) => item.trim()).filter(Boolean);
+
+  function addItem() {
+    const next = draft.trim().replace(/\s+/g, " ");
+    if (!next || items.some((item) => item.toLowerCase() === next.toLowerCase())) return;
+    onChange([...items, next].join(", "));
+    setDraft("");
+  }
+
+  function removeItem(item: string) {
+    onChange(items.filter((entry) => entry !== item).join(", "));
+  }
+
+  return (
+    <div className="career-list-editor">
+      <div className="career-list-editor-heading">
+        <label htmlFor={id}>{label}</label>
+        <span>{helper}</span>
+      </div>
+      {items.length ? (
+        <div className="career-list-chips" aria-label={`Saved ${label.toLowerCase()}`}>
+          {items.map((item) => (
+            <span className="career-list-chip" key={item}>
+              {item}
+              <button aria-label={`Remove ${item}`} onClick={() => removeItem(item)} type="button">×</button>
+            </span>
+          ))}
+        </div>
+      ) : <p className="career-list-empty">No entries added yet.</p>}
+      <div className="career-add-role career-add-list-item">
+        <div className="career-inline-form">
+          <input
+            id={id}
+            maxLength={100}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                addItem();
+              }
+            }}
+            placeholder={`Add a ${label.toLowerCase().replace("verified ", "").replace(/s$/, "")}`}
+            value={draft}
+          />
+          <button className="button button-quiet" disabled={!draft.trim()} onClick={addItem} type="button">Add</button>
+        </div>
+      </div>
+      <details className="career-list-paste">
+        <summary>Paste or edit a comma-separated list</summary>
+        <input aria-label={`${label} comma-separated values`} onChange={(event) => onChange(event.target.value)} value={value} />
+      </details>
+    </div>
+  );
+}
+
 export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   const [tab, setTab] = useState<CareerTab>("Overview");
   const [reviewList, setReviewList] = useState<ReviewList>("Shortlist");
@@ -916,13 +985,28 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                   <textarea id="career-profile-original" maxLength={60000} onChange={(event) => setProfileForm({ ...profileForm, original_text: event.target.value })} required rows={7} value={profileForm.original_text} />
                 </>
               ) : <p className="career-warning">Original resume text is immutable. Update only verified skills, tasks, and preferences below.</p>}
-              <p className="admin-help">Skills and tasks can be expanded as your experience grows. Keep every entry accurate and supported by the master resume before saving.</p>
-              <label htmlFor="career-profile-required">Verified required skills <span>comma-separated</span></label>
-              <input id="career-profile-required" onChange={(event) => setProfileForm({ ...profileForm, requiredSkills: event.target.value })} value={profileForm.requiredSkills} />
-              <label htmlFor="career-profile-tasks">Verified tasks <span>comma-separated</span></label>
-              <input id="career-profile-tasks" onChange={(event) => setProfileForm({ ...profileForm, tasks: event.target.value })} value={profileForm.tasks} />
-              <label htmlFor="career-profile-preferred">Preferred skills <span>comma-separated</span></label>
-              <input id="career-profile-preferred" onChange={(event) => setProfileForm({ ...profileForm, preferredSkills: event.target.value })} value={profileForm.preferredSkills} />
+              <p className="admin-help">Add or remove individual entries. Keep every skill and task accurate and supported by your master resume before saving.</p>
+              <CareerListEditor
+                id="career-profile-required"
+                label="Verified required skills"
+                helper="Skills the scanner should treat as important"
+                value={profileForm.requiredSkills}
+                onChange={(value) => setProfileForm({ ...profileForm, requiredSkills: value })}
+              />
+              <CareerListEditor
+                id="career-profile-tasks"
+                label="Verified tasks"
+                helper="Tasks and responsibilities already supported by your experience"
+                value={profileForm.tasks}
+                onChange={(value) => setProfileForm({ ...profileForm, tasks: value })}
+              />
+              <CareerListEditor
+                id="career-profile-preferred"
+                label="Preferred skills"
+                helper="Additional skills that improve a role match"
+                value={profileForm.preferredSkills}
+                onChange={(value) => setProfileForm({ ...profileForm, preferredSkills: value })}
+              />
               <div className="career-actions">
                 <button className="button button-primary" disabled={busy} type="submit">{activeProfile ? "Save verified facts" : "Create profile"}</button>
                 {activeProfile ? <button className="button button-quiet" onClick={() => { setActiveProfile(""); setProfileForm(emptyProfileForm); }} type="button">Cancel edit</button> : null}
