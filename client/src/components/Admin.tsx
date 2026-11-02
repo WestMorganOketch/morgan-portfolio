@@ -487,11 +487,17 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
         <nav className="admin-navigation" aria-label="Admin sections">
           <a href="/admin" aria-current={view === "dashboard" ? "page" : undefined}>Dashboard</a>
           <a href="/admin/career" aria-current={view === "career" ? "page" : undefined}>Job Radar</a>
-          <a href="/admin#account">Account</a>
-          <a href="/admin#projects">Projects</a>
-          <a href="/admin#portfolio-content">Portfolio content</a>
-          <a href="/admin#operations">Inbox &amp; documents</a>
-          <a href="/admin#analytics">Analytics</a>
+          {view !== "career" ? (
+            <>
+              <a href="/admin#account">Account</a>
+              <a href="/admin#project-editor">Add project</a>
+              <a href="/admin#projects">Projects</a>
+              <a href="/admin#content-editor">Add content</a>
+              <a href="/admin#portfolio-content">Portfolio entries</a>
+              <a href="/admin#operations">Inbox &amp; documents</a>
+              <a href="/admin#analytics">Analytics</a>
+            </>
+          ) : null}
         </nav>
       ) : null}
       <div className="admin-content">
@@ -544,7 +550,6 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
               <article><span>LINK CLICKS · 30 DAYS</span><strong>{linkClicks}</strong></article>
               <article><span>PROJECTS</span><strong>{projects.length}</strong></article>
             </section>
-              </section>
               <p className="admin-privacy">Activity is stored as aggregate event counts only. The analytics table does not store visitor identities, IP addresses, or query strings.</p>
             ) : null}
 
@@ -555,7 +560,15 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
                 <p className="admin-help">Search, review, import and track opportunities from one dedicated workspace.</p>
               </div>
             ) : null}
-            <CareerCentre csrfToken={csrfToken} />
+            {view === "career" ? (
+              <CareerCentre csrfToken={csrfToken} />
+            ) : (
+              <section className="admin-quick-links" aria-label="Admin shortcuts">
+                <a href="/admin/career"><span>CAREER AUTOMATION</span><strong>Open Job Radar <span aria-hidden="true">→</span></strong><small>Search, shortlist, import and review job opportunities.</small></a>
+                <a href="/admin#project-editor"><span>PORTFOLIO CONTENT</span><strong>Add a project <span aria-hidden="true">→</span></strong><small>Publish a verified project or update your portfolio.</small></a>
+                <a href="/admin#operations"><span>PRIVATE OPERATIONS</span><strong>Open inbox &amp; documents <span aria-hidden="true">→</span></strong><small>Manage private messages and document drafts.</small></a>
+              </section>
+            )}
 
             {view !== "career" ? (
               <>
