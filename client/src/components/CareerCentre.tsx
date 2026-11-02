@@ -282,6 +282,75 @@ function valuesFromFacts(value: unknown): string[] {
   return Array.isArray(value) ? value.filter(string) : [];
 }
 
+function CareerListEditor({
+  id,
+  label,
+  helper,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  helper: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const items = value.split(",").map((item) => item.trim()).filter(Boolean);
+
+  function addItem() {
+    const next = draft.trim().replace(/\s+/g, " ");
+    if (!next || items.some((item) => item.toLowerCase() === next.toLowerCase())) return;
+    onChange([...items, next].join(", "));
+    setDraft("");
+  }
+
+  function removeItem(item: string) {
+    onChange(items.filter((entry) => entry !== item).join(", "));
+  }
+
+  return (
+    <div className="career-list-editor">
+      <div className="career-list-editor-heading">
+        <label htmlFor={id}>{label}</label>
+        <span>{helper}</span>
+      </div>
+      {items.length ? (
+        <div className="career-list-chips" aria-label={`Saved ${label.toLowerCase()}`}>
+          {items.map((item) => (
+            <span className="career-list-chip" key={item}>
+              {item}
+              <button aria-label={`Remove ${item}`} onClick={() => removeItem(item)} type="button">×</button>
+            </span>
+          ))}
+        </div>
+      ) : <p className="career-list-empty">No entries added yet.</p>}
+      <div className="career-add-role career-add-list-item">
+        <div className="career-inline-form">
+          <input
+            id={id}
+            maxLength={100}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                addItem();
+              }
+            }}
+            placeholder={`Add a ${label.toLowerCase().replace("verified ", "").replace(/s$/, "")}`}
+            value={draft}
+          />
+          <button className="button button-quiet" disabled={!draft.trim()} onClick={addItem} type="button">Add</button>
+        </div>
+      </div>
+      <details className="career-list-paste">
+        <summary>Paste or edit a comma-separated list</summary>
+        <input aria-label={`${label} comma-separated values`} onChange={(event) => onChange(event.target.value)} value={value} />
+      </details>
+    </div>
+  );
+}
+
 export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   const [tab, setTab] = useState<CareerTab>("Overview");
   const [reviewList, setReviewList] = useState<ReviewList>("Shortlist");
@@ -310,13 +379,59 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [scanStatus, setScanStatus] = useState<"idle" | "running" | "succeeded" | "failed" | "interrupted" | "skipped">("idle");
+  const [scanRunId, setScanRunId] = useState<string | null>(null);
+  const [newRoleTrack, setNewRoleTrack] = useState("");
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const availableTracks = [...new Set([...tracks, ...settings.role_tracks])];
 
   const loadOverview = useCallback(async () => {
     const value = await request("/api/admin/career/overview", csrfToken);
     if (!isOverview(value) || !value.sources.every(isSource)) throw new Error("The career service returned unexpected overview data.");
     setOverview(value);
   }, [csrfToken]);
+
+  useEffect(() => {
+    if (scanStatus !== "running") return;
+    let active = true;
+    let inFlight = false;
+
+    const refreshScan = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const value = await request("/api/admin/career/runs", csrfToken);
+        if (!Array.isArray(value)) throw new Error("The scan status response was not valid.");
+        const rows = value.filter(isRecord);
+        const current = (scanRunId ? rows.find((row) => row.id === scanRunId) : null) ?? rows[0];
+        if (!current || !string(current.status) || !active) return;
+        if (current.status === "running") return;
+        if (["succeeded", "failed", "interrupted", "skipped"].includes(current.status)) {
+          const finalStatus = current.status as "succeeded" | "failed" | "interrupted" | "skipped";
+          setScanStatus(finalStatus);
+          await loadOverview();
+          if (!active) return;
+          setMessage(finalStatus === "succeeded"
+            ? "Scan completed. The overview and shortlist have been refreshed."
+            : finalStatus === "skipped"
+              ? "The scan was skipped because another run already held the scan lock."
+              : `The scan ${finalStatus}. Check source health and run history for details.`);
+        }
+      } catch (cause) {
+        if (active) setError(cause instanceof Error ? cause.message : "Scan status could not be refreshed.");
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void refreshScan();
+    const timer = window.setInterval(() => { void refreshScan(); }, 3000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [csrfToken, loadOverview, scanRunId, scanStatus]);
+
 
   const loadReview = useCallback(async () => {
     if (reviewList === "Shortlist" || reviewList === "Maybe" || reviewList === "Qualified") {
@@ -372,17 +487,34 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   useEffect(() => {
     let active = true;
     const timer = window.setTimeout(() => {
-      loadOverview().catch((cause: unknown) => {
-        if (active) setError(cause instanceof Error ? cause.message : "The career centre could not be loaded.");
-      }).finally(() => {
-        if (active) setLoading(false);
-      });
+      const initialize = async () => {
+        try {
+          await loadOverview();
+          try {
+            const runData = await request("/api/admin/career/runs", csrfToken);
+            if (active && Array.isArray(runData)) {
+              const latestRunning = runData.filter(isRecord).find((row) => row.status === "running");
+              if (latestRunning) {
+                setScanRunId(string(latestRunning.id) ? latestRunning.id : null);
+                setScanStatus("running");
+              }
+            }
+          } catch {
+            // The overview remains usable if run history is temporarily unavailable.
+          }
+        } catch (cause) {
+          if (active) setError(cause instanceof Error ? cause.message : "The career centre could not be loaded.");
+        } finally {
+          if (active) setLoading(false);
+        }
+      };
+      void initialize();
     }, 0);
     return () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [loadOverview]);
+  }, [csrfToken, loadOverview]);
 
   useEffect(() => {
     let active = true;
@@ -431,6 +563,46 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function startScan() {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await request("/api/admin/career/scan-now", csrfToken, {
+        method: "POST",
+        body: "{}",
+      });
+      if (!isRecord(result) || (result.id !== undefined && !string(result.id))) {
+        throw new Error("The scan service returned an unexpected response.");
+      }
+      setScanRunId(string(result.id) ? result.id : null);
+      setScanStatus("running");
+      setMessage(result.status === "already_running"
+        ? "A scan is already running. This page will follow its progress."
+        : "Scan accepted. The page will update automatically when the run finishes.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The scan could not be started.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function addRoleTrack() {
+    const value = newRoleTrack.trim().replace(/\s+/g, " ");
+    if (!value) return;
+    if (settings.role_tracks.some((track) => track.toLowerCase() === value.toLowerCase())) {
+      setError("That job title is already in your search profile.");
+      return;
+    }
+    if (settings.role_tracks.length >= 10) {
+      setError("You can save up to 10 job titles. Remove one before adding another.");
+      return;
+    }
+    setSettings({ ...settings, role_tracks: [...settings.role_tracks, value] });
+    setNewRoleTrack("");
+    setError("");
   }
 
   function changeTab(next: CareerTab, focus = false) {
@@ -700,12 +872,21 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
             </div>
             {overview?.stale ? <p className="career-warning" role="status">No successful scan in the last 12 hours. Source results may be stale.</p> : null}
             <div className="career-actions">
-              <button className="button button-primary" disabled={busy} onClick={() => void runAction(async () => {
-                await request("/api/admin/career/scan-now", csrfToken, { method: "POST", body: "{}" });
-                await loadOverview();
-              }, "Scan requested. Results will appear as sources finish.")} type="button">Scan now</button>
+              <button className="button button-primary" disabled={busy || scanStatus === "running"} onClick={() => void startScan()} type="button">
+                {busy ? "Starting scan…" : scanStatus === "running" ? "Scan running…" : "Scan now"}
+              </button>
               <button className="button button-quiet" disabled={busy} onClick={() => void runAction(loadOverview)} type="button">Refresh overview</button>
             </div>
+            {scanStatus === "running" ? (
+              <div className="career-scan-live" role="status" aria-live="polite">
+                <span className="career-scan-spinner" aria-hidden="true" />
+                <div><strong>Job scan in progress</strong><p>Sources are being checked and matching adverts are being assessed. This panel refreshes automatically.</p></div>
+              </div>
+            ) : null}
+            {scanStatus === "succeeded" ? <p className="career-scan-result career-scan-success" role="status">Latest scan completed successfully.</p> : null}
+            {["failed", "interrupted", "skipped"].includes(scanStatus) ? (
+              <p className="career-scan-result career-scan-warning" role="status">Latest scan: {scanStatus}. Check source health and run history for details.</p>
+            ) : null}
             <div className="career-two-columns">
               <section className="career-subpanel">
                 <h3>Source health</h3>
@@ -796,7 +977,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
               <input id="career-profile-name" maxLength={120} onChange={(event) => setProfileForm({ ...profileForm, name: event.target.value })} required value={profileForm.name} />
               <label htmlFor="career-profile-track">Role track</label>
               <select id="career-profile-track" onChange={(event) => setProfileForm({ ...profileForm, track: event.target.value })} value={profileForm.track}>
-                {tracks.map((track) => <option key={track} value={track}>{track}</option>)}
+                {availableTracks.map((track) => <option key={track} value={track}>{track}</option>)}
               </select>
               {!activeProfile ? (
                 <>
@@ -804,12 +985,28 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                   <textarea id="career-profile-original" maxLength={60000} onChange={(event) => setProfileForm({ ...profileForm, original_text: event.target.value })} required rows={7} value={profileForm.original_text} />
                 </>
               ) : <p className="career-warning">Original resume text is immutable. Update only verified skills, tasks, and preferences below.</p>}
-              <label htmlFor="career-profile-required">Verified required skills <span>comma-separated</span></label>
-              <input id="career-profile-required" onChange={(event) => setProfileForm({ ...profileForm, requiredSkills: event.target.value })} value={profileForm.requiredSkills} />
-              <label htmlFor="career-profile-tasks">Verified tasks <span>comma-separated</span></label>
-              <input id="career-profile-tasks" onChange={(event) => setProfileForm({ ...profileForm, tasks: event.target.value })} value={profileForm.tasks} />
-              <label htmlFor="career-profile-preferred">Preferred skills <span>comma-separated</span></label>
-              <input id="career-profile-preferred" onChange={(event) => setProfileForm({ ...profileForm, preferredSkills: event.target.value })} value={profileForm.preferredSkills} />
+              <p className="admin-help">Add or remove individual entries. Keep every skill and task accurate and supported by your master resume before saving.</p>
+              <CareerListEditor
+                id="career-profile-required"
+                label="Verified required skills"
+                helper="Skills the scanner should treat as important"
+                value={profileForm.requiredSkills}
+                onChange={(value) => setProfileForm({ ...profileForm, requiredSkills: value })}
+              />
+              <CareerListEditor
+                id="career-profile-tasks"
+                label="Verified tasks"
+                helper="Tasks and responsibilities already supported by your experience"
+                value={profileForm.tasks}
+                onChange={(value) => setProfileForm({ ...profileForm, tasks: value })}
+              />
+              <CareerListEditor
+                id="career-profile-preferred"
+                label="Preferred skills"
+                helper="Additional skills that improve a role match"
+                value={profileForm.preferredSkills}
+                onChange={(value) => setProfileForm({ ...profileForm, preferredSkills: value })}
+              />
               <div className="career-actions">
                 <button className="button button-primary" disabled={busy} type="submit">{activeProfile ? "Save verified facts" : "Create profile"}</button>
                 {activeProfile ? <button className="button button-quiet" onClick={() => { setActiveProfile(""); setProfileForm(emptyProfileForm); }} type="button">Cancel edit</button> : null}
@@ -846,11 +1043,24 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
         {tab === "Preferences" ? (
           <form className="career-form career-preferences" onSubmit={(event) => void saveSettings(event)}>
             <fieldset>
-              <legend>Role tracks</legend>
-              {tracks.map((track) => <label className="career-check" key={track}><input checked={settings.role_tracks.includes(track)} onChange={(event) => setSettings({
-                ...settings,
-                role_tracks: event.target.checked ? [...settings.role_tracks, track] : settings.role_tracks.filter((item) => item !== track),
-              })} type="checkbox" />{track}</label>)}
+              <legend>Job titles and role tracks</legend>
+              <p className="admin-help">Add the job titles you want the scanner to recognize. Keep your role titles specific; save up to 10.</p>
+              {settings.role_tracks.map((track) => (
+                <div className="career-role-track" key={track}>
+                  <span>{track}</span>
+                  <button className="text-link delete-action" disabled={settings.role_tracks.length <= 1} onClick={() => setSettings({
+                    ...settings,
+                    role_tracks: settings.role_tracks.filter((item) => item !== track),
+                  })} type="button">Remove</button>
+                </div>
+              ))}
+              <div className="career-add-role">
+                <label htmlFor="career-new-role">Add a job title</label>
+                <div className="career-inline-form">
+                  <input id="career-new-role" maxLength={80} onChange={(event) => setNewRoleTrack(event.target.value)} placeholder="e.g. Junior SOC Analyst" value={newRoleTrack} />
+                  <button className="button button-quiet" disabled={!newRoleTrack.trim() || settings.role_tracks.length >= 10} onClick={addRoleTrack} type="button">Add title</button>
+                </div>
+              </div>
             </fieldset>
             <fieldset>
               <legend>Priority countries</legend>

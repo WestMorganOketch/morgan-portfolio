@@ -159,7 +159,9 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
   }
 }
 
-export default function Admin() {
+type AdminProps = { view?: "dashboard" | "career" };
+
+export default function Admin({ view = "dashboard" }: AdminProps) {
   const [email, setEmail] = useState("");
   const [csrfToken, setCsrfToken] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
@@ -481,6 +483,23 @@ export default function Admin() {
         </a>
         <a className="text-link" href="/">← View portfolio</a>
       </header>
+      {adminEmail ? (
+        <nav className="admin-navigation" aria-label="Admin sections">
+          <a href="/admin" aria-current={view === "dashboard" ? "page" : undefined}>Dashboard</a>
+          <a href="/admin/career" aria-current={view === "career" ? "page" : undefined}>Job Radar</a>
+          {view !== "career" ? (
+            <>
+              <a href="/admin#account">Account</a>
+              <a href="/admin#project-editor">Add project</a>
+              <a href="/admin#projects">Projects</a>
+              <a href="/admin#content-editor">Add content</a>
+              <a href="/admin#portfolio-content">Portfolio entries</a>
+              <a href="/admin#operations">Inbox &amp; documents</a>
+              <a href="/admin#analytics">Analytics</a>
+            </>
+          ) : null}
+        </nav>
+      ) : null}
       <div className="admin-content">
         {loading ? <p className="admin-notice" role="status">Connecting to the portfolio API… Free hosting can take about a minute to wake on the first visit.</p> : null}
         {error ? <p className="admin-message admin-error" role="alert">{error}</p> : null}
@@ -525,15 +544,37 @@ export default function Admin() {
               <button className="button button-quiet" onClick={() => void signOut()} type="button">Sign out</button>
             </div>
 
-            <section className="admin-stats" aria-label="Aggregate site activity for the last 30 days">
-              <article><span>PAGE VIEWS · 30 DAYS</span><strong>{pageViews}</strong></article>
-              <article><span>LINK CLICKS · 30 DAYS</span><strong>{linkClicks}</strong></article>
-              <article><span>PROJECTS</span><strong>{projects.length}</strong></article>
-            </section>
-            <p className="admin-privacy">Activity is stored as aggregate event counts only. The analytics table does not store visitor identities, IP addresses, or query strings.</p>
-            <CareerCentre csrfToken={csrfToken} />
+            {view !== "career" ? (
+              <>
+                <section className="admin-stats" aria-label="Aggregate site activity for the last 30 days">
+                  <article><span>PAGE VIEWS · 30 DAYS</span><strong>{pageViews}</strong></article>
+                  <article><span>LINK CLICKS · 30 DAYS</span><strong>{linkClicks}</strong></article>
+                  <article><span>PROJECTS</span><strong>{projects.length}</strong></article>
+                </section>
+                <p className="admin-privacy">Activity is stored as aggregate event counts only. The analytics table does not store visitor identities, IP addresses, or query strings.</p>
+              </>
+            ) : null}
 
-            <section className="admin-panel">
+            {view === "career" ? (
+              <div className="admin-career-page-heading">
+                <p className="eyebrow">PRIVATE CAREER WORKSPACE</p>
+                <h1>Job Radar<span className="accent">.</span></h1>
+                <p className="admin-help">Search, review, import and track opportunities from one dedicated workspace.</p>
+              </div>
+            ) : null}
+            {view === "career" ? (
+              <CareerCentre csrfToken={csrfToken} />
+            ) : (
+              <section className="admin-quick-links" aria-label="Admin shortcuts">
+                <a href="/admin/career"><span>CAREER AUTOMATION</span><strong>Open Job Radar <span aria-hidden="true">→</span></strong><small>Search, shortlist, import and review job opportunities.</small></a>
+                <a href="/admin#project-editor"><span>PORTFOLIO CONTENT</span><strong>Add a project <span aria-hidden="true">→</span></strong><small>Publish a verified project or update your portfolio.</small></a>
+                <a href="/admin#operations"><span>PRIVATE OPERATIONS</span><strong>Open inbox &amp; documents <span aria-hidden="true">→</span></strong><small>Manage private messages and document drafts.</small></a>
+              </section>
+            )}
+
+            {view !== "career" ? (
+              <>
+            <section className="admin-panel" id="account">
               <div className="admin-panel-heading"><div><p className="eyebrow">ACCOUNT</p><h2>Account settings</h2></div></div>
               <form className="project-form" onSubmit={(event) => void handleCredentialChange(event)}>
                 <label htmlFor="account-new-email">New email (optional)</label>
@@ -546,7 +587,7 @@ export default function Admin() {
               </form>
             </section>
 
-            <section className="admin-panel">
+            <section className="admin-panel" id="project-editor">
               <div className="admin-panel-heading"><div><p className="eyebrow">CONTENT MANAGEMENT</p><h2>{editingId ? "Edit project" : "Add a project"}</h2></div></div>
               <form className="project-form" onSubmit={(event) => void saveProject(event)}>
                 <div className="form-row">
@@ -579,7 +620,7 @@ export default function Admin() {
               </form>
             </section>
 
-            <section className="admin-panel">
+            <section className="admin-panel" id="projects">
               <div className="admin-panel-heading"><div><p className="eyebrow">SAVED CONTENT</p><h2>Your projects</h2></div></div>
               {projects.length ? (
                 <div className="admin-project-list">
@@ -596,7 +637,7 @@ export default function Admin() {
               ) : <p className="admin-help">No projects yet. Add one above; unpublished drafts are visible only here.</p>}
             </section>
 
-            <section className="admin-panel" aria-labelledby="portfolio-content-title">
+            <section className="admin-panel" id="content-editor" aria-labelledby="portfolio-content-title">
               <div className="admin-panel-heading"><div><p className="eyebrow">PORTFOLIO CMS</p><h2 id="portfolio-content-title">{editingContentId ? "Edit a portfolio entry" : "Add to a portfolio page"}</h2></div></div>
               <p className="admin-help">Create and publish plain-text entries for experience, education, training, achievements, articles, services, write-ups, CTFs, and other portfolio sections. Drafts stay private.</p>
               <form className="project-form" onSubmit={(event) => void saveContent(event)}>
@@ -630,7 +671,7 @@ export default function Admin() {
               </form>
             </section>
 
-            <section className="admin-panel" aria-labelledby="saved-content-title">
+            <section className="admin-panel" id="portfolio-content" aria-labelledby="saved-content-title">
               <div className="admin-panel-heading"><div><p className="eyebrow">SAVED CONTENT</p><h2 id="saved-content-title">Portfolio entries</h2></div></div>
               {contentEntries.length ? (
                 <div className="admin-project-list">
@@ -650,7 +691,7 @@ export default function Admin() {
               ) : <p className="admin-help">No additional entries yet. Add a record above; published entries appear on their matching portfolio page.</p>}
             </section>
 
-            <section className="admin-panel">
+            <section className="admin-panel" id="analytics">
               <div className="admin-panel-heading"><div><p className="eyebrow">PRIVATE AGGREGATES / LAST 30 DAYS</p><h2>Recent activity</h2></div></div>
               {analytics.length ? (
                 <div className="analytics-table-wrap"><table className="analytics-table"><thead><tr><th>Date</th><th>Event</th><th>Count</th></tr></thead><tbody>
@@ -658,7 +699,9 @@ export default function Admin() {
                 </tbody></table></div>
               ) : <p className="admin-help">No activity has been recorded yet. Metrics appear here after the API is connected to the public site.</p>}
             </section>
-            <AdminExtensions csrfToken={csrfToken} />
+            <div id="operations"><AdminExtensions csrfToken={csrfToken} /></div>
+              </>
+            ) : null}
           </>
         ) : null}
       </div>

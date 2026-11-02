@@ -1,0 +1,60 @@
+name: Quality checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, feat/admin-workspace-ux]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API lint and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.16.0
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - name: Install API dependencies
+        working-directory: api
+        run: npm ci
+      - name: Lint API
+        working-directory: api
+        run: npm run lint
+      - name: Test API
+        working-directory: api
+        run: npm test
+
+  client:
+    name: Client lint, types and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.16.0
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+      - name: Lint client
+        working-directory: client
+        run: npm run lint
+      - name: Type-check client
+        working-directory: client
+        run: npm run typecheck
+      - name: Build client
+        working-directory: client
+        run: npm run build
