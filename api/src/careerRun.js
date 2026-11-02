@@ -1,4 +1,4 @@
-import { fetchCareerSource } from "./careerSources.js";
+import { fetchCareerSource, stripHtml } from "./careerSources.js";
 import { saveCareerJob } from "./careerImport.js";
 
 const runBudgetMs = 4 * 60 * 1000;
@@ -49,9 +49,28 @@ function emptySummary() {
     updated: 0,
     duplicates: 0,
     discarded: 0,
+    discard_reasons: { title_no_match: 0, malformed: 0, duplicate: 0, other: 0 },
+    sample_discarded_titles: [],
+    matched_titles: [],
     skipped_reason: null,
     error: null,
   };
+}
+
+function addDiagnosticTitles(target, values) {
+  for (const value of values ?? []) {
+    if (target.length >= 8) break;
+    const title = stripHtml(value, 120);
+    if (title) target.push(title);
+  }
+}
+
+function addDiscardReason(entry, reason, count = 1) {
+  if (Object.hasOwn(entry.discard_reasons, reason)) {
+    entry.discard_reasons[reason] += count;
+  } else {
+    entry.discard_reasons.other += count;
+  }
 }
 
 function errorText(error) {
@@ -247,13 +266,29 @@ export function createCareerRunService({
         });
         entry.fetched = Number(result.fetched ?? 0);
         entry.discarded = Number(result.discarded ?? 0) + Number(result.malformed ?? 0);
+        for (const [reason, count] of Object.entries(result.discard_reasons ?? {})) {
+          addDiscardReason(entry, reason, Number(count) || 0);
+        }
+        if (!result.discard_reasons) {
+          addDiscardReason(entry, "title_no_match", Number(result.discarded ?? 0));
+          addDiscardReason(entry, "malformed", Number(result.malformed ?? 0));
+        }
+        addDiagnosticTitles(entry.sample_discarded_titles, result.sample_discarded_titles);
+        addDiagnosticTitles(entry.matched_titles, result.matched_titles);
         for (const job of result.jobs) {
           if (signal.aborted) break;
           try {
             const saved = await saveJob(db, job);
-            entry[saved.result === "new" ? "new" : saved.result === "updated" ? "updated" : "duplicates"]++;
+            if (saved.result === "duplicate") {
+              entry.duplicates++;
+              addDiscardReason(entry, "duplicate");
+              addDiagnosticTitles(entry.sample_discarded_titles, [job.title]);
+            } else {
+              entry[saved.result === "new" ? "new" : "updated"]++;
+            }
           } catch (error) {
             entry.error = errorText(error);
+            addDiscardReason(entry, "other");
           }
         }
         if (result.errors?.length) entry.error = result.errors.map((error) => String(error).slice(0, 200)).join("; ").slice(0, 500);
