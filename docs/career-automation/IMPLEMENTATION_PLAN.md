@@ -43,9 +43,9 @@ Every source entry must retain its terms/documentation URL, review date, authent
 
 | Source | Phase 2 status | Last reviewed | Polling/request limits | Attribution |
 |---|---|---|---|---|
-| Jobicy | Enabled; current API first, legacy endpoint fallback | 2026-11-01 (implementation plan reviewed; official terms not independently rechecked) | Minimum 3,600 seconds between scans; 24 requests/day ceiling | “Jobicy” and preserve original listing URL |
-| Remote OK | Enabled; public JSON feed | 2026-11-01 (implementation plan reviewed; official terms not independently rechecked) | Minimum 21,600 seconds between scans; 4 requests/day ceiling | “Remote OK” and preserve original listing URL |
-| Remotive | Enabled for private admin only; public redisplay off | 2026-11-01 (implementation plan reviewed; official terms not independently rechecked) | Minimum 21,600 seconds between scans; maximum 4 requests/day and at least 30 seconds between request attempts; listings are delayed 24 hours | Retain Remotive attribution fields and original listing link |
+| Jobicy | Enabled; one title-tag query per scan; current API endpoint only | 2026-11-02; `tag` documented in [official API docs](https://jobicy.com/jobs-rss-feed) | Minimum 3,600 seconds between scans; 24 requests/day ceiling; rotate at most four existing role keywords across scans | “Jobicy” and preserve original listing URL |
+| Remote OK | Enabled; public JSON feed; generic feed retained | 2026-11-02; no search/tag parameter found in [official API feed and terms](https://remoteok.com/api) | Minimum 21,600 seconds between scans; 4 requests/day ceiling | “Remote OK” and preserve original listing URL |
+| Remotive | Enabled for private admin only; public redisplay off; one documented `search` query per scan | 2026-11-02; `search` documented in the [official API README](https://github.com/remotive-com/remote-jobs-api) | Minimum 21,600 seconds between scans; maximum 4 requests/day and at least 30 seconds between request attempts; rotate at most four existing role terms/day; listings are delayed 24 hours | Retain Remotive attribution fields and original listing link |
 | Arbeitnow | Enabled; no Kenya eligibility is inferred | 2026-11-01 (implementation plan reviewed; official terms not independently rechecked) | Minimum 21,600 seconds between scans; 4 requests/day ceiling | Preserve source and listing link |
 | Greenhouse / Lever | Permission allowed; polling disabled until a board is added and the registry source is explicitly enabled | 2026-11-01 (implementation plan reviewed; official terms not independently rechecked) | Minimum 21,600 seconds between scans; 4 requests/day ceiling across watchlist | Preserve official board link and employer label |
 | Manual import | Enabled; URL/text is admin supplied and the URL is never fetched | 2026-11-01 | No network requests | “Manually imported by admin” |
@@ -88,4 +88,10 @@ Phase 0 findings are retained as a record. Phase 1 and Phase 2 are recorded belo
 - Added fixture-tested fixed-host adapters, intake normalization/deduplication, source request accounting, and shared locked manual/worker scan processing; MyJobMag remains disabled.
 - Added private job/import/watchlist/search-link APIs, additive Phase 2 SQL, and a private-worker workflow template; no SQL was executed.
 - API lint passed and the complete test suite passed (61/61); adapter tests used injected fixtures rather than provider network calls.
-- MyJobMag's official directory did not confirm a feed URL or private-polling permission; Phase 3 remains unauthorized.
+- MyJobMag's official directory did not confirm a feed URL or private-polling permission; that source remains disabled.
+
+## Phase 3A status
+
+- Added deterministic, fixture-tested Kenya eligibility evidence and weighted fit assessments; the latest active profile for a matching track is treated as its selected master profile.
+- Added private assessment APIs, filters, profile-change reassessment, ingestion screening, configurable hard filters, and the paste-ready Phase 3A SQL; no SQL was executed.
+- Corrected Remotive to use its documented `search` parameter with daily rotation within the existing request ledger and provider caps.

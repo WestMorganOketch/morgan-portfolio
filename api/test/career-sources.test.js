@@ -10,8 +10,10 @@ import {
   fetchRemoteOk,
   fetchRemotive,
   fetchSourceJson,
+  jobicyQueryTerms,
   matchesRoleTitle,
   normalizeHttpUrl,
+  remotiveQueryTerms,
   resetRequestPacingForTests,
   stripHtml,
 } from "../src/careerSources.js";
@@ -27,7 +29,8 @@ test("Jobicy normalizes valid matches, skips malformed rows, and counts irreleva
   resetRequestPacingForTests();
   const result = await fetchJobicy({
     fetchImpl: async (url, init) => {
-      assert.equal(url.href, "https://jobicy.com/api/jobs");
+      assert.equal(url.origin + url.pathname, "https://jobicy.com/api/jobs");
+      assert.equal(url.searchParams.get("tag"), "security analyst");
       assert.equal(init.redirect, "manual");
       return jsonResponse(fixture("jobicy"));
     },
@@ -41,24 +44,57 @@ test("Jobicy normalizes valid matches, skips malformed rows, and counts irreleva
   assert.equal(result.jobs[0].url, "https://jobicy.com/jobs/101");
   assert.equal(result.jobs[0].description_text, "Monitor alerts & investigate incidents.");
   assert.equal(result.jobs[0].salary_text, "Confidential");
+  assert.deepEqual(result.query_results, [{
+    label: "tag:security analyst",
+    fetched: 3,
+    matched: 1,
+    discarded: 2,
+  }]);
 });
 
-test("Jobicy tries its fallback endpoint when the primary response has no job rows", async () => {
+test("Jobicy creates an encoded, documented tag query using only current role keywords", async () => {
   resetRequestPacingForTests();
   const requested = [];
-  const result = await fetchJobicy({
+  await fetchJobicy({
+    queryTerm: "computer skills trainer",
     fetchImpl: async (url) => {
       requested.push(url.href);
-      return jsonResponse(requested.length === 1
-        ? { unexpected: [] }
-        : { jobs: [{ id: "fallback-1", title: "Security Monitoring Analyst", url: "https://jobicy.com/jobs/fallback" }] });
+      return jsonResponse({ jobs: [] });
     },
   });
-  assert.deepEqual(requested, [
-    "https://jobicy.com/api/jobs",
-    "https://jobicy.com/api/v2/remote-jobs",
+  assert.deepEqual(jobicyQueryTerms, [
+    "security analyst",
+    "soc analyst",
+    "ict trainer",
+    "computer skills trainer",
   ]);
-  assert.equal(result.jobs.length, 1);
+  assert.equal(requested.length, 1);
+  assert.match(requested[0], /tag=computer\+skills\+trainer/);
+});
+
+test("Jobicy does not retry inside its one-request hourly polling slot", async () => {
+  resetRequestPacingForTests();
+  let requests = 0;
+  await assert.rejects(fetchJobicy({
+    maxRequests: 3,
+    fetchImpl: async () => {
+      requests++;
+      return jsonResponse({ error: "temporary failure" }, 503);
+    },
+    sleep: async () => {},
+  }), /HTTP 503/);
+  assert.equal(requests, 1);
+});
+
+test("Remote OK stays on its generic feed because its official API documents no query parameter", async () => {
+  resetRequestPacingForTests();
+  const result = await fetchRemoteOk({
+    fetchImpl: async (url) => {
+      assert.equal(url.href, "https://remoteok.com/api");
+      return jsonResponse(fixture("remoteok"));
+    },
+  });
+  assert.deepEqual(result.query_results.map(({ label }) => label), ["latest"]);
 });
 
 test("Remote OK skips its legal notice and retains valid security matches", async () => {
@@ -74,13 +110,17 @@ test("Remote OK skips its legal notice and retains valid security matches", asyn
   assert.equal(result.jobs[0].title, "SOC Analyst");
   assert.equal(result.discarded, 1);
   assert.equal(result.malformed, 1);
+  assert.deepEqual(result.query_results.map(({ label }) => label), ["latest"]);
 });
 
-test("Remotive preserves private-feed links and skips malformed or irrelevant listings", async () => {
+test("Remotive uses its documented, URL-encoded search parameter", async () => {
   resetRequestPacingForTests();
   const result = await fetchRemotive({
+    queryTerm: "ict trainer",
     fetchImpl: async (url) => {
-      assert.equal(url.href, "https://remotive.com/api/remote-jobs");
+      assert.equal(url.origin + url.pathname, "https://remotive.com/api/remote-jobs");
+      assert.equal(url.searchParams.get("search"), "ict trainer");
+      assert.match(url.href, /search=ict\+trainer/);
       return jsonResponse(fixture("remotive"));
     },
   });
@@ -89,6 +129,8 @@ test("Remotive preserves private-feed links and skips malformed or irrelevant li
   assert.equal(result.jobs[0].title, "ICT Trainer");
   assert.equal(result.discarded, 1);
   assert.equal(result.malformed, 1);
+  assert.deepEqual(remotiveQueryTerms, jobicyQueryTerms);
+  assert.deepEqual(result.query_results.map(({ label }) => label), ["search:ict trainer"]);
 });
 
 test("Arbeitnow accepts the documented data array without inferring country eligibility", async () => {

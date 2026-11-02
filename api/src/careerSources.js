@@ -14,22 +14,34 @@ const ARBEITNOW_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const requestTimeoutMs = 15_000;
 const redirectStatuses = new Set([301, 302, 303, 307, 308]);
 
-const roleTitleVariants = [
-  "junior security analyst",
+export const careerRoleTrackTerms = {
+  "Security Analyst/SOC": [
+    "junior security analyst",
+    "security analyst",
+    "cybersecurity analyst",
+    "cyber security analyst",
+    "soc analyst",
+    "security operations analyst",
+    "information security analyst",
+    "security monitoring analyst",
+  ],
+  "Computer Skills/ICT Trainer": [
+    "computer skills trainer",
+    "ict trainer",
+    "digital skills trainer",
+    "it trainer",
+    "computer instructor",
+    "ict tutor",
+  ],
+};
+const roleTitleVariants = Object.values(careerRoleTrackTerms).flat();
+export const jobicyQueryTerms = [
   "security analyst",
-  "cybersecurity analyst",
-  "cyber security analyst",
   "soc analyst",
-  "security operations analyst",
-  "information security analyst",
-  "security monitoring analyst",
-  "computer skills trainer",
   "ict trainer",
-  "digital skills trainer",
-  "it trainer",
-  "computer instructor",
-  "ict tutor",
+  "computer skills trainer",
 ];
+export const remotiveQueryTerms = Object.freeze([...jobicyQueryTerms]);
 
 function delay(milliseconds, signal) {
   if (milliseconds <= 0) return Promise.resolve();
@@ -331,40 +343,62 @@ async function requestJson(url, options) {
 }
 
 export async function fetchJobicy(options) {
-  const endpoints = [
-    "https://jobicy.com/api/jobs",
-    "https://jobicy.com/api/v2/remote-jobs",
-  ];
-  let lastError;
-  for (const endpoint of endpoints) {
-    try {
-      const payload = await requestJson(endpoint, { ...options, source: "jobicy" });
-      const rows = rowsFor(payload, "jobs");
-      if (rows.length === 0) {
-        lastError = new Error("Jobicy response contained no job rows.");
-        continue;
-      }
-      return normalizePayload(rows, "jobicy");
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw lastError ?? new Error("Jobicy feed was unavailable.");
+  const term = options.queryTerm ?? jobicyQueryTerms[0];
+  if (!jobicyQueryTerms.includes(term)) throw new TypeError("Unsupported Jobicy query term.");
+  const url = new URL("https://jobicy.com/api/jobs");
+  url.searchParams.set("tag", term);
+  const payload = await requestJson(url, {
+    ...options,
+    source: "jobicy",
+    maxRequests: Math.min(1, options.maxRequests ?? 3),
+  });
+  const result = normalizePayload(rowsFor(payload, "jobs"), "jobicy");
+  return {
+    ...result,
+    query_results: [{
+      label: `tag:${term}`,
+      fetched: result.fetched,
+      matched: result.jobs.length,
+      discarded: result.discarded + result.malformed,
+    }],
+  };
 }
 
 export async function fetchRemoteOk(options) {
   const payload = await requestJson("https://remoteok.com/api", { ...options, source: "remoteok" });
   const rows = rowsFor(payload, "jobs");
-  return normalizePayload(rows.slice(1), "remoteok");
+  const result = normalizePayload(rows.slice(1), "remoteok");
+  return {
+    ...result,
+    query_results: [{
+      label: "latest",
+      fetched: result.fetched,
+      matched: result.jobs.length,
+      discarded: result.discarded + result.malformed,
+    }],
+  };
 }
 
 export async function fetchRemotive(options) {
-  const payload = await requestJson("https://remotive.com/api/remote-jobs", {
+  const term = options.queryTerm ?? remotiveQueryTerms[0];
+  if (!remotiveQueryTerms.includes(term)) throw new TypeError("Unsupported Remotive query term.");
+  const url = new URL("https://remotive.com/api/remote-jobs");
+  url.searchParams.set("search", term);
+  const payload = await requestJson(url, {
     ...options,
     source: "remotive",
     minIntervalMs: 30_000,
   });
-  return normalizePayload(rowsFor(payload, "jobs"), "remotive");
+  const result = normalizePayload(rowsFor(payload, "jobs"), "remotive");
+  return {
+    ...result,
+    query_results: [{
+      label: `search:${term}`,
+      fetched: result.fetched,
+      matched: result.jobs.length,
+      discarded: result.discarded + result.malformed,
+    }],
+  };
 }
 
 export async function fetchArbeitnow(options) {

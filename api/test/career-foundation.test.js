@@ -15,6 +15,7 @@ const tableNames = [
   "jr_audit_events",
   "jr_jobs",
   "jr_ats_watchlist",
+  "jr_assessments",
 ];
 const phaseOneTableNames = tableNames.slice(0, 6);
 const sourceRows = [
@@ -34,6 +35,8 @@ class FakeCareerDatabase {
     timezone: "Africa/Nairobi",
     show_company_name: false,
     public_publishing: false,
+    excluded_keywords: [],
+    excluded_companies: [],
     updated_at: new Date().toISOString(),
   };
   profiles = new Map();
@@ -52,6 +55,8 @@ class FakeCareerDatabase {
         role_tracks: values[0], countries: values[1], remote_eligibility: JSON.parse(values[2]),
         score_threshold: values[3], max_packets_per_day: values[4], max_sends_per_day: values[5],
         timezone: values[6], show_company_name: values[7], public_publishing: values[8],
+        excluded_keywords: values[9] ?? this.settings.excluded_keywords,
+        excluded_companies: values[10] ?? this.settings.excluded_companies,
         updated_at: new Date().toISOString(),
       };
       return { rows: [{ ...this.settings }] };
@@ -101,6 +106,8 @@ class FakeCareerDatabase {
     if (statement.startsWith("SELECT id, trigger, status")) {
       return { rows: [...this.runs.values()].sort((a, b) => b.started_at.localeCompare(a.started_at)).slice(0, 100) };
     }
+    if (statement.startsWith("SELECT j.id, j.source_key, s.name AS source_name")) return { rows: [] };
+    if (statement.startsWith("SELECT id FROM public.jr_jobs ORDER BY first_seen_at")) return { rows: [] };
     if (statement.startsWith("SELECT s.key, s.name, s.enabled")) {
       await new Promise((resolve) => setTimeout(resolve, 50));
       return { rows: [] };
@@ -185,8 +192,16 @@ async function createFixture() {
     if (req.get("x-csrf-token") !== "test-csrf") return res.status(403).json({ error: "Request verification failed." });
     next();
   };
+  const assessmentService = {
+    rerunCount: 0,
+    async assessJob() {},
+    async reassessAll() {
+      this.rerunCount++;
+      return { assessed: 0, failed: 0 };
+    },
+  };
   app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
-  registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin, requireCsrfToken });
+  registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin, requireCsrfToken }, { assessmentService });
   app.use((error, _req, res, _next) => res.status(500).json({ error: error.message }));
   const server = app.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -196,6 +211,7 @@ async function createFixture() {
   return {
     app,
     db,
+    assessmentService,
     close: () => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
     request: (path, { method = "GET", body, admin = false, origin = "http://localhost:3000", csrf = true, headers = {} } = {}) => fetch(
       `http://127.0.0.1:${address.port}${path}`,
@@ -234,6 +250,7 @@ test("all career admin routes require an admin session", async () => {
       ["/api/admin/career/scan-now", "POST"],
       ["/api/admin/career/jobs", "GET"],
       ["/api/admin/career/jobs/00000000-0000-4000-8000-000000000001", "GET"],
+      ["/api/admin/career/assessments/rerun", "POST"],
       ["/api/admin/career/import", "POST"],
       ["/api/admin/career/watchlist", "GET"],
       ["/api/admin/career/watchlist", "POST"],
@@ -260,6 +277,7 @@ test("career mutations require same-origin and CSRF", async () => {
       ["/api/admin/career/resume-profiles/00000000-0000-4000-8000-000000000001/archive", "POST"],
       ["/api/admin/career/sources/jobicy", "PATCH"],
       ["/api/admin/career/scan-now", "POST"],
+      ["/api/admin/career/assessments/rerun", "POST"],
       ["/api/admin/career/import", "POST"],
       ["/api/admin/career/watchlist", "POST"],
       ["/api/admin/career/watchlist/00000000-0000-4000-8000-000000000001", "DELETE"],
@@ -269,6 +287,28 @@ test("career mutations require same-origin and CSRF", async () => {
       const noCsrf = await fixture.request(path, { method, body: {}, ...authorized, csrf: false });
       assert.equal(noCsrf.status, 403, `${method} ${path} without CSRF`);
     }
+  } finally {
+    await fixture.close();
+  }
+});
+
+test("assessment filters and rerun route stay admin-protected and reruns profiles", async () => {
+  const fixture = await createFixture();
+  try {
+    const jobs = await fixture.request(
+      "/api/admin/career/jobs?min_score=65&eligibility=unknown&status=needs_manual_attention",
+      authorized,
+    );
+    assert.equal(jobs.status, 200);
+    assert.deepEqual(await jobs.json(), { jobs: [], nextCursor: null });
+
+    const rerun = await fixture.request("/api/admin/career/assessments/rerun", {
+      ...authorized,
+      method: "POST",
+    });
+    assert.equal(rerun.status, 200);
+    assert.deepEqual(await rerun.json(), { assessed: 0, failed: 0 });
+    assert.equal(fixture.assessmentService.rerunCount, 1);
   } finally {
     await fixture.close();
   }
@@ -297,6 +337,7 @@ test("setup reports only secret configuration booleans and safe metadata", async
       }
       assert.equal(result.JR_SEND_MODE, "draft");
       assert.equal(result.tables.configured, true);
+      assert.equal(result.assessmentTables.configured, true);
     } finally {
       await fixture.close();
     }
@@ -307,6 +348,24 @@ test("setup reports only secret configuration booleans and safe metadata", async
     }
     if (previousSendMode === undefined) delete process.env.JR_SEND_MODE;
     else process.env.JR_SEND_MODE = previousSendMode;
+  }
+});
+
+test("assessment-dependent settings fail clearly until Phase 3A SQL is applied", async () => {
+  const fixture = await createFixture();
+  try {
+    fixture.db.tables.delete("jr_assessments");
+    const setup = await fixture.request("/api/admin/career/setup", authorized);
+    assert.equal(setup.status, 200);
+    assert.equal((await setup.json()).assessmentTables.configured, false);
+
+    const settings = await fixture.request("/api/admin/career/settings", authorized);
+    assert.equal(settings.status, 409);
+    assert.match((await settings.json()).error, /phase-3a\.sql/);
+    const health = await fixture.request("/api/health");
+    assert.equal(health.status, 200);
+  } finally {
+    await fixture.close();
   }
 });
 
@@ -321,6 +380,8 @@ test("resume originals are accepted only at creation and cannot be changed throu
     });
     assert.equal(created.status, 201);
     const profile = await created.json();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(fixture.assessmentService.rerunCount, 1);
     const changed = await fixture.request(`/api/admin/career/resume-profiles/${profile.id}`, {
       ...authorized,
       method: "PATCH",
@@ -453,4 +514,51 @@ test("phase 1 SQL is repeatable, isolated to jr_ tables, and locks table access"
   const rollback = readFileSync(new URL("../../docs/career-automation/sql/phase-1.rollback.sql", import.meta.url), "utf8");
   assert.match(rollback, /^-- manual, never auto-run/);
   assert.deepEqual([...rollback.matchAll(/DROP TABLE IF EXISTS public\.(jr_[a-z_]+)/gi)].map((match) => match[1]), [...phaseOneTableNames].reverse());
+});
+
+test("phase 3A SQL is additive, repeatable, and protects its new table", () => {
+  const sql = readFileSync(new URL("../../docs/career-automation/sql/phase-3a.sql", import.meta.url), "utf8");
+  const migration = readFileSync(new URL("../migrations/006_career_assessments.sql", import.meta.url), "utf8");
+  assert.equal(sql, migration);
+  assert.match(sql, /^\s*BEGIN;/);
+  assert.match(sql, /COMMIT;\s*$/);
+  assert.doesNotMatch(sql, /\b(?:DROP|ALTER)\s+TABLE\s+public\.(?!jr_)[a-z_]+/i);
+  assert.doesNotMatch(sql, /CREATE\s+POLICY/i);
+  const tables = [...sql.matchAll(/CREATE TABLE IF NOT EXISTS public\.(jr_[a-z_]+)/gi)].map((match) => match[1]);
+  assert.deepEqual(tables, ["jr_assessments"]);
+  const allowedList = sql.match(/allowed_statuses text := '([^']*(?:''[^']*)*)';/i)?.[1];
+  assert.ok(allowedList, "status constraint is built from a documented allowlist");
+  const newStatuses = [...allowedList.matchAll(/''([^']+)''/g)].map((match) => match[1]);
+  const oldStatuses = [
+    "discovered", "shortlisted", "maybe", "flagged", "passed", "duplicate", "expired", "closed",
+  ];
+  assert.match(sql, /FROM pg_constraint/);
+  assert.match(sql, /pg_get_constraintdef\(oid\)/);
+  assert.ok(oldStatuses.every((status) => newStatuses.includes(status)), "new status list retains every Phase 2 status");
+  for (const status of [
+    "screened", "match_review", "blocked_risk", "not_a_fit", "needs_manual_attention",
+  ]) {
+    assert.ok(newStatuses.includes(status), `${status} is available for planned job-level workflows`);
+  }
+  for (const table of tables) {
+    const creation = sql.indexOf(`CREATE TABLE IF NOT EXISTS public.${table}`);
+    const rls = sql.indexOf(`ALTER TABLE public.${table} ENABLE ROW LEVEL SECURITY`);
+    const revoke = sql.indexOf(`REVOKE ALL PRIVILEGES ON TABLE public.${table} FROM PUBLIC, anon, authenticated;`);
+    assert.ok(rls > creation, `${table} enables RLS`);
+    assert.ok(revoke > rls, `${table} revokes client and public grants`);
+  }
+  const rollback = readFileSync(new URL("../../docs/career-automation/sql/phase-3a.rollback.sql", import.meta.url), "utf8");
+  assert.match(rollback, /^-- manual, never auto-run/);
+  assert.deepEqual([...rollback.matchAll(/DROP TABLE IF EXISTS public\.(jr_[a-z_]+)/gi)].map((match) => match[1]), ["jr_assessments"]);
+  assert.match(rollback, /DROP CONSTRAINT %I/);
+  const rollbackList = rollback.match(/original_statuses text := '([^']*(?:''[^']*)*)';/i)?.[1];
+  assert.ok(rollbackList);
+  assert.deepEqual(
+    [...rollbackList.matchAll(/''([^']+)''/g)].map((match) => match[1]),
+    oldStatuses,
+  );
+  const verify = readFileSync(new URL("../../docs/career-automation/sql/phase-3a.verify.sql", import.meta.url), "utf8");
+  assert.match(verify, /has_table_privilege\('anon'/);
+  assert.match(verify, /has_table_privilege\('authenticated'/);
+  assert.match(verify.trim(), /ORDER BY table_name;$/);
 });
