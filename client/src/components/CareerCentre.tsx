@@ -521,7 +521,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   }
 
   function addRoleTrack() {
-    const value = newRoleTrack.trim().replace(/\\s+/g, " ");
+    const value = newRoleTrack.trim().replace(/\s+/g, " ");
     if (!value) return;
     if (settings.role_tracks.some((track) => track.toLowerCase() === value.toLowerCase())) {
       setError("That job title is already in your search profile.");
