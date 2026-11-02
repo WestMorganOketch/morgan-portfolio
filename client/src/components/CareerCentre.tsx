@@ -418,17 +418,34 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   useEffect(() => {
     let active = true;
     const timer = window.setTimeout(() => {
-      loadOverview().catch((cause: unknown) => {
-        if (active) setError(cause instanceof Error ? cause.message : "The career centre could not be loaded.");
-      }).finally(() => {
-        if (active) setLoading(false);
-      });
+      const initialize = async () => {
+        try {
+          await loadOverview();
+          try {
+            const runData = await request("/api/admin/career/runs", csrfToken);
+            if (active && Array.isArray(runData)) {
+              const latestRunning = runData.filter(isRecord).find((row) => row.status === "running");
+              if (latestRunning) {
+                setScanRunId(string(latestRunning.id) ? latestRunning.id : null);
+                setScanStatus("running");
+              }
+            }
+          } catch {
+            // The overview remains usable if run history is temporarily unavailable.
+          }
+        } catch (cause) {
+          if (active) setError(cause instanceof Error ? cause.message : "The career centre could not be loaded.");
+        } finally {
+          if (active) setLoading(false);
+        }
+      };
+      void initialize();
     }, 0);
     return () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [loadOverview]);
+  }, [csrfToken, loadOverview]);
 
   useEffect(() => {
     let active = true;
