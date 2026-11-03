@@ -20,6 +20,17 @@
 
 ## Phase 0 baseline performance
 
-- **Local Lighthouse run:** Not available from this environment. The repository could not be cloned into the local environment because outbound DNS/network access to GitHub is blocked.
-- **LCP / INP / CLS / total transferred bytes:** Pending a reproducible browser audit; no values are fabricated.
-- Next step for a reliable baseline: run Lighthouse against the exact pre-redesign build on desktop and throttled mobile before design implementation, save reports as `lighthouse-before.html`, and reuse the same conditions for `lighthouse-after.html`.
+Measured by GitHub Actions on a clean runner against the **unchanged** `main` build, served locally with the production Next.js server. Mobile was simulated at 390 × 844 CSS pixels with Lighthouse's simulated throttling.
+
+| Metric | Desktop | Mobile |
+|---|---:|---:|
+| Largest Contentful Paint (LCP) | 755 ms | 2,877 ms |
+| Interaction to Next Paint (INP) | Not reported by Lighthouse lab | Not reported by Lighthouse lab |
+| Cumulative Layout Shift (CLS) | 0.000 | 0.000 |
+| Total transferred bytes | 308,067 bytes | 333,222 bytes |
+| Lighthouse performance score | 100 | 95 |
+
+- These are reproducible **lab** baselines, not field Core Web Vitals. A Lighthouse lab trace does not reliably measure INP; a separate interaction test or field-data source is needed to assess that metric.
+- The mobile LCP baseline is above the brief's 2.5-second target by about 377 ms, so Phase 1/2 must avoid adding render-blocking work and should recheck this metric after each major change.
+- GitHub Actions run and HTML/JSON report artifact: [Public-site Lighthouse baseline](https://github.com/WestMorganOketch/morgan-portfolio/actions/runs/41601082272).
+- The workflow now copies the reports to the exact filenames requested by the brief: `lighthouse-before.html` and `lighthouse-before-desktop.html`, plus their JSON companions. The same process can be reused for `lighthouse-after.html` after implementation.
