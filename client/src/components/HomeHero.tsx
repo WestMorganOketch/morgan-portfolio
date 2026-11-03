@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { MotionPreferenceProvider } from "@/components/MotionPreference";
 import {
   m,
   useAnimationControls,
@@ -114,7 +115,7 @@ function ServicesFace({ activeLine }: { activeLine: number }) {
   );
 }
 
-function SkillsFace({ reducedMotion }: { reducedMotion: boolean }) {
+function SkillsFace({ reducedMotion, visible }: { reducedMotion: boolean; visible: boolean }) {
   return (
     <>
       <div className="visual-window-header">
@@ -130,8 +131,8 @@ function SkillsFace({ reducedMotion }: { reducedMotion: boolean }) {
             <m.span
               className="showcase-skill-chip"
               key={skill.name}
-              initial={reducedMotion ? false : { opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={false}
+              animate={visible ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }}
               transition={{
                 duration: reducedMotion ? 0.1 : 0.32,
                 delay: reducedMotion ? 0 : index * (HERO_TIMING.SKILL_STAGGER_MS / 1000),
@@ -157,39 +158,25 @@ function SkillsFace({ reducedMotion }: { reducedMotion: boolean }) {
 
 function ShowcaseFace({
   scene,
-  face,
   activeServiceLine,
   reducedMotion,
+  visible,
 }: {
   scene: ShowcaseScene;
-  face: "front" | "back";
   activeServiceLine: number;
   reducedMotion: boolean;
+  visible: boolean;
 }) {
-  const content = scene === "overview"
-    ? <OverviewFace />
-    : scene === "services"
-      ? <ServicesFace activeLine={face === "front" ? activeServiceLine : 0} />
-      : <SkillsFace reducedMotion={reducedMotion} />;
-
-  return (
-    <div
-      className={"visual-face visual-face-" + face + (scene === "skills" ? " visual-face-skills" : "")}
-      id={face === "front" ? "security-showcase-panel" : "security-showcase-back"}
-      role={face === "front" ? "tabpanel" : undefined}
-      aria-labelledby={face === "front" ? "showcase-tab-" + scene : undefined}
-      aria-hidden={face === "back" ? true : undefined}
-      inert={face === "back"}
-    >
-      {content}
-    </div>
-  );
+  if (scene === "overview") return <OverviewFace />;
+  if (scene === "services") return <ServicesFace activeLine={activeServiceLine} />;
+  return <SkillsFace reducedMotion={reducedMotion} visible={visible} />;
 }
 
 function FocusVisualizer() {
-  const { preference, setPreference, isSpinning, setIsSpinning } = useMotionPreference();
+  const { preference, setPreference, setIsSpinning } = useMotionPreference();
   const prefersReducedMotion = Boolean(useReducedMotion());
   const [activeScene, setActiveScene] = useState<ShowcaseScene>("overview");
+  const [visibleFace, setVisibleFace] = useState<"front" | "back">("front");
   const [frontScene, setFrontScene] = useState<ShowcaseScene>("overview");
   const [backScene, setBackScene] = useState<ShowcaseScene>("services");
   const [activeServiceLine, setActiveServiceLine] = useState(0);
@@ -209,6 +196,7 @@ function FocusVisualizer() {
   const swappedFaceRef = useRef(false);
   const spinTargetRef = useRef<ShowcaseScene>("services");
   const activeSceneRef = useRef<ShowcaseScene>("overview");
+  const visibleFaceRef = useRef<"front" | "back">("front");
   const hasLeftFirstOverviewRef = useRef(false);
   const pauseButtonRef = useRef<HTMLButtonElement>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -235,6 +223,8 @@ function FocusVisualizer() {
     setActiveScene(scene);
     setFrontScene(scene);
     setBackScene(nextScene(scene));
+    visibleFaceRef.current = "front";
+    setVisibleFace("front");
     setActiveServiceLine(0);
     angleRef.current = 0;
     spinnerControls.set({ rotateY: 0, rotateX: 0, rotateZ: 0, scale: 1 });
@@ -263,6 +253,8 @@ function FocusVisualizer() {
     const use3D = preference === "auto" && !prefersReducedMotion && supportsPreserve3D();
     if (use3D) {
       setBackScene(target);
+      visibleFaceRef.current = "front";
+      setVisibleFace("front");
       swappedFaceRef.current = false;
       angleRef.current = 0;
       setActiveServiceLine(0);
@@ -432,26 +424,47 @@ function FocusVisualizer() {
             onUpdate={(latest) => {
               const angle = Number(latest.rotateY ?? 0);
               angleRef.current = angle;
+              const nextVisibleFace: "front" | "back" =
+                angle >= 90 && angle < 270 ? "back" : "front";
+              if (visibleFaceRef.current !== nextVisibleFace) {
+                visibleFaceRef.current = nextVisibleFace;
+                setVisibleFace(nextVisibleFace);
+              }
               if (!swappedFaceRef.current && angle >= 180 && angle <= 360) {
                 swappedFaceRef.current = true;
                 setFrontScene(spinTargetRef.current);
               }
             }}
           >
-            <m.div className="visual-face visual-face-front" animate={fadeControls}>
+            <m.div
+              className="visual-face visual-face-front"
+              animate={fadeControls}
+              id={visibleFace === "front" ? "security-showcase-panel" : undefined}
+              role={visibleFace === "front" ? "tabpanel" : undefined}
+              aria-labelledby={visibleFace === "front" ? "showcase-tab-" + frontScene : undefined}
+              aria-hidden={visibleFace !== "front"}
+              inert={visibleFace !== "front"}
+            >
               <ShowcaseFace
                 scene={frontScene}
-                face="front"
                 activeServiceLine={activeServiceLine}
                 reducedMotion={prefersReducedMotion}
+                visible={visibleFace === "front"}
               />
             </m.div>
-            <div className="visual-face visual-face-back" aria-hidden="true">
+            <div
+              className="visual-face visual-face-back"
+              id={visibleFace === "back" ? "security-showcase-panel" : undefined}
+              role={visibleFace === "back" ? "tabpanel" : undefined}
+              aria-labelledby={visibleFace === "back" ? "showcase-tab-" + backScene : undefined}
+              aria-hidden={visibleFace !== "back"}
+              inert={visibleFace !== "back"}
+            >
               <ShowcaseFace
                 scene={backScene}
-                face="back"
                 activeServiceLine={0}
                 reducedMotion={prefersReducedMotion}
+                visible={visibleFace === "back"}
               />
             </div>
           </m.div>
@@ -516,7 +529,7 @@ function AnimatedRole() {
 
 export default function HomeHero() {
   return (
-    <>
+    <MotionPreferenceProvider>
       <section className="home-hero page-container" aria-labelledby="home-title">
         <div className="hero-copy">
           <p className="eyebrow"><span className="status-indicator" /> OPEN TO OPPORTUNITIES · NAIROBI, KENYA</p>
@@ -558,6 +571,6 @@ export default function HomeHero() {
           </div>
         </div>
       </section>
-    </>
+    </MotionPreferenceProvider>
   );
 }
