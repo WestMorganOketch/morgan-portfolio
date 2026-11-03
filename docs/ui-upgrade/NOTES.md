@@ -30,6 +30,33 @@ Implemented on `feat/ui-majestic-home`.
 - [ ] Confirm hidden-tab and hover/focus states stop the next automatic transition.
 - [ ] Run `npm run lint`, `npm run typecheck`, and `npm run build` in `client/`.
 
+## Phase U2 — Falling snow layer
+
+Implemented on the same feature branch.
+
+- Added `client/src/components/SnowLayer.tsx`, a hero-only canvas with one requestAnimationFrame loop, a capped delta time, three pre-rendered sprite canvases, ResizeObserver, IntersectionObserver, document-visibility handling, and full cleanup.
+- The layer is mounted after the initial paint using a lazy client import; it does not delay hero copy or CTA rendering.
+- Density is derived from hero area, capped at 70 desktop flakes, reduced on mobile and lower-core devices, and disabled for Save-Data.
+- Theme changes rebuild the three sprites from `--snow-color`; `--snow-opacity` controls intensity. During card spins, the canvas uses a subtle speed/wind gust.
+- The shared Pause/Play preference stops the loop and draws a static frame. Reduced motion draws a sparse static set and never starts the loop.
+- The canvas is decorative, masked to dissolve near the hero's bottom, and never receives pointer events.
+
+### U2 constants to tune
+
+- `SNOW_CONFIG` in `client/src/components/SnowLayer.tsx`: density, mobile/core reductions, DPR, flake size/speed/opacity/drift, spin gust, and reduced-motion count.
+- `--snow-color` and `--snow-opacity` in `client/src/app/globals.css`: per-theme color and intensity.
+- `SNOW_SCOPE` is fixed to `"hero"`; do not reuse this layer across the rest of the site.
+
+### U2 manual QA
+
+- [ ] Confirm snow appears only inside the hero and dissolves before the next section.
+- [ ] Confirm the Pause/Play button stops and resumes the canvas without restarting its positions.
+- [ ] Confirm the canvas stops when scrolled offscreen or the tab is hidden and resumes with one loop.
+- [ ] Toggle light/dark themes and verify flakes remain quiet but visible.
+- [ ] Emulate Save-Data, a narrow viewport, and a low-core device.
+- [ ] Enable reduced motion and confirm a sparse static scene only.
+- [ ] Navigate away and back; confirm observers and animation frames are cleaned up.
+
 ## Remaining phases
 
 - U2: replace the previous CSS-only snow treatment with a lazy client canvas layer controlled by the same motion preference.
