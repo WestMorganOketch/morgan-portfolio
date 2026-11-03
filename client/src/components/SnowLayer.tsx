@@ -204,7 +204,7 @@ export default function SnowLayer() {
       clear();
       if (sprites.length !== 3) rebuildSprites();
       if (reduced) {
-        const count = Math.min(SNOW_CONFIG.REDUCED_FLAKE_COUNT, flakes.length || SNOW_CONFIG.REDUCED_FLAKE_COUNT);
+        const count = Math.min(SNOW_CONFIG.REDUCED_FLAKE_COUNT, flakes.length);
         for (let i = 0; i < count; i += 1) {
           const flake = flakes[i] ?? makeFlake(i);
           const x = flakes[i] ? flake.x : randomBetween(0, width);
