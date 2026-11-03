@@ -393,9 +393,7 @@ function FocusVisualizer() {
       aria-live={announceManually ? "polite" : "off"}
       onPointerEnter={() => setPointerPaused(true)}
       onPointerLeave={handlePointerLeave}
-      onFocusCapture={(event) => {
-        if (event.target !== pauseButtonRef.current) setFocusPaused(true);
-      }}
+      onFocusCapture={() => setFocusPaused(true)}
       onBlurCapture={(event) => {
         const nextTarget = event.relatedTarget;
         if (nextTarget === pauseButtonRef.current || !(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
@@ -481,7 +479,11 @@ function FocusVisualizer() {
           type="button"
           aria-label={preference === "paused" ? "Play animations" : "Pause animations"}
           aria-pressed={preference === "paused"}
-          onClick={() => setPreference(preference === "paused" ? "auto" : "paused")}
+          onClick={() => {
+            const nextPreference = preference === "paused" ? "auto" : "paused";
+            setPreference(nextPreference);
+            if (nextPreference === "auto") setFocusPaused(false);
+          }}
           title={preference === "paused" ? "Play animations" : "Pause animations"}
         >
           {preference === "paused" ? <Play size={13} aria-hidden="true" /> : <Pause size={13} aria-hidden="true" />}
