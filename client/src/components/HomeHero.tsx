@@ -186,6 +186,7 @@ function FocusVisualizer() {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [announceManually, setAnnounceManually] = useState(false);
   const [progressRevision, setProgressRevision] = useState(0);
+  const [hasLeftFirstOverview, setHasLeftFirstOverview] = useState(false);
 
   const spinnerControls = useAnimationControls();
   const fadeControls = useAnimationControls();
@@ -197,7 +198,6 @@ function FocusVisualizer() {
   const spinTargetRef = useRef<ShowcaseScene>("services");
   const activeSceneRef = useRef<ShowcaseScene>("overview");
   const visibleFaceRef = useRef<"front" | "back">("front");
-  const hasLeftFirstOverviewRef = useRef(false);
   const pauseButtonRef = useRef<HTMLButtonElement>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -213,7 +213,7 @@ function FocusVisualizer() {
     || !documentVisible;
 
   const currentDwell = activeScene === "overview"
-    ? (hasLeftFirstOverviewRef.current ? HERO_TIMING.OVERVIEW_DWELL_MS : HERO_TIMING.FIRST_SPIN_MS)
+    ? (hasLeftFirstOverview ? HERO_TIMING.OVERVIEW_DWELL_MS : HERO_TIMING.FIRST_SPIN_MS)
     : activeScene === "services"
       ? serviceItems.length * HERO_TIMING.SERVICE_LINE_MS + HERO_TIMING.SERVICE_BUFFER_MS
       : HERO_TIMING.SKILLS_DWELL_MS;
@@ -247,7 +247,7 @@ function FocusVisualizer() {
       setAnnounceManually(false);
     }
     if (activeSceneRef.current === "overview" && target !== "overview") {
-      hasLeftFirstOverviewRef.current = true;
+      setHasLeftFirstOverview(true);
     }
 
     const use3D = preference === "auto" && !prefersReducedMotion && supportsPreserve3D();
