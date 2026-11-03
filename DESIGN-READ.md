@@ -24,13 +24,14 @@ Measured by GitHub Actions on a clean runner against the **unchanged** `main` bu
 
 | Metric | Desktop | Mobile |
 |---|---:|---:|
-| Largest Contentful Paint (LCP) | 755 ms | 2,877 ms |
+| Largest Contentful Paint (LCP) | 668 ms | 3,332 ms |
 | Interaction to Next Paint (INP) | Not reported by Lighthouse lab | Not reported by Lighthouse lab |
 | Cumulative Layout Shift (CLS) | 0.000 | 0.000 |
-| Total transferred bytes | 308,067 bytes | 333,222 bytes |
-| Lighthouse performance score | 100 | 95 |
+| Total transferred bytes | 308,080 bytes | 333,252 bytes |
+| Lighthouse performance score | 100 | 92 |
 
-- These are reproducible **lab** baselines, not field Core Web Vitals. A Lighthouse lab trace does not reliably measure INP; a separate interaction test or field-data source is needed to assess that metric.
-- The mobile LCP baseline is above the brief's 2.5-second target by about 377 ms, so Phase 1/2 must avoid adding render-blocking work and should recheck this metric after each major change.
-- GitHub Actions run and HTML/JSON report artifact: [Public-site Lighthouse baseline](https://github.com/WestMorganOketch/morgan-portfolio/actions/runs/41601082272).
-- The workflow now copies the reports to the exact filenames requested by the brief: `lighthouse-before.html` and `lighthouse-before-desktop.html`, plus their JSON companions. The same process can be reused for `lighthouse-after.html` after implementation.
+- These are simulated **lab** baselines, not field Core Web Vitals. A Lighthouse lab trace does not reliably measure INP; a separate interaction test or field-data source is needed to assess that metric.
+- Lighthouse results varied between two unchanged simulated runs: mobile LCP was 2,877 ms in the first run and 3,332 ms in the latest run (desktop LCP was 755 ms and 668 ms, respectively). Treat this as a measured baseline range rather than an exact guaranteed value.
+- Across those runs, mobile LCP was 377–832 ms above the brief's 2.5-second target. Phase 1/2 must avoid adding render-blocking work and should recheck LCP after each major change.
+- Latest GitHub Actions run and HTML/JSON artifact: [Public-site Lighthouse baseline](https://github.com/WestMorganOketch/morgan-portfolio/actions/runs/41601436026).
+- The workflow copies reports to the exact filenames requested by the brief: `lighthouse-before.html` and `lighthouse-before-desktop.html`, plus their JSON companions. The same process can be reused for `lighthouse-after.html` after implementation.
