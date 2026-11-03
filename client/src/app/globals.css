@@ -62,6 +62,7 @@ button, input, textarea { font: inherit; }
 :where(a, button, input, textarea, select, summary, [tabindex]):focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 a, button {
   transition:
+    transform var(--motion-fast) var(--motion-ease-move),
     color var(--motion-fast) var(--motion-ease-move),
     background-color var(--motion-fast) var(--motion-ease-move),
     border-color var(--motion-fast) var(--motion-ease-move),
@@ -69,10 +70,15 @@ a, button {
     opacity var(--motion-fast) var(--motion-ease-move);
 }
 @media (hover: hover) {
-  a:hover { opacity: 0.94; }
-  button:hover:not(:disabled):not(.nav-drawer-backdrop) { opacity: 0.97; }
+  a:hover, button:hover:not(:disabled):not(.nav-drawer-backdrop) {
+    transform: translateY(-2px);
+    opacity: 0.96;
+  }
 }
-a:active, button:active:not(:disabled) { transition-duration: var(--motion-press); }
+a:active, button:active:not(:disabled) {
+  transform: scale(0.98);
+  transition-duration: var(--motion-press);
+}
 ::selection { color: #091112; background: var(--accent); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); border: 0; }
 .skip-link { position: fixed; z-index: 100; top: 8px; left: 8px; transform: translateY(-150%); padding: 12px 16px; background: var(--accent); color: #08120a; font-weight: 700; }
