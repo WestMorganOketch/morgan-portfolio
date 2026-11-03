@@ -1,19 +1,33 @@
-# Morgan West Oketch — Portfolio Design
+# Morgan West Oketch | Cybersecurity Portfolio
 
-A personal portfolio presenting Morgan’s work and visual design approach.
+**Cybersecurity • IT Support • Data & Systems**
 
-## Design overview
+I’m Morgan West Oketch, an aspiring cybersecurity professional interested in helping people and organizations use technology safely and effectively. This portfolio highlights my background, selected projects, and ongoing learning.
 
-The portfolio is designed to make professional information easy to explore, with clear navigation, readable typography, a responsive layout, and a consistent visual style across pages. Light and dark themes and reduced-motion support help make the experience comfortable on different devices and preferences.
+## Explore
 
-## Public pages
+- **Live portfolio:** [morgan-portfolio-delta.vercel.app](https://morgan-portfolio-delta.vercel.app)
+- **About:** Professional background and interests
+- **Projects:** Selected practical work and experiments
+- **Skills & learning:** Areas I’m developing through study and hands-on practice
+- **Contact:** Reach me through the contact details on my portfolio
 
-The site showcases selected projects, professional background, skills, and contact information. Only content intended for public viewing should be published on the website.
+## About this portfolio
 
-## Live portfolio
+The site is designed to make my work easy to explore, with responsive pages, clear navigation, readable typography, and light and dark themes. It is built with accessibility and reduced-motion preferences in mind.
 
-[Visit the portfolio](https://morgan-portfolio-delta.vercel.app)
+## Featured work
 
-## Design notes
+See the [Projects section](https://morgan-portfolio-delta.vercel.app/projects) for current examples. Each project includes its own context and details; I aim to describe my contributions and learning accurately.
 
-This README is public and intentionally covers the portfolio’s design and purpose only. Do not add credentials, private database details, security configuration, or other confidential information here. A file in this public repository cannot be private; keep private notes in a private location outside this repository.
+## Design & technology
+
+The portfolio uses a modern web stack and a custom responsive visual design. This public repository is intended to share the project’s public-facing work—not private credentials, personal records, or deployment secrets.
+
+## Connect
+
+For professional enquiries, please use the contact information on my [portfolio website](https://morgan-portfolio-delta.vercel.app).
+
+---
+
+*Thanks for visiting. This portfolio is a work in progress and will grow as I complete new projects and learning milestones.*
