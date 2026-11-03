@@ -76,27 +76,44 @@ jobs:
 
           node --input-type=module <<'NODE'
           import fs from "node:fs";
+          const rows = [];
+          const formatMs = (value) => value == null ? "Not available" : `${Math.round(value)} ms`;
           for (const [label, path] of [
-            ["DESKTOP", "../lighthouse-before-desktop.report.json"],
-            ["MOBILE", "../lighthouse-before.report.json"],
+            ["Desktop", "../lighthouse-before-desktop.report.json"],
+            ["Mobile", "../lighthouse-before.report.json"],
           ]) {
             if (!fs.existsSync(path)) {
               console.log(`${label}: JSON report not found at expected path ${path}`);
+              rows.push({ label, lcp: "Not available", inp: "Not reported by Lighthouse lab", cls: "Not available", bytes: "Not available", score: "Not available" });
               continue;
             }
             const report = JSON.parse(fs.readFileSync(path, "utf8"));
             const audits = report.audits ?? {};
-            const ms = (id) => audits[id]?.numericValue;
-            const bytes = ms("total-byte-weight");
-            console.log([
-              `[${label}]`,
-              `LCP: ${ms("largest-contentful-paint") == null ? "not available" : Math.round(ms("largest-contentful-paint")) + " ms"}`,
-              `INP: ${ms("interaction-to-next-paint") == null ? "not reported by this Lighthouse lab run" : Math.round(ms("interaction-to-next-paint")) + " ms"}`,
-              `CLS: ${ms("cumulative-layout-shift") == null ? "not available" : Number(ms("cumulative-layout-shift")).toFixed(3)}`,
-              `Transferred bytes: ${bytes == null ? "not available" : Math.round(bytes).toLocaleString() + " bytes"}`,
-              `Performance score: ${report.categories?.performance?.score == null ? "not available" : Math.round(report.categories.performance.score * 100)}`,
-            ].join(" | "));
+            const value = (id) => audits[id]?.numericValue;
+            const bytes = value("total-byte-weight");
+            const row = {
+              label,
+              lcp: formatMs(value("largest-contentful-paint")),
+              inp: audits["interaction-to-next-paint"]?.numericValue == null
+                ? "Not reported by Lighthouse lab"
+                : formatMs(audits["interaction-to-next-paint"].numericValue),
+              cls: value("cumulative-layout-shift") == null ? "Not available" : Number(value("cumulative-layout-shift")).toFixed(3),
+              bytes: bytes == null ? "Not available" : `${Math.round(bytes).toLocaleString()} bytes`,
+              score: report.categories?.performance?.score == null ? "Not available" : String(Math.round(report.categories.performance.score * 100)),
+            };
+            rows.push(row);
+            console.log(`[${row.label.toUpperCase()}] LCP: ${row.lcp} | INP: ${row.inp} | CLS: ${row.cls} | Transferred: ${row.bytes} | Performance: ${row.score}`);
           }
+          const summary = [
+            "## Public-site Lighthouse baseline (unchanged build)",
+            "",
+            "| Viewport | LCP | INP | CLS | Total transferred bytes | Performance score |",
+            "|---|---:|---:|---:|---:|---:|",
+            ...rows.map((r) => `| ${r.label} | ${r.lcp} | ${r.inp} | ${r.cls} | ${r.bytes} | ${r.score} | `),
+            "",
+            "INP is a field metric and may not be reported by a Lighthouse lab trace; when absent, use field data or a separate interaction test rather than treating it as zero.",
+          ].join("\n");
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary + "\n");
           NODE
       - name: Upload baseline reports
         if: always()
