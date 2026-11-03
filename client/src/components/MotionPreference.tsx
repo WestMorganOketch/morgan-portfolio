@@ -4,9 +4,9 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
 } from "react";
 
 export type MotionPreference = "auto" | "paused";
@@ -19,29 +19,49 @@ type MotionPreferenceContextValue = {
 };
 
 const MotionPreferenceContext = createContext<MotionPreferenceContextValue | null>(null);
+const MOTION_STORAGE_KEY = "motion";
+const MOTION_CHANGE_EVENT = "morgan-motion-preference";
+let memoryPreference: MotionPreference = "auto";
+
+function readPreference(): MotionPreference {
+  try {
+    const stored = window.localStorage.getItem(MOTION_STORAGE_KEY);
+    memoryPreference = stored === "paused" ? "paused" : "auto";
+    return memoryPreference;
+  } catch {
+    return memoryPreference;
+  }
+}
+
+function subscribePreference(onChange: () => void) {
+  window.addEventListener(MOTION_CHANGE_EVENT, onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    window.removeEventListener(MOTION_CHANGE_EVENT, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
+function getServerPreference(): MotionPreference {
+  return "auto";
+}
 
 export function MotionPreferenceProvider({ children }: { children: React.ReactNode }) {
-  const [preference, setPreferenceState] = useState<MotionPreference>("auto");
+  const preference = useSyncExternalStore(
+    subscribePreference,
+    readPreference,
+    getServerPreference,
+  );
   const [isSpinning, setIsSpinning] = useState(false);
 
-  // Read the visitor's choice only after hydration; never access storage during SSR.
-  useEffect(() => {
-    try {
-      if (window.localStorage.getItem("motion") === "paused") {
-        setPreferenceState("paused");
-      }
-    } catch {
-      // Storage may be unavailable in private browsing or restricted contexts.
-    }
-  }, []);
-
   const setPreference = useCallback((next: MotionPreference) => {
-    setPreferenceState(next);
+    memoryPreference = next;
     try {
-      window.localStorage.setItem("motion", next);
+      window.localStorage.setItem(MOTION_STORAGE_KEY, next);
     } catch {
-      // The control remains functional for this visit when storage is unavailable.
+      // The control still works for this visit when storage is unavailable.
     }
+    window.dispatchEvent(new Event(MOTION_CHANGE_EVENT));
   }, []);
 
   const value = useMemo(
