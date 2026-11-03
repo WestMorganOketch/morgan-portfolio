@@ -74,6 +74,11 @@ jobs:
             --output=html --output=json \
             --output-path=../lighthouse-before.html
 
+          # Lighthouse names multi-format outputs *.report.html / *.report.json.
+          # Copy the HTML reports to the exact names required by the redesign brief.
+          cp ../lighthouse-before-desktop.report.html ../lighthouse-before-desktop.html
+          cp ../lighthouse-before.report.html ../lighthouse-before.html
+
           node --input-type=module <<'NODE'
           import fs from "node:fs";
           const rows = [];
