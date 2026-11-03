@@ -17,6 +17,7 @@ import {
 import { profile } from "@/data/profile";
 import { skillGroups } from "@/data/site";
 import { useMotionPreference } from "@/components/MotionPreference";
+import BadgesSection from "@/components/BadgesSection";
 
 const primaryRole = "Cybersecurity Analyst";
 
@@ -582,6 +583,7 @@ export default function HomeHero() {
         <FocusVisualizer />
         <a className="hero-scroll-hint" href="#services"><span className="scroll-line" /> DISCOVER THE WORK <ArrowDown size={13} aria-hidden="true" /></a>
       </section>
+      <BadgesSection />
       <section className="snapshot-section" id="snapshot" aria-labelledby="snapshot-title">
         <div className="page-container">
           <div className="snapshot-heading">
