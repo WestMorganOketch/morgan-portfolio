@@ -1,0 +1,112 @@
+name: Public-site Lighthouse baseline
+
+on:
+  push:
+    branches: [design/public-site-phase0]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-site-baseline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lighthouse:
+    name: Build and audit the unchanged public site
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.16.0
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+      - name: Build the unchanged site
+        working-directory: client
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          NEXT_PUBLIC_SITE_URL: https://morgan-portfolio-delta.vercel.app
+        run: npm run build
+      - name: Run desktop and mobile Lighthouse audits
+        working-directory: client
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          NEXT_PUBLIC_SITE_URL: https://morgan-portfolio-delta.vercel.app
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run start -- --hostname 127.0.0.1 --port 3000 > /tmp/morgan-next.log 2>&1 &
+          SERVER_PID=$!
+          cleanup() { kill "$SERVER_PID" 2>/dev/null || true; }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:3000/ >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 60 ]; then
+              cat /tmp/morgan-next.log
+              echo "The built Next.js site did not start in time." >&2
+              exit 1
+            fi
+            sleep 2
+          done
+
+          npx --yes lighthouse@12.8.2 http://127.0.0.1:3000/ \
+            --preset=desktop \
+            --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
+            --output=html --output=json \
+            --output-path=../lighthouse-before-desktop.html
+          npx --yes lighthouse@12.8.2 http://127.0.0.1:3000/ \
+            --form-factor=mobile \
+            --screenEmulation.mobile=true \
+            --screenEmulation.width=390 \
+            --screenEmulation.height=844 \
+            --screenEmulation.deviceScaleFactor=1 \
+            --throttling-method=simulate \
+            --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
+            --output=html --output=json \
+            --output-path=../lighthouse-before.html
+
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          for (const [label, path] of [
+            ["DESKTOP", "../lighthouse-before-desktop.report.json"],
+            ["MOBILE", "../lighthouse-before.report.json"],
+          ]) {
+            if (!fs.existsSync(path)) {
+              console.log(`${label}: JSON report not found at expected path ${path}`);
+              continue;
+            }
+            const report = JSON.parse(fs.readFileSync(path, "utf8"));
+            const audits = report.audits ?? {};
+            const ms = (id) => audits[id]?.numericValue;
+            const bytes = ms("total-byte-weight");
+            console.log([
+              `[${label}]`,
+              `LCP: ${ms("largest-contentful-paint") == null ? "not available" : Math.round(ms("largest-contentful-paint")) + " ms"}`,
+              `INP: ${ms("interaction-to-next-paint") == null ? "not reported by this Lighthouse lab run" : Math.round(ms("interaction-to-next-paint")) + " ms"}`,
+              `CLS: ${ms("cumulative-layout-shift") == null ? "not available" : Number(ms("cumulative-layout-shift")).toFixed(3)}`,
+              `Transferred bytes: ${bytes == null ? "not available" : Math.round(bytes).toLocaleString() + " bytes"}`,
+              `Performance score: ${report.categories?.performance?.score == null ? "not available" : Math.round(report.categories.performance.score * 100)}`,
+            ].join(" | "));
+          }
+          NODE
+      - name: Upload baseline reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-site-lighthouse-before
+          path: |
+            lighthouse-before.html
+            lighthouse-before.report.json
+            lighthouse-before-desktop.html
+            lighthouse-before-desktop.report.json
+          if-no-files-found: warn
+          retention-days: 30
