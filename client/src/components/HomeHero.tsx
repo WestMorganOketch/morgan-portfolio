@@ -542,7 +542,14 @@ export default function HomeHero() {
   const [snowReady, setSnowReady] = useState(false);
 
   useEffect(() => {
-    setSnowReady(true);
+    let secondFrame = 0;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => setSnowReady(true));
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame) window.cancelAnimationFrame(secondFrame);
+    };
   }, []);
 
   return (
