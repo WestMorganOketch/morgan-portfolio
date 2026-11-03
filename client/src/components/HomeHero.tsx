@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { MotionPreferenceProvider } from "@/components/MotionPreference";
 import {
   m,
@@ -18,6 +19,11 @@ import { skillGroups } from "@/data/site";
 import { useMotionPreference } from "@/components/MotionPreference";
 
 const primaryRole = "Cybersecurity Analyst";
+
+const SnowLayer = dynamic(() => import("@/components/SnowLayer"), {
+  ssr: false,
+  loading: () => null,
+});
 
 export const HERO_TIMING = {
   FIRST_SPIN_MS: 6000,
@@ -533,9 +539,16 @@ function AnimatedRole() {
 }
 
 export default function HomeHero() {
+  const [snowReady, setSnowReady] = useState(false);
+
+  useEffect(() => {
+    setSnowReady(true);
+  }, []);
+
   return (
     <MotionPreferenceProvider>
       <section className="home-hero page-container" aria-labelledby="home-title">
+        {snowReady && <SnowLayer />}
         <div className="hero-copy">
           <p className="eyebrow"><span className="status-indicator" /> OPEN TO OPPORTUNITIES · NAIROBI, KENYA</p>
           <h1 id="home-title">Morgan West<br /><span>Oketch.</span></h1>
