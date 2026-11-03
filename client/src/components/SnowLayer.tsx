@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useReducedMotion } from "framer-motion";
 import { useMotionPreference } from "@/components/MotionPreference";
 
@@ -39,12 +39,6 @@ type Flake = {
   phase: number;
   phaseSpeed: number;
   sprite: number;
-};
-
-type SpriteSet = {
-  sprites: HTMLCanvasElement[];
-  color: string;
-  opacity: number;
 };
 
 type SnowController = {
