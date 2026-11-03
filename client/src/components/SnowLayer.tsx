@@ -120,7 +120,6 @@ export default function SnowLayer() {
     let elapsedTime = 0;
     let intersecting = true;
     let disposed = false;
-    let themeColor = "#d4e6d8";
     let themeOpacity = 0.8;
     let spriteColor = "";
     let spriteOpacity = -1;
@@ -134,7 +133,6 @@ export default function SnowLayer() {
       const parsedOpacity = Number.parseFloat(computed.getPropertyValue("--snow-opacity"));
       const nextOpacity = Number.isFinite(parsedOpacity) ? clamp(parsedOpacity, 0, 1) : 0.8;
       if (nextColor === spriteColor && nextOpacity === spriteOpacity && sprites.length === 3) return;
-      themeColor = nextColor;
       themeOpacity = nextOpacity;
       spriteColor = nextColor;
       spriteOpacity = nextOpacity;
@@ -280,17 +278,12 @@ export default function SnowLayer() {
 
     const drawStatic = (reduced = settingsRef.current.reduced) => {
       stop();
-      if (reduced && flakes.length > 0) {
-        for (let i = 0; i < flakes.length; i += 1) {
-          flakes[i].opacity *= 0.65;
-        }
-      }
       drawFlakes(reduced);
     };
 
     const refreshTheme = () => {
       rebuildSprites();
-      drawFlakes(settingsRef.current.reduced || settingsRef.current.preference === "paused");
+      drawFlakes(settingsRef.current.reduced);
     };
 
     const controller: SnowController = { start, stop, drawStatic, refreshTheme };
