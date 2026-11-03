@@ -432,7 +432,10 @@ function FocusVisualizer() {
               }
               if (!swappedFaceRef.current && angle >= 180 && angle <= 360) {
                 swappedFaceRef.current = true;
-                setFrontScene(spinTargetRef.current);
+                const target = spinTargetRef.current;
+                setFrontScene(target);
+                activeSceneRef.current = target;
+                setActiveScene(target);
               }
             }}
           >
