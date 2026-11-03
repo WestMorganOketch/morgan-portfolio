@@ -49,6 +49,8 @@ function FocusVisualizer() {
         <AnimatePresence mode="wait">
           <m.div
             className="visual-window-body"
+            aria-live="polite"
+            aria-atomic="true"
             key={scene.label}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
