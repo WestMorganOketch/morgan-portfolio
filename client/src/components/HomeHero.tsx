@@ -444,7 +444,7 @@ function FocusVisualizer() {
             }}
           >
             <m.div
-              className="visual-face visual-face-front"
+              className={"visual-face visual-face-front" + (frontScene === "skills" ? " visual-face-skills" : "")}
               animate={fadeControls}
               id={visibleFace === "front" ? "security-showcase-panel" : undefined}
               role={visibleFace === "front" ? "tabpanel" : undefined}
@@ -460,7 +460,7 @@ function FocusVisualizer() {
               />
             </m.div>
             <div
-              className="visual-face visual-face-back"
+              className={"visual-face visual-face-back" + (backScene === "skills" ? " visual-face-skills" : "")}
               id={visibleFace === "back" ? "security-showcase-panel" : undefined}
               role={visibleFace === "back" ? "tabpanel" : undefined}
               aria-labelledby={visibleFace === "back" ? "showcase-tab-" + backScene : undefined}
