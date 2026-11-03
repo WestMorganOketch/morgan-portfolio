@@ -206,10 +206,6 @@ function FocusVisualizer() {
           />
         ))}
       </nav>
-      <span className="sr-only" aria-live="polite">
-        Showing {scene.kind === "service" ? "service" : "skills"} panel {sceneNumber} of {sceneCount}: {scene.label.toLowerCase()}.
-        {isPaused ? " Automatic rotation is paused." : " Automatic rotation is active."}
-      </span>
     </div>
   );
 }
@@ -225,10 +221,10 @@ function AnimatedRole() {
 export default function HomeHero() {
   return (
     <>
-      <div className="snowfall" aria-hidden="true">
-        {Array.from({ length: 18 }, (_, index) => <span key={index} />)}
-      </div>
       <section className="home-hero page-container" aria-labelledby="home-title">
+        <div className="snowfall" aria-hidden="true">
+          {Array.from({ length: 18 }, (_, index) => <span key={index} />)}
+        </div>
         <div className="hero-copy">
           <p className="eyebrow"><span className="status-indicator" /> OPEN TO OPPORTUNITIES · NAIROBI, KENYA</p>
           <h1 id="home-title">Morgan West<br /><span>Oketch.</span></h1>
