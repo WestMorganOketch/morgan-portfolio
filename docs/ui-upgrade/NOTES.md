@@ -62,3 +62,12 @@ Implemented on the same feature branch.
 - U2: replace the previous CSS-only snow treatment with a lazy client canvas layer controlled by the same motion preference.
 - U3: add permanent Services and Skills sections below the hero. The specification's six-card service copy is explicitly a draft requiring owner approval; do not publish that draft without confirmation.
 - U4: responsive/theme/accessibility/performance QA, contrast measurements, and final notes.
+
+## Landing-page badges
+
+- Edit the specialization and framework drafts in `client/src/data/badges.ts`; each draft is marked `OWNER TO CONFIRM`. Keep each `meaning` at 110 characters or fewer.
+- Use `studying` unless there is a real, published project, write-up, or document on this site that demonstrates the claim. `applied` entries must include both an `evidenceHref` and an `evidenceLabel`; do not add an endorsement, certification, or compliance claim.
+- Credentials are loaded from published documents in the `Certificates` category. Do not add credential placeholders or manually duplicate certificates in the draft list. The issued date and Verify link are taken from the published document; Verify is omitted when no verification URL exists.
+- The owner must confirm the wording and status of all six specializations: Security Monitoring and Alert Triage; Network and VPN Security; Secure Web Development; IT Support and Infrastructure; Data Analytics and Reporting; Security Documentation and Awareness.
+- The owner must confirm the wording and studying status of all six framework topics: MITRE ATT&CK; NIST Cybersecurity Framework; OWASP Top 10; CIS Critical Security Controls; Cyber Kill Chain; ISO/IEC 27001 (awareness).
+- The owner must verify that the two applied project links support their respective claims before launch. The framework disclaimer is required and must remain visible.
