@@ -109,7 +109,6 @@ export default function SnowLayer() {
     const context = canvas.getContext("2d", { alpha: true, desynchronized: true });
     if (!context) return;
 
-    const reducedQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const flakes: Flake[] = [];
     const sprites: HTMLCanvasElement[] = [];
     let width = 0;
@@ -261,7 +260,18 @@ export default function SnowLayer() {
         flake.x += Math.sin(elapsedTime * flake.phaseSpeed + flake.phase) * flake.amplitude * dt * 0.25
           + wind * dt * (flake.sprite === 0 ? 1 : 0.6);
         if (flake.y > height + SNOW_CONFIG.MAX_SIZE_PX * 4) {
-          flakes[i] = makeFlake(i, randomBetween(-height * 0.18, -SNOW_CONFIG.MAX_SIZE_PX));
+          const layer = i % 3;
+          const sizeScale = layer === 0 ? 1 : layer === 1 ? 0.78 : 0.58;
+          const speedScale = layer === 0 ? 1 : layer === 1 ? 0.76 : 0.55;
+          flake.x = randomBetween(0, Math.max(width, 1));
+          flake.y = randomBetween(-height * 0.18, -SNOW_CONFIG.MAX_SIZE_PX);
+          flake.size = randomBetween(SNOW_CONFIG.MIN_SIZE_PX, SNOW_CONFIG.MAX_SIZE_PX) * sizeScale;
+          flake.speed = randomBetween(SNOW_CONFIG.MIN_SPEED_PX_PER_SECOND, SNOW_CONFIG.MAX_SPEED_PX_PER_SECOND) * speedScale;
+          flake.opacity = randomBetween(SNOW_CONFIG.MIN_OPACITY, SNOW_CONFIG.MAX_OPACITY) * (layer === 0 ? 1 : layer === 1 ? 0.8 : 0.62);
+          flake.amplitude = randomBetween(SNOW_CONFIG.MIN_DRIFT_PX, SNOW_CONFIG.MAX_DRIFT_PX);
+          flake.phase = randomBetween(0, Math.PI * 2);
+          flake.phaseSpeed = randomBetween(0.22, 0.65);
+          flake.sprite = layer;
         }
         if (flake.x > width + 24) flake.x = -12;
         if (flake.x < -24) flake.x = width + 12;
