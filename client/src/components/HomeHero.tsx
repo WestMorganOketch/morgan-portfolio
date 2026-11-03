@@ -173,7 +173,7 @@ function ShowcaseFace({
 }
 
 function FocusVisualizer() {
-  const { preference, setPreference, setIsSpinning } = useMotionPreference();
+  const { preference, setPreference, isSpinning, setIsSpinning } = useMotionPreference();
   const prefersReducedMotion = Boolean(useReducedMotion());
   const [activeScene, setActiveScene] = useState<ShowcaseScene>("overview");
   const [visibleFace, setVisibleFace] = useState<"front" | "back">("front");
