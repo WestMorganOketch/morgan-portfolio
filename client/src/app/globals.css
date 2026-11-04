@@ -1144,3 +1144,232 @@ details[open] > .accordion-content { grid-template-rows: 1fr; opacity: 1; }
 .career-list-paste { color: var(--muted); font-size: 9px; }
 .career-list-paste summary { cursor: pointer; }
 .career-list-paste input { width: 100%; margin-top: 7px; }
+
+
+/* Guided admin workspace: one task at a time, without removing advanced capability. */
+.admin-page [hidden] { display: none !important; }
+.admin-navigation-button,
+.admin-navigation-link {
+  display: inline-flex;
+  min-height: 40px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: 10px var(--mono);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.admin-navigation-button:hover,
+.admin-navigation-link:hover,
+.admin-navigation-button.active,
+.admin-navigation-link.active {
+  border-color: var(--border);
+  background: var(--surface-soft);
+  color: var(--accent);
+}
+.admin-navigation-button:focus-visible,
+.admin-navigation-link:focus-visible,
+.admin-quick-links > button:focus-visible,
+.admin-quick-links > a:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.admin-quick-links {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+.admin-workspace-intro {
+  grid-column: 1 / -1;
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.admin-quick-links > button,
+.admin-quick-links > .admin-quick-career {
+  display: grid;
+  min-width: 0;
+  min-height: 132px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-content: start;
+  align-items: start;
+  gap: 8px 12px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--body-text);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color var(--motion-base) var(--motion-ease-move), background-color var(--motion-base) var(--motion-ease-move), transform var(--motion-base) var(--motion-ease-move), box-shadow var(--motion-base) var(--motion-ease-move);
+}
+.admin-quick-links > button:hover,
+.admin-quick-links > .admin-quick-career:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface-raised));
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .12);
+}
+.admin-quick-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  grid-row: span 2;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  color: var(--accent);
+  font: 19px var(--body-font);
+}
+.admin-quick-links > button strong,
+.admin-quick-links > .admin-quick-career strong {
+  align-self: center;
+  font: 500 16px/1.35 var(--heading-font);
+  letter-spacing: -.025em;
+}
+.admin-quick-links > button strong span,
+.admin-quick-links > .admin-quick-career strong span { color: var(--accent); }
+.admin-quick-links > button small,
+.admin-quick-links > .admin-quick-career small {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.admin-panel { scroll-margin-top: 110px; }
+.admin-panel-heading { gap: 14px; }
+.admin-panel-heading h2 { overflow-wrap: anywhere; }
+.admin-form-guide {
+  margin: -4px 0 6px;
+  padding: 13px 15px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-raised));
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.admin-advanced-fields {
+  margin-block: 8px 5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
+}
+.admin-advanced-fields > summary {
+  display: flex;
+  min-height: 45px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 13px;
+  color: var(--body-text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style-position: inside;
+}
+.admin-advanced-fields > summary::marker { color: var(--accent); }
+.admin-advanced-fields[open] > summary { border-bottom: 1px solid var(--border); }
+.admin-advanced-body {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+.admin-advanced-body > label { margin-top: 4px; }
+.admin-message[role="status"] { border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
+.admin-title-row { align-items: flex-start; }
+@media (max-width: 760px) {
+  .admin-navigation { gap: 4px; }
+  .admin-navigation-button,
+  .admin-navigation-link { min-height: 38px; padding-inline: 10px; font-size: 9px; }
+  .admin-quick-links { grid-template-columns: 1fr; }
+  .admin-quick-links > button,
+  .admin-quick-links > .admin-quick-career { min-height: 0; padding: 15px; }
+  .admin-workspace-intro { font-size: 12px; }
+  .admin-quick-links > button strong,
+  .admin-quick-links > .admin-quick-career strong { font-size: 15px; }
+  .admin-panel { padding: 17px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-quick-links > button,
+  .admin-quick-links > .admin-quick-career { transition: none; }
+}
+
+.admin-back-link {
+  display: inline-flex;
+  min-height: 38px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.admin-back-link:hover { border-color: var(--accent); color: var(--accent); }
+.admin-panel-action { min-height: 39px; flex: 0 0 auto; padding-inline: 13px; cursor: pointer; }
+.admin-panel-action:hover { box-shadow: 0 5px 16px color-mix(in srgb, var(--accent) 13%, transparent); }
+@media (max-width: 560px) {
+  .admin-panel-heading { align-items: flex-start; flex-direction: column; }
+  .admin-panel-action, .admin-back-link { min-height: 40px; }
+  .admin-quick-links > button,
+  .admin-quick-links > .admin-quick-career { grid-template-columns: 30px minmax(0, 1fr); gap: 8px 10px; }
+  .admin-quick-icon { width: 30px; height: 30px; }
+}
+
+.admin-operations-guide { display: grid; gap: 12px; margin-bottom: 20px; }
+.admin-operations-guide > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.admin-operations-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.admin-operations-tabs button {
+  display: inline-flex;
+  min-height: 41px;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 13px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.admin-operations-tabs button:hover,
+.admin-operations-tabs button.active {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-raised));
+  color: var(--body-text);
+}
+.admin-operations-tabs button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.admin-operations-tabs button > span {
+  display: inline-grid;
+  min-width: 22px;
+  height: 22px;
+  place-items: center;
+  padding-inline: 5px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--accent);
+  font: 9px var(--mono);
+}
+@media (max-width: 560px) {
+  .admin-operations-tabs { display: grid; grid-template-columns: 1fr; }
+  .admin-operations-tabs button { justify-content: space-between; width: 100%; }
+}

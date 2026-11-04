@@ -25,6 +25,7 @@ type DocumentEntry = {
 };
 
 type DocumentForm = Omit<DocumentEntry, "id" | "fileAvailable">;
+type AdminOperation = "messages" | "scores" | "documents";
 
 const emptyDocument: DocumentForm = {
   title: "",
@@ -93,6 +94,7 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
 
 export default function AdminExtensions({ csrfToken }: { csrfToken: string }) {
   const [messages, setMessages] = useState<ContactMessage[]>([]);
+  const [activeOperation, setActiveOperation] = useState<AdminOperation>("messages");
   const [scores, setScores] = useState<Score[]>([]);
   const [documents, setDocuments] = useState<DocumentEntry[]>([]);
   const [documentForm, setDocumentForm] = useState<DocumentForm>(emptyDocument);
@@ -246,7 +248,21 @@ export default function AdminExtensions({ csrfToken }: { csrfToken: string }) {
       {message ? <p className="admin-message" role="status">{message}</p> : null}
       {!loading ? (
         <>
-          <section className="admin-panel" aria-labelledby="contact-inbox-title">
+          <div className="admin-operations-guide">
+            <p>Choose one area to keep this screen simple. Your messages, game scores, and document files are managed separately.</p>
+            <div className="admin-operations-tabs" role="group" aria-label="Choose a private admin area">
+              <button type="button" aria-pressed={activeOperation === "messages"} className={activeOperation === "messages" ? "active" : ""} onClick={() => setActiveOperation("messages")}>
+                Messages <span>{messages.length}</span>
+              </button>
+              <button type="button" aria-pressed={activeOperation === "scores"} className={activeOperation === "scores" ? "active" : ""} onClick={() => setActiveOperation("scores")}>
+                Game scores <span>{scores.length}</span>
+              </button>
+              <button type="button" aria-pressed={activeOperation === "documents"} className={activeOperation === "documents" ? "active" : ""} onClick={() => setActiveOperation("documents")}>
+                Documents <span>{documents.length}</span>
+              </button>
+            </div>
+          </div>
+          <section className="admin-panel" hidden={activeOperation !== "messages"} aria-labelledby="contact-inbox-title">
             <div className="admin-panel-heading"><div><p className="eyebrow">PRIVATE INBOX · 90-DAY RETENTION</p><h2 id="contact-inbox-title">Contact messages</h2></div></div>
             <p className="admin-help">Only the signed-in administrator can read these messages. Expired messages are removed during API startup and cleanup; messages expire 90 days after receipt.</p>
             {messages.length ? <div className="admin-project-list">{messages.map((entry) => (
@@ -262,7 +278,7 @@ export default function AdminExtensions({ csrfToken }: { csrfToken: string }) {
             ))}</div> : <p className="admin-help">No unexpired messages are waiting.</p>}
           </section>
 
-          <section className="admin-panel" aria-labelledby="triage-score-admin-title">
+          <section className="admin-panel" hidden={activeOperation !== "scores"} aria-labelledby="triage-score-admin-title">
             <div className="admin-panel-heading"><div><p className="eyebrow">PUBLIC GAME SCORES</p><h2 id="triage-score-admin-title">Alert triage entries</h2></div></div>
             {scores.length ? <div className="admin-project-list">{scores.map((score) => (
               <article className="admin-project" key={score.id}>
@@ -272,7 +288,7 @@ export default function AdminExtensions({ csrfToken }: { csrfToken: string }) {
             ))}</div> : <p className="admin-help">No player scores have been submitted. No sample players are preloaded.</p>}
           </section>
 
-          <section className="admin-panel" aria-labelledby="document-admin-title">
+          <section className="admin-panel" hidden={activeOperation !== "documents"} aria-labelledby="document-admin-title">
             <div className="admin-panel-heading"><div><p className="eyebrow">CURATED DOCUMENT VAULT</p><h2 id="document-admin-title">{editingDocumentId ? "Edit a document" : "Add a document draft"}</h2></div></div>
             <p className="admin-help">Only PDF, PNG, and JPG files up to 10 MB are accepted. The API checks file contents, creates a random storage name, and keeps files private until published.</p>
             <form className="project-form" onSubmit={(event) => void saveDocument(event)}>
