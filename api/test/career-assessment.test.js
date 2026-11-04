@@ -129,7 +129,7 @@ test("profile changes trigger reassessment using the latest active track profile
       if (statement.startsWith("SELECT id, title, company")) {
         return { rows: [{ id: "job-1", ...baseJob }] };
       }
-      if (statement.startsWith("SELECT score_threshold")) return { rows: [settings] };
+      if (statement.startsWith("SELECT role_tracks, score_threshold")) return { rows: [{ ...settings, role_tracks: ["Security Analyst/SOC", "Computer Skills/ICT Trainer"] }] };
       if (statement.startsWith("SELECT id, track, verified_facts")) return { rows: profiles };
       if (statement.startsWith("INSERT INTO public.jr_assessments")) {
         writes.push({ statement, values });
