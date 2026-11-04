@@ -174,7 +174,7 @@ const adminSections: { id: AdminSection; label: string; title: string }[] = [
   { id: "project-editor", label: "Add project", title: "Add or edit a project" },
   { id: "projects", label: "Projects", title: "Your projects" },
   { id: "content-editor", label: "Add content", title: "Add portfolio content" },
-  { id: "portfolio-content", label: "Portfolio pages", title: "Portfolio entries" },
+  { id: "portfolio-content", label: "Content", title: "Portfolio entries" },
   { id: "operations", label: "Inbox & documents", title: "Inbox and documents" },
   { id: "analytics", label: "Site activity", title: "Site activity" },
   { id: "account", label: "Account", title: "Account settings" },
@@ -528,15 +528,28 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
             >Home</button>
           )}
           <a className={view === "career" ? "admin-navigation-link active" : "admin-navigation-link"} href="/admin/career" aria-current={view === "career" ? "page" : undefined}>Job Radar</a>
-          {view !== "career" ? adminSections.filter((section) => section.id !== "dashboard").map((section) => (
-            <button
-              key={section.id}
-              className={activeSection === section.id ? "admin-navigation-button active" : "admin-navigation-button"}
-              type="button"
-              aria-current={activeSection === section.id ? "page" : undefined}
-              onClick={() => navigateToSection(section.id)}
-            >{section.label}</button>
-          )) : null}
+          {view !== "career" ? adminSections.filter((section) =>
+            section.id === "account"
+            || section.id === "projects"
+            || section.id === "portfolio-content"
+            || section.id === "operations"
+            || section.id === "analytics"
+          ).map((section) => {
+            const active = section.id === "projects"
+              ? activeSection === "projects" || activeSection === "project-editor"
+              : section.id === "portfolio-content"
+                ? activeSection === "portfolio-content" || activeSection === "content-editor"
+                : activeSection === section.id;
+            return (
+              <button
+                key={section.id}
+                className={active ? "admin-navigation-button active" : "admin-navigation-button"}
+                type="button"
+                aria-current={active ? "page" : undefined}
+                onClick={() => navigateToSection(section.id)}
+              >{section.label}</button>
+            );
+          }) : null}
         </nav>
       ) : null}
       <div className="admin-content">
@@ -650,7 +663,10 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
             </section>
 
             <section className="admin-panel" hidden={activeSection !== "project-editor"} id="project-editor">
-              <div className="admin-panel-heading"><div><p className="eyebrow">CONTENT MANAGEMENT</p><h2>{editingId ? "Edit project" : "Add a project"}</h2></div></div>
+              <div className="admin-panel-heading">
+                <div><p className="eyebrow">CONTENT MANAGEMENT</p><h2>{editingId ? "Edit project" : "Add a project"}</h2></div>
+                <button className="admin-back-link" type="button" onClick={() => { resetForm(); navigateToSection("projects"); }}>← Back to projects</button>
+              </div>
               <form className="project-form" onSubmit={(event) => void saveProject(event)}>
                 <p className="admin-form-guide">Start with the project title, date and a short description. Everything else is optional. New projects stay private drafts unless you choose to publish them.</p>
                 <div className="form-row">
@@ -683,13 +699,16 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
                 <label className="publish-toggle"><input checked={form.published} name="published" onChange={(event) => setForm({ ...form, published: event.target.checked })} type="checkbox" /> Publish this project on my public portfolio</label>
                 <div className="form-actions">
                   <button className="button button-primary" type="submit">{editingId ? "Save project" : "Add project"} <span aria-hidden="true">→</span></button>
-                  {editingId ? <button className="button button-quiet" onClick={() => { resetForm(); navigateToSection("projects"); }} type="button">Cancel edit</button> : null}
+                  <button className="button button-quiet" type="button" onClick={() => { resetForm(); navigateToSection("projects"); }}>Cancel</button>
                 </div>
               </form>
             </section>
 
             <section className="admin-panel" hidden={activeSection !== "projects"} id="projects">
-              <div className="admin-panel-heading"><div><p className="eyebrow">SAVED CONTENT</p><h2>Your projects</h2></div></div>
+              <div className="admin-panel-heading">
+                <div><p className="eyebrow">SAVED CONTENT</p><h2>Your projects</h2></div>
+                <button className="button button-primary admin-panel-action" type="button" onClick={() => { resetForm(); setError(""); setMessage(""); navigateToSection("project-editor"); }}>＋ Add a project</button>
+              </div>
               {projects.length ? (
                 <div className="admin-project-list">
                   {projects.map((project) => (
@@ -706,7 +725,10 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
             </section>
 
             <section className="admin-panel" hidden={activeSection !== "content-editor"} id="content-editor" aria-labelledby="portfolio-content-title">
-              <div className="admin-panel-heading"><div><p className="eyebrow">PORTFOLIO CMS</p><h2 id="portfolio-content-title">{editingContentId ? "Edit a portfolio entry" : "Add to a portfolio page"}</h2></div></div>
+              <div className="admin-panel-heading">
+                <div><p className="eyebrow">PORTFOLIO CMS</p><h2 id="portfolio-content-title">{editingContentId ? "Edit a portfolio entry" : "Add to a portfolio page"}</h2></div>
+                <button className="admin-back-link" type="button" onClick={() => { resetContentForm(); navigateToSection("portfolio-content"); }}>← Back to entries</button>
+              </div>
               <p className="admin-help">Create and publish plain-text entries for experience, education, training, achievements, articles, services, write-ups, CTFs, and other portfolio sections. Drafts stay private.</p>
               <form className="project-form" onSubmit={(event) => void saveContent(event)}>
                 <p className="admin-form-guide">Required: choose a page, add a title and write a short description. Extra detail, tags and links are optional.</p>
@@ -740,13 +762,16 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
                 <label className="publish-toggle"><input checked={contentForm.published} name="content-published" onChange={(event) => setContentForm({ ...contentForm, published: event.target.checked })} type="checkbox" /> Publish this entry on the public portfolio</label>
                 <div className="form-actions">
                   <button className="button button-primary" type="submit">{editingContentId ? "Save entry" : "Add entry"} <span aria-hidden="true">→</span></button>
-                  {editingContentId ? <button className="button button-quiet" onClick={() => { resetContentForm(); navigateToSection("portfolio-content"); }} type="button">Cancel edit</button> : null}
+                  <button className="button button-quiet" type="button" onClick={() => { resetContentForm(); navigateToSection("portfolio-content"); }}>Cancel</button>
                 </div>
               </form>
             </section>
 
             <section className="admin-panel" hidden={activeSection !== "portfolio-content"} id="portfolio-content" aria-labelledby="saved-content-title">
-              <div className="admin-panel-heading"><div><p className="eyebrow">SAVED CONTENT</p><h2 id="saved-content-title">Portfolio entries</h2></div></div>
+              <div className="admin-panel-heading">
+                <div><p className="eyebrow">SAVED CONTENT</p><h2 id="saved-content-title">Portfolio entries</h2></div>
+                <button className="button button-primary admin-panel-action" type="button" onClick={() => { resetContentForm(); setError(""); setMessage(""); navigateToSection("content-editor"); }}>＋ Add an entry</button>
+              </div>
               {contentEntries.length ? (
                 <div className="admin-project-list">
                   {contentEntries.map((entry) => (
