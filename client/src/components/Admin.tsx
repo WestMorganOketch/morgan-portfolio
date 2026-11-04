@@ -475,7 +475,7 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
   const linkClicks = totalEvents - pageViews;
 
   return (
-    <div className="admin-page">
+    <div className={view === "career" ? "admin-page admin-page-career" : "admin-page"}>
       <header className="admin-header">
         <a className="wordmark" href="/">
           <span className="wordmark-mark">M<span>O</span></span>
@@ -540,7 +540,20 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
         {!loading && adminEmail ? (
           <>
             <div className="admin-title-row">
-              <div><p className="eyebrow">PRIVATE AREA / CONTENT &amp; ACTIVITY</p><h1>Admin dashboard<span className="accent">.</span></h1><p className="admin-help">Signed in as {adminEmail}</p></div>
+              <div>
+                {view === "career" ? (
+                  <>
+                    <h1>Job Radar</h1>
+                    <p className="admin-help">A private workspace to find, review, and track job opportunities.</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="eyebrow">PRIVATE AREA / CONTENT &amp; ACTIVITY</p>
+                    <h1>Admin dashboard<span className="accent">.</span></h1>
+                    <p className="admin-help">Signed in as {adminEmail}</p>
+                  </>
+                )}
+              </div>
               <button className="button button-quiet" onClick={() => void signOut()} type="button">Sign out</button>
             </div>
 
@@ -555,13 +568,6 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
               </>
             ) : null}
 
-            {view === "career" ? (
-              <div className="admin-career-page-heading">
-                <p className="eyebrow">PRIVATE CAREER WORKSPACE</p>
-                <h1>Job Radar<span className="accent">.</span></h1>
-                <p className="admin-help">Search, review, import and track opportunities from one dedicated workspace.</p>
-              </div>
-            ) : null}
             {view === "career" ? (
               <CareerCentre csrfToken={csrfToken} />
             ) : (

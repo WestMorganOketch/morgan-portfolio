@@ -101,9 +101,15 @@ type WatchlistEntry = { id: string; provider: "greenhouse" | "lever"; token: str
 type SearchLink = { name: string; url: string };
 
 const careerTabs = [
-  "Overview", "Review", "Import", "Resume profiles", "Preferences", "Sources and Setup", "Tracker",
+  { value: "Overview", label: "Today" },
+  { value: "Review", label: "Review" },
+  { value: "Import", label: "Add a job" },
+  { value: "Tracker", label: "Pipeline" },
+  { value: "Resume profiles", label: "My resume" },
+  { value: "Preferences", label: "Preferences" },
+  { value: "Sources and Setup", label: "Sources & setup" },
 ] as const;
-type CareerTab = (typeof careerTabs)[number];
+type CareerTab = (typeof careerTabs)[number]["value"];
 const reviewLists = ["Shortlist", "Maybe", "Qualified", "Passed", "Dismissed"] as const;
 type ReviewList = (typeof reviewLists)[number];
 const applicationStates = [
@@ -111,6 +117,24 @@ const applicationStates = [
   "ready_for_review", "approved_to_send", "sent", "failed_send", "submitted",
   "expired", "duplicate", "blocked_risk", "not_a_fit", "withdrawn", "needs_manual_attention",
 ];
+const applicationStateLabels: Record<string, string> = {
+  discovered: "Found",
+  screened: "Reviewed",
+  match_review: "Needs a match check",
+  shortlisted: "Shortlisted",
+  preparation_in_progress: "Preparing",
+  ready_for_review: "Ready for review",
+  approved_to_send: "Approved",
+  sent: "Sent",
+  failed_send: "Send failed",
+  submitted: "Submitted",
+  expired: "Expired",
+  duplicate: "Duplicate",
+  blocked_risk: "Blocked for risk",
+  not_a_fit: "Not a fit",
+  withdrawn: "Withdrawn",
+  needs_manual_attention: "Needs attention",
+};
 const tracks = ["Security Analyst/SOC", "Computer Skills/ICT Trainer"];
 const countries = ["Kenya", "Tanzania", "Uganda"];
 const secretNames = [
@@ -278,8 +302,47 @@ function readableDate(value: string | null | undefined): string {
   return Number.isNaN(date.getTime()) ? "Not recorded" : date.toLocaleString();
 }
 
+function readableLabel(value: string): string {
+  return value
+    .replaceAll(".", " ")
+    .replaceAll("_", " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function valuesFromFacts(value: unknown): string[] {
   return Array.isArray(value) ? value.filter(string) : [];
+}
+
+function EmptyState({
+  title,
+  children,
+  actions,
+}: {
+  title: string;
+  children: string;
+  actions: { label: string; onClick: () => void; secondary?: boolean; disabled?: boolean }[];
+}) {
+  return (
+    <div className="career-empty-state">
+      <h3>{title}</h3>
+      <p>{children}</p>
+      <div className="career-actions">
+        {actions.map((action) => (
+          <button
+            className={action.secondary ? "button button-secondary" : "button button-primary"}
+            disabled={action.disabled}
+            key={action.label}
+            onClick={action.onClick}
+            type="button"
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function CareerListEditor({
@@ -608,21 +671,21 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   function changeTab(next: CareerTab, focus = false) {
     setTab(next);
     setError("");
-    if (focus) tabRefs.current[careerTabs.indexOf(next)]?.focus();
+    if (focus) tabRefs.current[careerTabs.findIndex((item) => item.value === next)]?.focus();
   }
 
   function handleTabKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     if (event.key === "Home" || event.key === "End") {
       event.preventDefault();
       const next = event.key === "Home" ? 0 : careerTabs.length - 1;
-      changeTab(careerTabs[next], true);
+      changeTab(careerTabs[next].value, true);
       return;
     }
     const offset = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
     if (!offset) return;
     event.preventDefault();
     const next = (index + offset + careerTabs.length) % careerTabs.length;
-    changeTab(careerTabs[next], true);
+    changeTab(careerTabs[next].value, true);
   }
 
   async function updateJobStatus(job: CareerJob, status: string) {
@@ -820,33 +883,31 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   const filteredApplications = applications.filter((application) =>
     applicationFilter === "all" || application.state === applicationFilter);
 
+  const careerTabIndex = careerTabs.findIndex((item) => item.value === tab);
+  const totalJobs = Object.values(overview?.job_counts ?? {}).reduce(
+    (total, count) => total + (typeof count === "number" ? count : 0),
+    0,
+  );
+
   return (
-    <section className="career-centre admin-panel" aria-labelledby="career-centre-title">
-      <div className="admin-panel-heading career-heading">
-        <div>
-          <p className="eyebrow">PRIVATE CAREER WORKSPACE</p>
-          <h2 id="career-centre-title">Career review centre</h2>
-        </div>
-        {overview ? <span className="career-review-badge" aria-label={`${overview.review_count} jobs needing review`}>{overview.review_count} to review</span> : null}
-      </div>
+    <section className="career-centre admin-panel" aria-label="Job Radar workspace">
 
       <div className="career-tabs" role="tablist" aria-label="Career centre sections">
-        {careerTabs.map((name, index) => (
+        {careerTabs.map(({ value, label }, index) => (
           <button
             aria-controls={`career-panel-${index}`}
-            aria-selected={tab === name}
-            className={tab === name ? "career-tab active" : "career-tab"}
+            aria-selected={tab === value}
+            className={tab === value ? "career-tab active" : "career-tab"}
             id={`career-tab-${index}`}
-            key={name}
-            onClick={() => changeTab(name)}
+            key={value}
+            onClick={() => changeTab(value)}
             onKeyDown={(event) => handleTabKey(event, index)}
             ref={(element) => { tabRefs.current[index] = element; }}
             role="tab"
-            tabIndex={tab === name ? 0 : -1}
+            tabIndex={tab === value ? 0 : -1}
             type="button"
           >
-            {name}
-            {name === "Overview" && overview?.review_count ? <span className="career-tab-count">{overview.review_count}</span> : null}
+            {label}
           </button>
         ))}
       </div>
@@ -854,11 +915,16 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
       {error ? <p className="admin-message admin-error" role="alert">{error}</p> : null}
       {message ? <p className="admin-message" role="status">{message}</p> : null}
       {loading ? <p className="admin-notice" role="status">Loading private career data…</p> : null}
+      {overview ? (
+        <p className="career-review-badge" aria-label={`${overview.review_count} jobs to review`}>
+          {overview.review_count} {overview.review_count === 1 ? "job" : "jobs"} to review
+        </p>
+      ) : null}
 
       <div
-        aria-labelledby={`career-tab-${careerTabs.indexOf(tab)}`}
+        aria-labelledby={`career-tab-${careerTabIndex}`}
         className="career-panel"
-        id={`career-panel-${careerTabs.indexOf(tab)}`}
+        id={`career-panel-${careerTabIndex}`}
         role="tabpanel"
         tabIndex={0}
       >
@@ -885,39 +951,69 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
             ) : null}
             {scanStatus === "succeeded" ? <p className="career-scan-result career-scan-success" role="status">Latest scan completed successfully.</p> : null}
             {["failed", "interrupted", "skipped"].includes(scanStatus) ? (
-              <p className="career-scan-result career-scan-warning" role="status">Latest scan: {scanStatus}. Check source health and run history for details.</p>
+              <p className="career-scan-result career-scan-warning" role="status">The latest scan {scanStatus === "failed" ? "failed" : scanStatus === "interrupted" ? "was interrupted" : "was skipped"}. Check source health and run history for details.</p>
             ) : null}
             <div className="career-two-columns">
               <section className="career-subpanel">
                 <h3>Source health</h3>
-                <SourceHealthList sources={overview?.sources ?? []} />
+                <SourceHealthList sources={overview?.sources ?? []} onOpenSetup={() => changeTab("Sources and Setup")} />
               </section>
               <section className="career-subpanel">
-                <h3>Applications by state</h3>
-                <div className="career-count-grid">
-                  {Object.entries(overview?.applications_by_state ?? {}).map(([state, count]) => (
-                    <div key={state}><span>{state.replaceAll("_", " ")}</span><strong>{count}</strong></div>
-                  ))}
-                </div>
+                <h3>Applications by stage</h3>
+                {Object.keys(overview?.applications_by_state ?? {}).length ? (
+                  <div className="career-count-grid">
+                    {Object.entries(overview?.applications_by_state ?? {}).map(([state, count]) => (
+                      <div key={state}><span>{applicationStateLabels[state] ?? "Other"}</span><strong>{count}</strong></div>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState
+                    title="No applications yet"
+                    actions={[{ label: "Go to Pipeline", onClick: () => changeTab("Tracker") }]}
+                  >
+                    Add a reviewed listing to start tracking applications.
+                  </EmptyState>
+                )}
               </section>
             </div>
-            <section className="career-subpanel">
-              <div className="career-review-heading">
-                <div><h3>Jobs needing review</h3><p>{overview?.shortlist_count ?? 0} daily shortlist items · risk is not yet assessed</p></div>
-                <button className="text-link" onClick={() => changeTab("Review")} type="button">Open review queue</button>
-              </div>
-              {overview?.shortlist.length ? (
-                <ul className="career-overview-jobs">
-                  {overview.shortlist.map((job) => {
-                    const href = safeHttpUrl(job.url);
-                    return <li key={job.id}>
-                      <div><strong>{job.title}</strong><span>{job.location_text || job.remote_scope_text || "Location not specified"} · {job.assessment?.fit_score ?? "—"}/100 · risk: not yet assessed</span></div>
-                      {href ? <a href={href} rel="noopener noreferrer" target="_blank">{job.attribution_text}</a> : <span>{job.attribution_text}</span>}
-                    </li>;
-                  })}
-                </ul>
-              ) : <p className="admin-help">No jobs currently meet the shortlist threshold. The list is never padded.</p>}
-            </section>
+            {overview && totalJobs === 0 ? (
+              <section className="career-subpanel">
+                <EmptyState
+                  title="No jobs yet"
+                  actions={[
+                    { label: "Scan now", onClick: () => void startScan(), disabled: busy || scanStatus === "running" },
+                    { label: "Add a job", onClick: () => changeTab("Import"), secondary: true },
+                  ]}
+                >
+                  Run a scan or add a listing to start your private review.
+                </EmptyState>
+              </section>
+            ) : totalJobs > 0 ? (
+              <section className="career-subpanel">
+                <div className="career-review-heading">
+                  <div><h3>Jobs needing review</h3><p>{overview?.shortlist_count ?? 0} daily shortlist items · risk is not yet assessed</p></div>
+                  <button className="button button-ghost" onClick={() => changeTab("Review")} type="button">Open review queue</button>
+                </div>
+                {overview?.shortlist.length ? (
+                  <ul className="career-overview-jobs">
+                    {overview.shortlist.map((job) => {
+                      const href = safeHttpUrl(job.url);
+                      return <li key={job.id}>
+                        <div><strong>{job.title}</strong><span>{job.location_text || job.remote_scope_text || "Location not specified"} · {job.assessment?.fit_score ?? "—"}/100 · risk: not yet assessed</span></div>
+                        {href ? <a href={href} rel="noopener noreferrer" target="_blank">{job.attribution_text}</a> : <span>{job.attribution_text}</span>}
+                      </li>;
+                    })}
+                  </ul>
+                ) : (
+                  <EmptyState
+                    title="No jobs match the shortlist yet"
+                    actions={[{ label: "Review listings", onClick: () => changeTab("Review") }]}
+                  >
+                    You can review other listings or adjust your matching preferences.
+                  </EmptyState>
+                )}
+              </section>
+            ) : null}
           </div>
         ) : null}
 
@@ -950,7 +1046,17 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                   />
                 ))}
               </div>
-            ) : <p className="admin-help">No jobs in this list yet. The shortlist is capped by your daily packet limit and is never padded.</p>}
+            ) : (
+              <EmptyState
+                title="Nothing to review yet"
+                actions={[
+                  { label: "Scan now", onClick: () => void startScan(), disabled: busy || scanStatus === "running" },
+                  { label: "Add a job", onClick: () => changeTab("Import"), secondary: true },
+                ]}
+              >
+                New listings will appear here after a scan or when you add one.
+              </EmptyState>
+            )}
           </div>
         ) : null}
 
@@ -1018,7 +1124,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                 <article className="career-profile-row" key={profile.id}>
                   <div><strong>{profile.name}</strong><p>{profile.track}</p></div>
                   <div className="career-actions">
-                    <button className="text-link" onClick={() => {
+                    <button className="button button-secondary" onClick={() => {
                       setActiveProfile(profile.id);
                       setProfileForm({
                         id: profile.id,
@@ -1030,12 +1136,22 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                         preferredSkills: valuesFromFacts(profile.verified_facts.preferred_skills).join(", "),
                       });
                     }} type="button">Edit verified facts</button>
-                    <button className="text-link delete-action" disabled={busy} onClick={() => {
+                    <button className="button button-destructive" disabled={busy} onClick={() => {
                       if (window.confirm(`Archive ${profile.name}?`)) void archiveProfile(profile.id);
                     }} type="button">Archive</button>
                   </div>
                 </article>
-              )) : <p className="admin-help">No active resume profiles. Add a verified master profile to improve fit assessments.</p>}
+              )) : (
+                <EmptyState
+                  title="No resume saved"
+                  actions={[{
+                    label: "Add your resume",
+                    onClick: () => document.getElementById("career-profile-name")?.focus(),
+                  }]}
+                >
+                  Add a master resume and verified details to personalize job matches.
+                </EmptyState>
+              )}
             </section>
           </div>
         ) : null}
@@ -1048,7 +1164,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
               {settings.role_tracks.map((track) => (
                 <div className="career-role-track" key={track}>
                   <span>{track}</span>
-                  <button className="text-link delete-action" disabled={settings.role_tracks.length <= 1} onClick={() => setSettings({
+                  <button className="button button-destructive" disabled={settings.role_tracks.length <= 1} onClick={() => setSettings({
                     ...settings,
                     role_tracks: settings.role_tracks.filter((item) => item !== track),
                   })} type="button">Remove</button>
@@ -1077,10 +1193,10 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
             <input id="career-excluded-companies" onChange={(event) => setSettings({ ...settings, excluded_companies: event.target.value.split(",").map((item) => item.trim()).filter(Boolean) })} value={settings.excluded_companies.join(", ")} />
             <div className="form-row">
               <div><label htmlFor="career-packet-cap">Daily shortlist cap</label><input id="career-packet-cap" max={5} min={1} onChange={(event) => setSettings({ ...settings, max_packets_per_day: Number(event.target.value) })} type="number" value={settings.max_packets_per_day} /></div>
-              <div><label htmlFor="career-send-cap">Daily send cap <span>reserved for later phase</span></label><input id="career-send-cap" max={5} min={1} onChange={(event) => setSettings({ ...settings, max_sends_per_day: Number(event.target.value) })} type="number" value={settings.max_sends_per_day} /></div>
+              <div><label htmlFor="career-send-cap">Daily send limit</label><input id="career-send-cap" max={5} min={1} onChange={(event) => setSettings({ ...settings, max_sends_per_day: Number(event.target.value) })} type="number" value={settings.max_sends_per_day} /></div>
             </div>
             <label className="career-check"><input checked={settings.show_company_name} onChange={(event) => setSettings({ ...settings, show_company_name: event.target.checked })} type="checkbox" />Show company name in any future public view (off by default)</label>
-            <p className="career-warning">Timezone is fixed to Africa/Nairobi. Public publishing remains disabled in this phase.</p>
+            <p className="career-warning">The workspace uses East Africa Time. Public sharing is off.</p>
             <button className="button button-primary" disabled={busy} type="submit">Save preferences</button>
           </form>
         ) : null}
@@ -1088,16 +1204,16 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
         {tab === "Sources and Setup" ? (
           <div className="career-stack">
             <section className="career-subpanel">
-              <h3>Environment setup checklist</h3>
+              <h3 id="career-setup-checklist" tabIndex={-1}>Environment setup checklist</h3>
               <p className="admin-help">Only configured / not configured is shown. Secret values are never read into this page.</p>
               <ul className="career-config-list">
                 {secretNames.map((name) => <li key={name}><span>{name}</span><strong>{setup?.configuration[name]?.configured ? "Configured" : "Not configured"}</strong></li>)}
-                <li><span>JR_SEND_MODE</span><strong>{setup?.JR_SEND_MODE ?? "draft"}</strong></li>
+                <li><span>Sending mode</span><strong>{setup?.JR_SEND_MODE === "live" ? "Live mode" : "Draft mode"}</strong></li>
               </ul>
             </section>
             <section className="career-subpanel">
               <h3>Sources</h3>
-              <SourceHealthList sources={sources} />
+              <SourceHealthList sources={sources} onOpenSetup={() => document.getElementById("career-setup-checklist")?.focus()} />
             </section>
             <section className="career-subpanel">
               <h3>ATS watchlist</h3>
@@ -1112,30 +1228,46 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                 <input id="career-watch-label" maxLength={120} onChange={(event) => setWatchForm({ ...watchForm, label: event.target.value })} required value={watchForm.label} />
                 <button className="button button-primary" disabled={busy} type="submit">Add board</button>
               </form>
-              {watchlist.map((entry) => <article className="career-profile-row" key={entry.id}>
+              {watchlist.length ? watchlist.map((entry) => <article className="career-profile-row" key={entry.id}>
                 <span>{entry.label} · {entry.provider} · {entry.token} · {entry.enabled ? "enabled" : "disabled"}</span>
-                <button className="text-link delete-action" disabled={busy} onClick={() => void deleteWatchlist(entry.id)} type="button">Remove</button>
-              </article>)}
+                <button className="button button-destructive" disabled={busy} onClick={() => void deleteWatchlist(entry.id)} type="button">Remove</button>
+              </article>) : (
+                <EmptyState
+                  title="No employer boards added"
+                  actions={[{ label: "Add a board", onClick: () => document.getElementById("career-watch-token")?.focus(), secondary: true }]}
+                >
+                  Add a provider board to watch for openings from a specific employer.
+                </EmptyState>
+              )}
             </section>
             <section className="career-subpanel">
               <h3>Saved search links</h3>
-              <div className="career-actions">
-                {searchLinks.map((link) => {
-                  const href = safeHttpUrl(link.url);
-                  return href ? <a className="button button-quiet" href={href} key={link.name} rel="noopener noreferrer" target="_blank">{link.name}</a> : null;
-                })}
-              </div>
+              {searchLinks.length ? (
+                <div className="career-actions">
+                  {searchLinks.map((link) => {
+                    const href = safeHttpUrl(link.url);
+                    return href ? <a className="button button-quiet" href={href} key={link.name} rel="noopener noreferrer" target="_blank">{link.name}</a> : null;
+                  })}
+                </div>
+              ) : (
+                <EmptyState
+                  title="No search links available"
+                  actions={[{ label: "Review preferences", onClick: () => changeTab("Preferences") }]}
+                >
+                  Your role tracks and countries help shape the searches shown here.
+                </EmptyState>
+              )}
             </section>
           </div>
         ) : null}
 
         {tab === "Tracker" ? (
           <div className="career-stack">
-            <p className="admin-help">Private application tracker. No documents are attached or sent in this phase.</p>
-            <label className="career-filter-label" htmlFor="career-application-filter">Filter by application state
+            <p className="admin-help">Your tracker is private. No messages or documents are sent from here.</p>
+            <label className="career-filter-label" htmlFor="career-application-filter">Filter applications
               <select id="career-application-filter" onChange={(event) => setApplicationFilter(event.target.value)} value={applicationFilter}>
-                <option value="all">All states</option>
-                {applicationStates.map((state) => <option key={state} value={state}>{state.replaceAll("_", " ")}</option>)}
+                <option value="all">All groups</option>
+                {applicationStates.map((state) => <option key={state} value={state}>{applicationStateLabels[state]}</option>)}
               </select>
             </label>
             {filteredApplications.length ? filteredApplications.map((application) => (
@@ -1144,7 +1276,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                   <div><h3>{application.title}</h3><p>{application.company ?? "Company not listed"} · {application.location_text} · {application.source_name}</p></div>
                   <label>State
                     <select onChange={(event) => void changeApplicationState(application, event.target.value)} value={application.state}>
-                      {applicationStates.map((state) => <option disabled={state === "approved_to_send" || state === "sent"} key={state} value={state}>{state.replaceAll("_", " ")}{state === "approved_to_send" || state === "sent" ? " (Phase 6)" : ""}</option>)}
+                      {applicationStates.map((state) => <option disabled={state === "approved_to_send" || state === "sent"} key={state} value={state}>{applicationStateLabels[state]}{state === "approved_to_send" || state === "sent" ? " (Unavailable)" : ""}</option>)}
                     </select>
                   </label>
                 </div>
@@ -1158,13 +1290,27 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                     <input id={`application-followup-${application.id}`} onChange={(event) => setFollowupsByApplication({ ...followupsByApplication, [application.id]: event.target.value })} type="datetime-local" value={followupsByApplication[application.id] ?? (application.followup_at ? application.followup_at.slice(0, 16) : "")} />
                     <div className="career-actions">
                       <button className="button button-quiet" disabled={busy} onClick={() => void saveApplicationDetails(application)} type="button">Save notes and follow-up</button>
-                      <button className="text-link" onClick={() => void loadApplicationEvents(application.id).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Timeline could not be loaded."))} type="button">View timeline</button>
+                      <button className="button button-ghost" onClick={() => void loadApplicationEvents(application.id).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Timeline could not be loaded."))} type="button">View timeline</button>
                     </div>
                   </div>
                 </div>
                 {activeApplication === application.id ? <ApplicationTimeline events={applicationEvents} /> : null}
               </article>
-            )) : <p className="admin-help">{applications.length ? "No applications match this state." : "No applications in the tracker yet. Add a reviewed job from a job card."}</p>}
+            )) : applications.length ? (
+              <EmptyState
+                title="No applications in this group"
+                actions={[{ label: "Show all applications", onClick: () => setApplicationFilter("all") }]}
+              >
+                Choose another group or view all applications.
+              </EmptyState>
+            ) : (
+              <EmptyState
+                title="Your pipeline is empty"
+                actions={[{ label: "Go to Review", onClick: () => changeTab("Review") }]}
+              >
+                Add a reviewed job to begin tracking your applications.
+              </EmptyState>
+            )}
           </div>
         ) : null}
       </div>
@@ -1191,7 +1337,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   );
 }
 
-function SourceHealthList({ sources }: { sources: SourceHealth[] }) {
+function SourceHealthList({ sources, onOpenSetup }: { sources: SourceHealth[]; onOpenSetup: () => void }) {
   return sources.length ? (
     <div className="career-source-list">
       {sources.map((source) => (
@@ -1205,7 +1351,14 @@ function SourceHealthList({ sources }: { sources: SourceHealth[] }) {
         </article>
       ))}
     </div>
-  ) : <p className="admin-help">Source health is not available until the career tables are installed.</p>;
+  ) : (
+    <EmptyState
+      title="No source status yet"
+      actions={[{ label: "Open source setup", onClick: onOpenSetup }]}
+    >
+      Check the setup list to see what is needed before sources can report status.
+    </EmptyState>
+  );
 }
 
 function CareerJobCard({
@@ -1234,7 +1387,7 @@ function CareerJobCard({
         <div>
           <p className="eyebrow">
             {externalUrl ? <a href={externalUrl} rel="noopener noreferrer" target="_blank">{job.attribution_text}</a> : job.attribution_text}
-            {" · "}{job.source_key}
+            {" · "}{job.source_name}
           </p>
           <h3>{job.title}</h3>
           <p>{job.company ?? "Company not listed"} · {job.location_text || job.remote_scope_text || "Location not specified"}</p>
@@ -1245,24 +1398,24 @@ function CareerJobCard({
       {job.description_text ? <p className="career-advert-text">{job.description_text}</p> : null}
       {assessment ? (
         <div className="career-assessment-details">
-          <p><strong>Eligibility:</strong> {assessment.eligibility}</p>
+          <p><strong>Eligibility:</strong> {assessment.eligibility === "eligible" ? "Eligible" : assessment.eligibility === "ineligible" ? "Not eligible" : "Needs verification"}</p>
           <p><strong>Eligibility evidence:</strong> {assessment.eligibility_evidence.map((item) => item.phrase ?? item.rule ?? "").filter(Boolean).join("; ") || "No explicit phrase recorded."}</p>
           <p><strong>Risk:</strong> {job.risk_assessment ?? "not yet assessed"} — no safety conclusion is implied.</p>
           <p><strong>Matched:</strong> {assessment.matched.map((item) => item.value ?? item.phrase ?? "").filter(Boolean).join(", ") || "None recorded"}</p>
           <p><strong>Missing:</strong> {assessment.missing.map((item) => item.value ?? "").filter(Boolean).join(", ") || "None recorded"}</p>
-          <p><strong>Reason codes:</strong> {assessment.reason_codes.join(", ") || "None"}</p>
+          <p><strong>Assessment notes:</strong> {assessment.reason_codes.map(readableLabel).join(", ") || "None recorded"}</p>
           {assessment.uncertainty.length ? <p><strong>Uncertainty:</strong> {assessment.uncertainty.join(" ")}</p> : null}
           <details>
             <summary>Fit score breakdown</summary>
-            <ul>{breakdownItems.map(({ label, points, weight }) => <li key={label}>{label.replaceAll("_", " ")}: {points} / {weight}</li>)}</ul>
+            <ul>{breakdownItems.map(({ label, points, weight }) => <li key={label}>{readableLabel(label)}: {points} / {weight}</li>)}</ul>
           </details>
         </div>
       ) : <p className="career-warning">No fit assessment is available yet.</p>}
       <div className="career-actions">
         {externalUrl ? <a className="button button-quiet" href={externalUrl} rel="noopener noreferrer" target="_blank">Open original</a> : <span className="admin-help">No valid original link</span>}
         <button className="button button-quiet" disabled={busy} onClick={() => onStatus("shortlisted")} type="button">Shortlist</button>
-        <button className="button button-quiet" disabled={busy} onClick={() => onStatus("not_a_fit")} type="button">Not a fit</button>
-        <button className="button button-quiet" disabled={busy} onClick={() => onStatus("duplicate")} type="button">Mark duplicate</button>
+        <button className="button button-destructive" disabled={busy} onClick={() => onStatus("not_a_fit")} type="button">Not a fit</button>
+        <button className="button button-destructive" disabled={busy} onClick={() => onStatus("duplicate")} type="button">Mark duplicate</button>
         <button className="button button-quiet" disabled={busy} onClick={onNotes} type="button">Add notes</button>
         <button className="button button-quiet" disabled={busy} onClick={onApplication} type="button">Add to tracker</button>
       </div>
@@ -1277,8 +1430,8 @@ function ApplicationTimeline({ events }: { events: ApplicationEvent[] }) {
       {events.length ? <ol>{events.map((event) => (
         <li key={event.id}>
           <time dateTime={event.at}>{readableDate(event.at)}</time>
-          <strong>{event.event.replaceAll(".", " ").replaceAll("_", " ")}</strong>
-          {Object.keys(event.detail).length ? <span>{Object.entries(event.detail).map(([key, value]) => `${key.replaceAll("_", " ")}: ${String(value)}`).join(" · ")}</span> : null}
+          <strong>{readableLabel(event.event)}</strong>
+          {Object.keys(event.detail).length ? <span>{Object.entries(event.detail).map(([key, value]) => `${readableLabel(key)}: ${String(value)}`).join(" · ")}</span> : null}
         </li>
       ))}</ol> : <p className="admin-help">No timeline events have been recorded.</p>}
     </section>
