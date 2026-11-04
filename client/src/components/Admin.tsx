@@ -652,6 +652,7 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
             <section className="admin-panel" hidden={activeSection !== "project-editor"} id="project-editor">
               <div className="admin-panel-heading"><div><p className="eyebrow">CONTENT MANAGEMENT</p><h2>{editingId ? "Edit project" : "Add a project"}</h2></div></div>
               <form className="project-form" onSubmit={(event) => void saveProject(event)}>
+                <p className="admin-form-guide">Start with the project title, date and a short description. Everything else is optional. New projects stay private drafts unless you choose to publish them.</p>
                 <div className="form-row">
                   <div><label htmlFor="project-title">Project title</label><input id="project-title" maxLength={160} onChange={(event) => setForm({ ...form, title: event.target.value })} required value={form.title} /></div>
                   <div><label htmlFor="project-period">Date or period</label><input id="project-period" maxLength={60} onChange={(event) => setForm({ ...form, period: event.target.value })} placeholder="e.g. Jun 2026" required value={form.period} /></div>
@@ -660,6 +661,9 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
                 <textarea id="project-description" maxLength={1200} onChange={(event) => setForm({ ...form, description: event.target.value })} required rows={3} value={form.description} />
                 <label htmlFor="project-tags">Tags <span>comma-separated</span></label>
                 <input id="project-tags" maxLength={500} onChange={(event) => setForm({ ...form, tags: event.target.value.split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 12) })} placeholder="Incident response, SIEM, Python" value={form.tags.join(", ")} />
+                <details className="admin-advanced-fields" open={Boolean(editingId && (form.writeup || form.challenges || form.solutions || form.architecture || form.futureImprovements || form.url || form.demoUrl))}>
+                  <summary>Optional details — write-up, implementation notes and links</summary>
+                  <div className="admin-advanced-body">
                 <label htmlFor="project-writeup">Write-up <span>plain text; no HTML · max 12,000 characters</span></label>
                 <textarea id="project-writeup" maxLength={12000} onChange={(event) => setForm({ ...form, writeup: event.target.value })} rows={7} value={form.writeup} />
                 <div className="form-row">
@@ -674,6 +678,8 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
                 <input id="project-url" maxLength={500} onChange={(event) => setForm({ ...form, url: event.target.value })} type="url" value={form.url ?? ""} />
                 <label htmlFor="project-demo-url">Live demo link <span>optional · HTTPS only</span></label>
                 <input id="project-demo-url" maxLength={500} onChange={(event) => setForm({ ...form, demoUrl: event.target.value })} type="url" value={form.demoUrl ?? ""} />
+                  </div>
+                </details>
                 <label className="publish-toggle"><input checked={form.published} name="published" onChange={(event) => setForm({ ...form, published: event.target.checked })} type="checkbox" /> Publish this project on my public portfolio</label>
                 <div className="form-actions">
                   <button className="button button-primary" type="submit">{editingId ? "Save project" : "Add project"} <span aria-hidden="true">→</span></button>
@@ -703,6 +709,7 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
               <div className="admin-panel-heading"><div><p className="eyebrow">PORTFOLIO CMS</p><h2 id="portfolio-content-title">{editingContentId ? "Edit a portfolio entry" : "Add to a portfolio page"}</h2></div></div>
               <p className="admin-help">Create and publish plain-text entries for experience, education, training, achievements, articles, services, write-ups, CTFs, and other portfolio sections. Drafts stay private.</p>
               <form className="project-form" onSubmit={(event) => void saveContent(event)}>
+                <p className="admin-form-guide">Required: choose a page, add a title and write a short description. Extra detail, tags and links are optional.</p>
                 <div className="form-row">
                   <div>
                     <label htmlFor="content-category">Portfolio page</label>
@@ -719,12 +726,17 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
                 <input id="content-title" maxLength={160} onChange={(event) => setContentForm({ ...contentForm, title: event.target.value })} required value={contentForm.title} />
                 <label htmlFor="content-description">Short description</label>
                 <textarea id="content-description" maxLength={1200} onChange={(event) => setContentForm({ ...contentForm, description: event.target.value })} required rows={3} value={contentForm.description} />
+                <details className="admin-advanced-fields" open={Boolean(editingContentId && (contentForm.body || contentForm.tags.length > 0 || contentForm.url))}>
+                  <summary>Optional details — extra text, tags and reference link</summary>
+                  <div className="admin-advanced-body">
                 <label htmlFor="content-body">Additional details <span>plain text; no HTML · max 12,000 characters</span></label>
                 <textarea id="content-body" maxLength={12000} onChange={(event) => setContentForm({ ...contentForm, body: event.target.value })} rows={6} value={contentForm.body} />
                 <label htmlFor="content-tags">Tags <span>comma-separated, optional</span></label>
                 <input id="content-tags" maxLength={500} onChange={(event) => setContentForm({ ...contentForm, tags: event.target.value.split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 12) })} value={contentForm.tags.join(", ")} />
                 <label htmlFor="content-url">Public reference link <span>optional · HTTP(S) only</span></label>
                 <input id="content-url" maxLength={500} onChange={(event) => setContentForm({ ...contentForm, url: event.target.value })} type="url" value={contentForm.url ?? ""} />
+                  </div>
+                </details>
                 <label className="publish-toggle"><input checked={contentForm.published} name="content-published" onChange={(event) => setContentForm({ ...contentForm, published: event.target.checked })} type="checkbox" /> Publish this entry on the public portfolio</label>
                 <div className="form-actions">
                   <button className="button button-primary" type="submit">{editingContentId ? "Save entry" : "Add entry"} <span aria-hidden="true">→</span></button>
