@@ -789,8 +789,14 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
     async (req, res, next) => {
       const parsed = parseCareerInput(careerImportSchema, req.body);
       if (parsed.error) return res.status(400).json({ error: "Please check the imported advert.", details: parsed.error });
-      if (!matchesRoleTitle(parsed.data.title)) {
-        return res.status(422).json({ error: "The advert title does not match the enabled role tracks." });
+      const { rows: settingsRows } = await db.query(
+        "SELECT role_tracks FROM public.jr_settings WHERE id = 1",
+      );
+      const roleTracks = settingsRows[0]?.role_tracks ?? [];
+      if (!matchesRoleTitle(parsed.data.title, [], roleTracks)) {
+        return res.status(422).json({
+          error: "The advert title does not match your saved job titles. You can update Search preferences or keep the advert for manual review.",
+        });
       }
       if (parsed.data.url && !normalizeHttpUrl(parsed.data.url)) {
         return res.status(400).json({ error: "URL must use HTTP or HTTPS and must not include credentials." });
