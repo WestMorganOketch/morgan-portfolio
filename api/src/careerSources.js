@@ -57,15 +57,18 @@ export function buildCareerSearchTerms(roleTracks = defaultRoleTracks) {
   for (const track of roleTracks) {
     const normalized = String(track ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
     if (!normalized) continue;
-    add(track);
     if (/security|cyber|soc/.test(normalized)) {
       add("security analyst");
       add("SOC analyst");
       add("cybersecurity analyst");
+      add(track);
     } else if (/trainer|training|ict|computer skills|digital skills|instructor/.test(normalized)) {
       add("ICT trainer");
       add("computer skills trainer");
       add("digital skills trainer");
+      add(track);
+    } else {
+      add(track);
     }
   }
   return (terms.length ? terms : [...defaultRoleTracks]).slice(0, 30);
