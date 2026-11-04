@@ -159,6 +159,27 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
   }
 }
 
+type AdminSection =
+  | "dashboard"
+  | "account"
+  | "project-editor"
+  | "projects"
+  | "content-editor"
+  | "portfolio-content"
+  | "operations"
+  | "analytics";
+
+const adminSections: { id: AdminSection; label: string; title: string }[] = [
+  { id: "dashboard", label: "Home", title: "Admin dashboard" },
+  { id: "project-editor", label: "Add project", title: "Add or edit a project" },
+  { id: "projects", label: "Projects", title: "Your projects" },
+  { id: "content-editor", label: "Add content", title: "Add portfolio content" },
+  { id: "portfolio-content", label: "Portfolio pages", title: "Portfolio entries" },
+  { id: "operations", label: "Inbox & documents", title: "Inbox and documents" },
+  { id: "analytics", label: "Site activity", title: "Site activity" },
+  { id: "account", label: "Account", title: "Account settings" },
+];
+
 type AdminProps = { view?: "dashboard" | "career" };
 
 export default function Admin({ view = "dashboard" }: AdminProps) {
@@ -177,6 +198,15 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [activeSection, setActiveSection] = useState<AdminSection>("dashboard");
+
+  function navigateToSection(section: AdminSection) {
+    setActiveSection(section);
+    if (typeof window !== "undefined") {
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
+    }
+  }
 
   useEffect(() => {
     const originalTitle = document.title;
@@ -383,6 +413,7 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
       await loadDashboard();
       setMessage(editingId ? "Project updated." : "Project saved.");
       resetForm();
+      navigateToSection("projects");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The project could not be saved.");
     }
@@ -429,6 +460,7 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
       await loadDashboard();
       setMessage(editingContentId ? "Portfolio content updated." : "Portfolio content saved.");
       resetContentForm();
+      navigateToSection("portfolio-content");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The portfolio content could not be saved.");
     }
@@ -485,19 +517,26 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
       </header>
       {adminEmail ? (
         <nav className="admin-navigation" aria-label="Admin sections">
-          <a href="/admin" aria-current={view === "dashboard" ? "page" : undefined}>Dashboard</a>
-          <a href="/admin/career" aria-current={view === "career" ? "page" : undefined}>Job Radar</a>
-          {view !== "career" ? (
-            <>
-              <a href="/admin#account">Account</a>
-              <a href="/admin#project-editor">Add project</a>
-              <a href="/admin#projects">Projects</a>
-              <a href="/admin#content-editor">Add content</a>
-              <a href="/admin#portfolio-content">Portfolio entries</a>
-              <a href="/admin#operations">Inbox &amp; documents</a>
-              <a href="/admin#analytics">Analytics</a>
-            </>
-          ) : null}
+          {view === "career" ? (
+            <a className="admin-navigation-link" href="/admin">Dashboard</a>
+          ) : (
+            <button
+              className={activeSection === "dashboard" ? "admin-navigation-button active" : "admin-navigation-button"}
+              type="button"
+              aria-current={activeSection === "dashboard" ? "page" : undefined}
+              onClick={() => navigateToSection("dashboard")}
+            >Home</button>
+          )}
+          <a className={view === "career" ? "admin-navigation-link active" : "admin-navigation-link"} href="/admin/career" aria-current={view === "career" ? "page" : undefined}>Job Radar</a>
+          {view !== "career" ? adminSections.filter((section) => section.id !== "dashboard").map((section) => (
+            <button
+              key={section.id}
+              className={activeSection === section.id ? "admin-navigation-button active" : "admin-navigation-button"}
+              type="button"
+              aria-current={activeSection === section.id ? "page" : undefined}
+              onClick={() => navigateToSection(section.id)}
+            >{section.label}</button>
+          )) : null}
         </nav>
       ) : null}
       <div className="admin-content">
@@ -540,18 +579,22 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
         {!loading && adminEmail ? (
           <>
             <div className="admin-title-row">
-              <div><p className="eyebrow">PRIVATE AREA / CONTENT &amp; ACTIVITY</p><h1>Admin dashboard<span className="accent">.</span></h1><p className="admin-help">Signed in as {adminEmail}</p></div>
+              <div>
+                <p className="eyebrow">PRIVATE AREA / YOUR WORKSPACE</p>
+                <h1>{view === "career" ? "Job Radar" : adminSections.find((section) => section.id === activeSection)?.title ?? "Admin dashboard"}<span className="accent">.</span></h1>
+                <p className="admin-help">Signed in as {adminEmail}</p>
+              </div>
               <button className="button button-quiet" onClick={() => void signOut()} type="button">Sign out</button>
             </div>
 
             {view !== "career" ? (
               <>
-                <section className="admin-stats" aria-label="Aggregate site activity for the last 30 days">
+                <section className="admin-stats" hidden={activeSection !== "dashboard"} aria-label="Aggregate site activity for the last 30 days">
                   <article><span>PAGE VIEWS · 30 DAYS</span><strong>{pageViews}</strong></article>
                   <article><span>LINK CLICKS · 30 DAYS</span><strong>{linkClicks}</strong></article>
                   <article><span>PROJECTS</span><strong>{projects.length}</strong></article>
                 </section>
-                <p className="admin-privacy">Activity is stored as aggregate event counts only. The analytics table does not store visitor identities, IP addresses, or query strings.</p>
+                <p className="admin-privacy" hidden={activeSection !== "dashboard"}>Activity is stored as aggregate event counts only. The analytics table does not store visitor identities, IP addresses, or query strings.</p>
               </>
             ) : null}
 
@@ -565,16 +608,35 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
             {view === "career" ? (
               <CareerCentre csrfToken={csrfToken} />
             ) : (
-              <section className="admin-quick-links" aria-label="Admin shortcuts">
-                <a href="/admin/career"><span>CAREER AUTOMATION</span><strong>Open Job Radar <span aria-hidden="true">→</span></strong><small>Search, shortlist, import and review job opportunities.</small></a>
-                <a href="/admin#project-editor"><span>PORTFOLIO CONTENT</span><strong>Add a project <span aria-hidden="true">→</span></strong><small>Publish a verified project or update your portfolio.</small></a>
-                <a href="/admin#operations"><span>PRIVATE OPERATIONS</span><strong>Open inbox &amp; documents <span aria-hidden="true">→</span></strong><small>Manage private messages and document drafts.</small></a>
+              <section className="admin-quick-links" hidden={activeSection !== "dashboard"} aria-label="Choose an admin task">
+                <p className="admin-workspace-intro">What would you like to do? Choose one task. You can return here at any time.</p>
+                <button type="button" onClick={() => navigateToSection("project-editor")}>
+                  <span className="admin-quick-icon" aria-hidden="true">＋</span><strong>Add or edit a project <span aria-hidden="true">→</span></strong><small>Add a new project or improve an existing project page.</small>
+                </button>
+                <button type="button" onClick={() => navigateToSection("content-editor")}>
+                  <span className="admin-quick-icon" aria-hidden="true">▤</span><strong>Update a portfolio page <span aria-hidden="true">→</span></strong><small>Add training, experience, achievements, articles, and more.</small>
+                </button>
+                <button type="button" onClick={() => navigateToSection("portfolio-content")}>
+                  <span className="admin-quick-icon" aria-hidden="true">☷</span><strong>Review portfolio entries <span aria-hidden="true">→</span></strong><small>Edit, publish, or remove saved portfolio content.</small>
+                </button>
+                <button type="button" onClick={() => navigateToSection("operations")}>
+                  <span className="admin-quick-icon" aria-hidden="true">✉</span><strong>Check messages &amp; documents <span aria-hidden="true">→</span></strong><small>Read private messages and manage document files.</small>
+                </button>
+                <button type="button" onClick={() => navigateToSection("analytics")}>
+                  <span className="admin-quick-icon" aria-hidden="true">↗</span><strong>View site activity <span aria-hidden="true">→</span></strong><small>See aggregate page views and link clicks.</small>
+                </button>
+                <button type="button" onClick={() => navigateToSection("account")}>
+                  <span className="admin-quick-icon" aria-hidden="true">⚙</span><strong>Account settings <span aria-hidden="true">→</span></strong><small>Change your email or password securely.</small>
+                </button>
+                <a className="admin-quick-career" href="/admin/career">
+                  <span className="admin-quick-icon" aria-hidden="true">⌕</span><strong>Open Job Radar <span aria-hidden="true">→</span></strong><small>Find, review, and track job opportunities.</small>
+                </a>
               </section>
             )}
 
             {view !== "career" ? (
               <>
-            <section className="admin-panel" id="account">
+            <section className="admin-panel" hidden={activeSection !== "account"} id="account">
               <div className="admin-panel-heading"><div><p className="eyebrow">ACCOUNT</p><h2>Account settings</h2></div></div>
               <form className="project-form" onSubmit={(event) => void handleCredentialChange(event)}>
                 <label htmlFor="account-new-email">New email (optional)</label>
@@ -587,7 +649,7 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
               </form>
             </section>
 
-            <section className="admin-panel" id="project-editor">
+            <section className="admin-panel" hidden={activeSection !== "project-editor"} id="project-editor">
               <div className="admin-panel-heading"><div><p className="eyebrow">CONTENT MANAGEMENT</p><h2>{editingId ? "Edit project" : "Add a project"}</h2></div></div>
               <form className="project-form" onSubmit={(event) => void saveProject(event)}>
                 <div className="form-row">
@@ -615,12 +677,12 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
                 <label className="publish-toggle"><input checked={form.published} name="published" onChange={(event) => setForm({ ...form, published: event.target.checked })} type="checkbox" /> Publish this project on my public portfolio</label>
                 <div className="form-actions">
                   <button className="button button-primary" type="submit">{editingId ? "Save project" : "Add project"} <span aria-hidden="true">→</span></button>
-                  {editingId ? <button className="button button-quiet" onClick={resetForm} type="button">Cancel edit</button> : null}
+                  {editingId ? <button className="button button-quiet" onClick={() => { resetForm(); navigateToSection("projects"); }} type="button">Cancel edit</button> : null}
                 </div>
               </form>
             </section>
 
-            <section className="admin-panel" id="projects">
+            <section className="admin-panel" hidden={activeSection !== "projects"} id="projects">
               <div className="admin-panel-heading"><div><p className="eyebrow">SAVED CONTENT</p><h2>Your projects</h2></div></div>
               {projects.length ? (
                 <div className="admin-project-list">
@@ -628,7 +690,7 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
                     <article className="admin-project" key={project.id}>
                       <div><div className="mission-meta"><span>{project.period}</span><span className={project.published ? "file-status" : "draft-status"}>{project.published ? "PUBLISHED" : "DRAFT"}</span></div><h3>{project.title}</h3><p>{project.description}</p></div>
                       <div className="admin-project-actions">
-                        <button className="text-link" onClick={() => { setForm({ ...project, url: project.url ?? "" }); setEditingId(project.id); setMessage(""); }} type="button">Edit</button>
+                        <button className="text-link" onClick={() => { setForm({ ...project, url: project.url ?? "" }); setEditingId(project.id); setMessage(""); setError(""); navigateToSection("project-editor"); }} type="button">Edit</button>
                         <button className="text-link delete-action" onClick={() => void deleteProject(project)} type="button">Delete</button>
                       </div>
                     </article>
@@ -637,7 +699,7 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
               ) : <p className="admin-help">No projects yet. Add one above; unpublished drafts are visible only here.</p>}
             </section>
 
-            <section className="admin-panel" id="content-editor" aria-labelledby="portfolio-content-title">
+            <section className="admin-panel" hidden={activeSection !== "content-editor"} id="content-editor" aria-labelledby="portfolio-content-title">
               <div className="admin-panel-heading"><div><p className="eyebrow">PORTFOLIO CMS</p><h2 id="portfolio-content-title">{editingContentId ? "Edit a portfolio entry" : "Add to a portfolio page"}</h2></div></div>
               <p className="admin-help">Create and publish plain-text entries for experience, education, training, achievements, articles, services, write-ups, CTFs, and other portfolio sections. Drafts stay private.</p>
               <form className="project-form" onSubmit={(event) => void saveContent(event)}>
@@ -666,12 +728,12 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
                 <label className="publish-toggle"><input checked={contentForm.published} name="content-published" onChange={(event) => setContentForm({ ...contentForm, published: event.target.checked })} type="checkbox" /> Publish this entry on the public portfolio</label>
                 <div className="form-actions">
                   <button className="button button-primary" type="submit">{editingContentId ? "Save entry" : "Add entry"} <span aria-hidden="true">→</span></button>
-                  {editingContentId ? <button className="button button-quiet" onClick={resetContentForm} type="button">Cancel edit</button> : null}
+                  {editingContentId ? <button className="button button-quiet" onClick={() => { resetContentForm(); navigateToSection("portfolio-content"); }} type="button">Cancel edit</button> : null}
                 </div>
               </form>
             </section>
 
-            <section className="admin-panel" id="portfolio-content" aria-labelledby="saved-content-title">
+            <section className="admin-panel" hidden={activeSection !== "portfolio-content"} id="portfolio-content" aria-labelledby="saved-content-title">
               <div className="admin-panel-heading"><div><p className="eyebrow">SAVED CONTENT</p><h2 id="saved-content-title">Portfolio entries</h2></div></div>
               {contentEntries.length ? (
                 <div className="admin-project-list">
@@ -682,7 +744,7 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
                         <h3>{entry.title}</h3><p>{entry.description}</p>
                       </div>
                       <div className="admin-project-actions">
-                        <button className="text-link" onClick={() => { setContentForm({ ...entry, url: entry.url ?? "" }); setEditingContentId(entry.id); setMessage(""); }} type="button">Edit</button>
+                        <button className="text-link" onClick={() => { setContentForm({ ...entry, url: entry.url ?? "" }); setEditingContentId(entry.id); setMessage(""); setError(""); navigateToSection("content-editor"); }} type="button">Edit</button>
                         <button className="text-link delete-action" onClick={() => void deleteContent(entry)} type="button">Delete</button>
                       </div>
                     </article>
@@ -691,7 +753,7 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
               ) : <p className="admin-help">No additional entries yet. Add a record above; published entries appear on their matching portfolio page.</p>}
             </section>
 
-            <section className="admin-panel" id="analytics">
+            <section className="admin-panel" hidden={activeSection !== "analytics"} id="analytics">
               <div className="admin-panel-heading"><div><p className="eyebrow">PRIVATE AGGREGATES / LAST 30 DAYS</p><h2>Recent activity</h2></div></div>
               {analytics.length ? (
                 <div className="analytics-table-wrap"><table className="analytics-table"><thead><tr><th>Date</th><th>Event</th><th>Count</th></tr></thead><tbody>
@@ -699,7 +761,7 @@ export default function Admin({ view = "dashboard" }: AdminProps) {
                 </tbody></table></div>
               ) : <p className="admin-help">No activity has been recorded yet. Metrics appear here after the API is connected to the public site.</p>}
             </section>
-            <div id="operations"><AdminExtensions csrfToken={csrfToken} /></div>
+            {activeSection === "operations" ? <div id="operations"><AdminExtensions csrfToken={csrfToken} /></div> : null}
               </>
             ) : null}
           </>
