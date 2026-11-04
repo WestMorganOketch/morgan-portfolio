@@ -1302,3 +1302,28 @@ details[open] > .accordion-content { grid-template-rows: 1fr; opacity: 1; }
   .admin-quick-links > button,
   .admin-quick-links > .admin-quick-career { transition: none; }
 }
+
+.admin-back-link {
+  display: inline-flex;
+  min-height: 38px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.admin-back-link:hover { border-color: var(--accent); color: var(--accent); }
+.admin-panel-action { min-height: 39px; flex: 0 0 auto; padding-inline: 13px; cursor: pointer; }
+.admin-panel-action:hover { box-shadow: 0 5px 16px color-mix(in srgb, var(--accent) 13%, transparent); }
+@media (max-width: 560px) {
+  .admin-panel-heading { align-items: flex-start; flex-direction: column; }
+  .admin-panel-action, .admin-back-link { min-height: 40px; }
+  .admin-quick-links > button,
+  .admin-quick-links > .admin-quick-career { grid-template-columns: 30px minmax(0, 1fr); gap: 8px 10px; }
+  .admin-quick-icon { width: 30px; height: 30px; }
+}
