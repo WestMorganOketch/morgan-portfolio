@@ -21,8 +21,11 @@ class FakeRunDatabase {
       return { rows: values[0].filter((name) => this.tables.has(name)).map((table_name) => ({ table_name })) };
     }
     if (statement.startsWith("SELECT id, title, company")) return { rows: [] };
-    if (statement.startsWith("SELECT score_threshold")) {
-      return { rows: [{ score_threshold: 65, excluded_keywords: [], excluded_companies: [] }] };
+    if (statement.startsWith("SELECT role_tracks FROM public.jr_settings")) {
+      return { rows: [{ role_tracks: this.roleTracks }] };
+    }
+    if (statement.startsWith("SELECT role_tracks, score_threshold")) {
+      return { rows: [{ role_tracks: this.roleTracks, score_threshold: 65, excluded_keywords: [], excluded_companies: [] }] };
     }
     if (statement.startsWith("SELECT s.key, s.name, s.enabled")) {
       return {
