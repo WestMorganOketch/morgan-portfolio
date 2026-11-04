@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { AlertTriangle, ArrowLeft, ExternalLink, Search, X } from "lucide-react";
 
 type JsonRecord = Record<string, unknown>;
 type Eligibility = "eligible" | "unknown" | "ineligible";
@@ -27,6 +28,8 @@ type CareerJob = {
   attribution_text: string;
   posted_at: string | null;
   first_seen_at: string;
+  tags?: string[];
+  salary_text?: string | null;
   status: string;
   assessment: Assessment | null;
   risk_assessment?: string;
@@ -45,6 +48,9 @@ type SourceHealth = {
   requests_today: number | null;
   window_date: string;
   next_allowed_at: string | null;
+  docs_url?: string | null;
+  auth_type?: string;
+  notes?: string | null;
 };
 type Overview = {
   last_success_at: string | null;
@@ -67,6 +73,7 @@ type Profile = {
   original_text: string;
   verified_facts: JsonRecord;
   archived_at: string | null;
+  updated_at?: string | null;
 };
 type Application = {
   id: string;
@@ -79,6 +86,8 @@ type Application = {
   location_text: string;
   url: string | null;
   source_name: string;
+  created_at?: string;
+  updated_at?: string;
 };
 type ApplicationEvent = { id: string; at: string; event: string; detail: JsonRecord };
 type Settings = {
@@ -92,13 +101,66 @@ type Settings = {
   public_publishing: boolean;
   excluded_keywords: string[];
   excluded_companies: string[];
+  updated_at?: string | null;
 };
 type SetupStatus = {
   configuration: Record<string, { configured: boolean }>;
   JR_SEND_MODE: "draft" | "live";
+  tables?: { configured: boolean; missing: string[] };
+  intakeTables?: { configured: boolean; missing: string[] };
+  assessmentTables?: { configured: boolean; missing: string[] };
 };
 type WatchlistEntry = { id: string; provider: "greenhouse" | "lever"; token: string; label: string; enabled: boolean };
 type SearchLink = { name: string; url: string };
+type CareerRun = {
+  id: string;
+  trigger: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  summary: JsonRecord;
+};
+
+const applicationTransitions: Record<string, string[]> = {
+  discovered: ["screened", "match_review", "shortlisted", "not_a_fit", "duplicate", "expired", "withdrawn", "needs_manual_attention"],
+  screened: ["match_review", "shortlisted", "not_a_fit", "duplicate", "expired", "withdrawn", "needs_manual_attention"],
+  match_review: ["screened", "shortlisted", "not_a_fit", "duplicate", "expired", "withdrawn", "needs_manual_attention"],
+  shortlisted: ["match_review", "preparation_in_progress", "not_a_fit", "duplicate", "expired", "withdrawn", "needs_manual_attention"],
+  preparation_in_progress: ["shortlisted", "ready_for_review", "not_a_fit", "expired", "withdrawn", "needs_manual_attention"],
+  ready_for_review: ["shortlisted", "preparation_in_progress", "submitted", "not_a_fit", "expired", "withdrawn", "needs_manual_attention"],
+  failed_send: ["preparation_in_progress", "ready_for_review", "withdrawn", "needs_manual_attention"],
+  submitted: ["withdrawn", "needs_manual_attention", "expired"],
+  blocked_risk: ["not_a_fit", "needs_manual_attention"],
+  not_a_fit: ["match_review", "withdrawn"],
+  duplicate: ["withdrawn"],
+  expired: ["match_review", "withdrawn"],
+  withdrawn: ["match_review"],
+  needs_manual_attention: ["match_review", "shortlisted", "not_a_fit", "withdrawn"],
+};
+const applicationStages = [
+  { name: "To review", states: ["discovered", "screened", "match_review", "needs_manual_attention"] },
+  { name: "Shortlisted", states: ["shortlisted"] },
+  { name: "Preparing", states: ["preparation_in_progress", "failed_send"] },
+  { name: "Ready to send", states: ["ready_for_review", "approved_to_send"] },
+  { name: "Applied", states: ["sent", "submitted"] },
+  { name: "Closed", states: ["expired", "duplicate", "blocked_risk", "not_a_fit", "withdrawn"] },
+] as const;
+const integrationEnvironment: Record<string, string[]> = {
+  jooble: ["JOOBLE_API_KEY"],
+  careerjet: ["CAREERJET_API_KEY"],
+  reliefweb: ["RELIEFWEB_APPNAME"],
+};
+const integrationDescriptions: Record<string, string> = {
+  jooble: "Search listings through Jooble.",
+  careerjet: "Search listings through Careerjet.",
+  reliefweb: "Search humanitarian and development opportunities through ReliefWeb.",
+  arbeitnow: "Read public listings from the Arbeitnow feed.",
+  jobicy: "Search remote listings through Jobicy.",
+  remotive: "Search remote listings through Remotive.",
+  remoteok: "Read listings from the Remote OK feed.",
+  ats_watchlist: "Check configured employer boards for matching job listings.",
+  manual_import: "Add a listing manually using Add a job.",
+};
 
 const careerTabs = [
   { value: "Overview", label: "Today" },
@@ -110,7 +172,7 @@ const careerTabs = [
   { value: "Sources and Setup", label: "Sources & setup" },
 ] as const;
 type CareerTab = (typeof careerTabs)[number]["value"];
-const reviewLists = ["Shortlist", "Maybe", "Qualified", "Passed", "Dismissed"] as const;
+const reviewLists = ["Shortlist", "Maybe", "Qualified", "Flagged", "Dismissed"] as const;
 type ReviewList = (typeof reviewLists)[number];
 const applicationStates = [
   "discovered", "screened", "match_review", "shortlisted", "preparation_in_progress",
@@ -296,10 +358,23 @@ function safeHttpUrl(value: string | null): string | null {
   }
 }
 
+function safeHttpsUrl(value: string | null): string | null {
+  const href = safeHttpUrl(value);
+  return href?.startsWith("https://") ? href : null;
+}
+
 function readableDate(value: string | null | undefined): string {
   if (!value) return "Not recorded";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Not recorded" : date.toLocaleString();
+}
+
+function nairobiDay(value: Date): string {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Africa/Nairobi", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(value);
+  const fields = Object.fromEntries(parts.map(({ type, value: part }) => [type, part]));
+  return `${fields.year}-${fields.month}-${fields.day}`;
 }
 
 function readableLabel(value: string): string {
@@ -417,6 +492,10 @@ function CareerListEditor({
 export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   const [tab, setTab] = useState<CareerTab>("Overview");
   const [reviewList, setReviewList] = useState<ReviewList>("Shortlist");
+  const [reviewSort, setReviewSort] = useState<"best" | "newest">("best");
+  const [reviewSearch, setReviewSearch] = useState("");
+  const [selectedJobId, setSelectedJobId] = useState("");
+  const [mobileReviewDetail, setMobileReviewDetail] = useState(false);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [jobs, setJobs] = useState<CareerJob[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -424,6 +503,12 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   const [setup, setSetup] = useState<SetupStatus | null>(null);
   const [watchlist, setWatchlist] = useState<WatchlistEntry[]>([]);
   const [searchLinks, setSearchLinks] = useState<SearchLink[]>([]);
+  const [sourceRuns, setSourceRuns] = useState<CareerRun[]>([]);
+  const [pipelineView, setPipelineView] = useState<"table" | "board">("table");
+  const [checklistCollapsed, setChecklistCollapsed] = useState(false);
+  const [preferencesSaved, setPreferencesSaved] = useState(false);
+  const [toast, setToast] = useState("");
+  const [todayDataLoaded, setTodayDataLoaded] = useState(false);
   const [applications, setApplications] = useState<Application[]>([]);
   const [applicationFilter, setApplicationFilter] = useState("all");
   const [applicationEvents, setApplicationEvents] = useState<ApplicationEvent[]>([]);
@@ -441,11 +526,11 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
   const [scanStatus, setScanStatus] = useState<"idle" | "running" | "succeeded" | "failed" | "interrupted" | "skipped">("idle");
   const [scanRunId, setScanRunId] = useState<string | null>(null);
   const [newRoleTrack, setNewRoleTrack] = useState("");
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const selectedJobButton = useRef<HTMLButtonElement | null>(null);
   const availableTracks = [...new Set([...tracks, ...settings.role_tracks])];
 
   const loadOverview = useCallback(async () => {
@@ -453,6 +538,12 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     if (!isOverview(value) || !value.sources.every(isSource)) throw new Error("The career service returned unexpected overview data.");
     setOverview(value);
   }, [csrfToken]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(""), 3200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   useEffect(() => {
     if (scanStatus !== "running") return;
@@ -474,7 +565,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
           setScanStatus(finalStatus);
           await loadOverview();
           if (!active) return;
-          setMessage(finalStatus === "succeeded"
+          setToast(finalStatus === "succeeded"
             ? "Scan completed. The overview and shortlist have been refreshed."
             : finalStatus === "skipped"
               ? "The scan was skipped because another run already held the scan lock."
@@ -501,7 +592,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
       if (!overview) await loadOverview();
       return;
     }
-    const statuses = reviewList === "Passed" ? ["not_a_fit", "passed"] : ["duplicate"];
+    const statuses = reviewList === "Flagged" ? ["flagged"] : ["duplicate"];
     const responses = await Promise.all(statuses.map((status) =>
       request(`/api/admin/career/jobs?status=${status}&limit=50`, csrfToken)));
     const found = responses.flatMap((data) => isRecord(data) && Array.isArray(data.jobs) ? data.jobs.filter(isCareerJob) : []);
@@ -515,11 +606,12 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   }, [csrfToken]);
 
   const loadSources = useCallback(async () => {
-    const [sourceData, setupData, watchData, linkData] = await Promise.all([
+    const [sourceData, setupData, watchData, linkData, runData] = await Promise.all([
       request("/api/admin/career/sources", csrfToken),
       request("/api/admin/career/setup", csrfToken),
       request("/api/admin/career/watchlist", csrfToken),
       request("/api/admin/career/search-links", csrfToken),
+      request("/api/admin/career/runs", csrfToken),
     ]);
     if (!Array.isArray(sourceData) || !sourceData.every(isSource)) throw new Error("The career service returned unexpected source data.");
     if (!isRecord(setupData) || !isRecord(setupData.configuration)) throw new Error("The setup status could not be read.");
@@ -533,7 +625,18 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
         ]),
       ),
       JR_SEND_MODE: setupData.JR_SEND_MODE === "live" ? "live" : "draft",
+      ...(isRecord(setupData.tables) && Array.isArray(setupData.tables.missing)
+        ? { tables: { configured: setupData.tables.configured === true, missing: setupData.tables.missing.filter(string) } } : {}),
+      ...(isRecord(setupData.intakeTables) && Array.isArray(setupData.intakeTables.missing)
+        ? { intakeTables: { configured: setupData.intakeTables.configured === true, missing: setupData.intakeTables.missing.filter(string) } } : {}),
+      ...(isRecord(setupData.assessmentTables) && Array.isArray(setupData.assessmentTables.missing)
+        ? { assessmentTables: { configured: setupData.assessmentTables.configured === true, missing: setupData.assessmentTables.missing.filter(string) } } : {}),
     });
+    if (!Array.isArray(runData)) throw new Error("Run history returned unexpected data.");
+    setSourceRuns(runData.filter((row): row is CareerRun =>
+      isRecord(row) && string(row.id) && string(row.trigger) && string(row.status)
+      && string(row.started_at) && (row.finished_at === null || string(row.finished_at))
+      && isRecord(row.summary)));
     setWatchlist(watchData.filter((row): row is WatchlistEntry =>
       isRecord(row) && string(row.id) && string(row.token) && string(row.label)
       && (row.provider === "greenhouse" || row.provider === "lever") && typeof row.enabled === "boolean"));
@@ -545,6 +648,34 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     const value = await request("/api/admin/career/applications", csrfToken);
     if (!Array.isArray(value) || !value.every(isApplication)) throw new Error("The career service returned unexpected application data.");
     setApplications(value);
+  }, [csrfToken]);
+
+  const loadTodayData = useCallback(async () => {
+    const [applicationData, profileData, settingsData] = await Promise.all([
+      request("/api/admin/career/applications", csrfToken),
+      request("/api/admin/career/resume-profiles", csrfToken),
+      request("/api/admin/career/settings", csrfToken),
+    ]);
+    if (!Array.isArray(applicationData) || !applicationData.every(isApplication)) throw new Error("The career service returned unexpected application data.");
+    if (!Array.isArray(profileData) || !profileData.every(isProfile)) throw new Error("The career service returned unexpected profile data.");
+    if (!isRecord(settingsData)) throw new Error("The career service returned unexpected preferences.");
+    setApplications(applicationData);
+    setProfiles(profileData);
+    setSettings({
+      ...emptySettings,
+      role_tracks: Array.isArray(settingsData.role_tracks) ? settingsData.role_tracks.filter(string) : emptySettings.role_tracks,
+      countries: Array.isArray(settingsData.countries) ? settingsData.countries.filter(string) : emptySettings.countries,
+      score_threshold: typeof settingsData.score_threshold === "number" ? settingsData.score_threshold : emptySettings.score_threshold,
+      max_packets_per_day: typeof settingsData.max_packets_per_day === "number" ? settingsData.max_packets_per_day : emptySettings.max_packets_per_day,
+      max_sends_per_day: typeof settingsData.max_sends_per_day === "number" ? settingsData.max_sends_per_day : emptySettings.max_sends_per_day,
+      show_company_name: settingsData.show_company_name === true,
+    });
+    try {
+      setPreferencesSaved(window.localStorage.getItem("jr-preferences-saved") === "1");
+    } catch {
+      setError("Saved preference checklist progress could not be read in this browser.");
+    }
+    setTodayDataLoaded(true);
   }, [csrfToken]);
 
   useEffect(() => {
@@ -585,6 +716,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
       const reportError = (cause: unknown, fallback: string) => {
         if (active) setError(cause instanceof Error ? cause.message : fallback);
       };
+      if (tab === "Overview" && !todayDataLoaded) void loadTodayData().catch((cause: unknown) => reportError(cause, "Today’s workspace data could not be loaded."));
       if (tab === "Review") void loadReview().catch((cause: unknown) => reportError(cause, "Review jobs could not be loaded."));
       if (tab === "Resume profiles") void loadProfiles().catch((cause: unknown) => reportError(cause, "Resume profiles could not be loaded."));
       if (tab === "Preferences") {
@@ -602,6 +734,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
             public_publishing: value.public_publishing === true,
             excluded_keywords: Array.isArray(value.excluded_keywords) ? value.excluded_keywords.filter(string) : [],
             excluded_companies: Array.isArray(value.excluded_companies) ? value.excluded_companies.filter(string) : [],
+            updated_at: string(value.updated_at) ? value.updated_at : null,
           });
         }).catch((cause: unknown) => reportError(cause, "Preferences could not be loaded."));
       }
@@ -612,26 +745,26 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [csrfToken, loadApplications, loadProfiles, loadReview, loadSources, tab]);
+  }, [csrfToken, loadApplications, loadProfiles, loadReview, loadSources, loadTodayData, tab, todayDataLoaded]);
 
-  async function runAction(action: () => Promise<void>, success?: string) {
+  const runAction = useCallback(async (action: () => Promise<void>, success?: string) => {
     setBusy(true);
     setError("");
-    setMessage("");
+    setToast("");
     try {
       await action();
-      if (success) setMessage(success);
+      if (success) setToast(success);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The request could not be completed.");
     } finally {
       setBusy(false);
     }
-  }
+  }, []);
 
   async function startScan() {
     setBusy(true);
     setError("");
-    setMessage("");
+    setToast("");
     try {
       const result = await request("/api/admin/career/scan-now", csrfToken, {
         method: "POST",
@@ -642,7 +775,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
       }
       setScanRunId(string(result.id) ? result.id : null);
       setScanStatus("running");
-      setMessage(result.status === "already_running"
+      setToast(result.status === "already_running"
         ? "A scan is already running. This page will follow its progress."
         : "Scan accepted. The page will update automatically when the run finishes.");
     } catch (cause) {
@@ -674,7 +807,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     if (focus) tabRefs.current[careerTabs.findIndex((item) => item.value === next)]?.focus();
   }
 
-  function handleTabKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+  function handleTabKey(event: ReactKeyboardEvent<HTMLButtonElement>, index: number) {
     if (event.key === "Home" || event.key === "End") {
       event.preventDefault();
       const next = event.key === "Home" ? 0 : careerTabs.length - 1;
@@ -688,7 +821,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     changeTab(careerTabs[next].value, true);
   }
 
-  async function updateJobStatus(job: CareerJob, status: string) {
+  const updateJobStatus = useCallback(async (job: CareerJob, status: string) => {
     await runAction(async () => {
       await request(`/api/admin/career/jobs/${job.id}/status`, csrfToken, {
         method: "PATCH",
@@ -697,7 +830,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
       await loadOverview();
       await loadReview();
     }, "Review status updated.");
-  }
+  }, [csrfToken, loadOverview, loadReview, runAction]);
 
   async function openNotes(job: CareerJob) {
     try {
@@ -800,6 +933,12 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
       });
       if (!isRecord(result)) throw new Error("The career service returned invalid preferences.");
       await request("/api/admin/career/assessments/rerun", csrfToken, { method: "POST", body: "{}" });
+      setPreferencesSaved(true);
+      try {
+        window.localStorage.setItem("jr-preferences-saved", "1");
+      } catch {
+        setError("Preferences were saved, but this browser could not retain checklist progress.");
+      }
     }, "Preferences saved.");
   }
 
@@ -880,14 +1019,87 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     : reviewList === "Maybe" ? overview?.maybe ?? []
       : reviewList === "Qualified" ? overview?.qualified ?? []
         : jobs;
+  const visibleReviewJobs = reviewJobs
+    .filter((job) => `${job.title} ${job.company ?? ""} ${job.source_name} ${job.location_text}`.toLowerCase().includes(reviewSearch.toLowerCase()))
+    .sort((a, b) => reviewSort === "best"
+      ? (b.assessment?.fit_score ?? -1) - (a.assessment?.fit_score ?? -1)
+      : new Date(b.posted_at ?? b.first_seen_at).getTime() - new Date(a.posted_at ?? a.first_seen_at).getTime());
+  const selectedJob = visibleReviewJobs.find((job) => job.id === selectedJobId) ?? visibleReviewJobs[0] ?? null;
   const filteredApplications = applications.filter((application) =>
     applicationFilter === "all" || application.state === applicationFilter);
+  const now = new Date();
+  const followupsDue = applications.filter((application) =>
+    application.followup_at && new Date(application.followup_at) <= now
+    && !["submitted", "sent", "expired", "duplicate", "not_a_fit", "withdrawn"].includes(application.state));
+  const nairobiDate = nairobiDay(now);
+  const preparedToday = applications.filter((application) =>
+    ["preparation_in_progress", "ready_for_review"].includes(application.state)
+    && application.updated_at
+    && !Number.isNaN(new Date(application.updated_at).getTime())
+    && nairobiDay(new Date(application.updated_at)) === nairobiDate).length;
+  const reviewedCount = Object.entries(overview?.job_counts ?? {})
+    .filter(([state]) => ["screened", "match_review", "shortlisted", "not_a_fit", "duplicate"].includes(state))
+    .reduce((sum, [, count]) => sum + (typeof count === "number" ? count : 0), 0);
+  const checklist = [
+    { label: "Add a resume", complete: profiles.some((profile) => !profile.archived_at) },
+    { label: "Save preferences", complete: preferencesSaved },
+    { label: "Run your first scan", complete: Boolean(overview?.last_success_at) },
+    { label: "Review your first job", complete: reviewedCount > 0 },
+    { label: "Add a job to Pipeline", complete: applications.length > 0 },
+  ];
+  const checklistComplete = checklist.every((item) => item.complete);
+  const nextAction = !profiles.some((profile) => !profile.archived_at)
+    ? { title: "Add your resume", tab: "Resume profiles" as CareerTab, count: null }
+    : overview?.stale || !overview?.last_success_at
+      ? { title: "Scan now", tab: "Overview" as CareerTab, count: null }
+      : overview.review_count > 0
+        ? { title: `${overview.review_count} ${overview.review_count === 1 ? "job" : "jobs"} to review`, tab: "Review" as CareerTab, count: overview.review_count }
+        : followupsDue.length > 0
+          ? { title: `${followupsDue.length} follow-up${followupsDue.length === 1 ? "" : "s"} due`, tab: "Tracker" as CareerTab, count: followupsDue.length }
+          : { title: "You're all caught up", tab: "Overview" as CareerTab, count: null };
 
   const careerTabIndex = careerTabs.findIndex((item) => item.value === tab);
   const totalJobs = Object.values(overview?.job_counts ?? {}).reduce(
     (total, count) => total + (typeof count === "number" ? count : 0),
     0,
   );
+
+  useEffect(() => {
+    if (tab !== "Review") return;
+    const handleShortcut = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.matches("input, textarea, select, [contenteditable='true']")) return;
+      if (event.key === "Escape" && mobileReviewDetail) {
+        setMobileReviewDetail(false);
+        return;
+      }
+      if (!visibleReviewJobs.length) return;
+      const selectedIndex = Math.max(0, visibleReviewJobs.findIndex((job) => job.id === (selectedJob?.id ?? "")));
+      const direction = event.key.toLowerCase() === "j" ? 1 : event.key.toLowerCase() === "k" ? -1 : 0;
+      if (direction) {
+        event.preventDefault();
+        const next = (selectedIndex + direction + visibleReviewJobs.length) % visibleReviewJobs.length;
+        setSelectedJobId(visibleReviewJobs[next].id);
+        setMobileReviewDetail(true);
+      } else if (selectedJob && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void updateJobStatus(selectedJob, "shortlisted");
+      } else if (selectedJob && event.key.toLowerCase() === "n") {
+        event.preventDefault();
+        void updateJobStatus(selectedJob, "not_a_fit");
+      } else if (selectedJob && event.key.toLowerCase() === "o") {
+        const href = safeHttpsUrl(selectedJob.url);
+        if (href) {
+          event.preventDefault();
+          window.open(href, "_blank", "noopener,noreferrer");
+        }
+      } else if (event.key === "?") {
+        setToast("Review shortcuts: j/k next or previous, s shortlist, n not a fit, o open original.");
+      }
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [mobileReviewDetail, selectedJob, tab, updateJobStatus, visibleReviewJobs]);
 
   return (
     <section className="career-centre admin-panel" aria-label="Job Radar workspace">
@@ -913,8 +1125,10 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
       </div>
 
       {error ? <p className="admin-message admin-error" role="alert">{error}</p> : null}
-      {message ? <p className="admin-message" role="status">{message}</p> : null}
-      {loading ? <p className="admin-notice" role="status">Loading private career data…</p> : null}
+      {toast ? <p className="career-toast" role="status" aria-live="polite">{toast}</p> : null}
+      {loading ? <div aria-label="Loading private career workspace" className="career-skeleton-grid" role="status">
+        <span className="career-skeleton" /><span className="career-skeleton" /><span className="career-skeleton" />
+      </div> : null}
       {overview ? (
         <p className="career-review-badge" aria-label={`${overview.review_count} jobs to review`}>
           {overview.review_count} {overview.review_count === 1 ? "job" : "jobs"} to review
@@ -930,11 +1144,62 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
       >
         {tab === "Overview" ? (
           <div className="career-stack">
+            <section className="career-next-action" aria-labelledby="career-next-action-title">
+              <span className="career-eyebrow">NEXT BEST ACTION</span>
+              <h2 id="career-next-action-title">{todayDataLoaded ? nextAction.title : "Loading your next step…"}</h2>
+              <p>{!todayDataLoaded
+                ? "Checking your resume, scan, review queue, and follow-ups."
+                : nextAction.tab === "Overview"
+                  ? overview?.stale || !overview?.last_success_at
+                    ? "Refresh your job listings to see what is new."
+                    : "Your jobs and follow-ups are up to date."
+                  : nextAction.tab === "Resume profiles"
+                    ? "Add a resume profile to personalize job matches."
+                    : nextAction.tab === "Review"
+                      ? "Open the review queue to decide what belongs in your pipeline."
+                      : "Open your pipeline to handle the follow-ups that are due."}</p>
+              <button
+                className="button button-primary"
+                disabled={!todayDataLoaded || busy}
+                onClick={() => {
+                  if (nextAction.tab === "Overview" && nextAction.title === "Scan now") void startScan();
+                  else changeTab(nextAction.tab);
+                }}
+                type="button"
+              >
+                {nextAction.tab === "Overview" && nextAction.title === "Scan now" ? "Scan now" : nextAction.tab === "Overview" ? "View today" : nextAction.title.startsWith("You're") ? "View today" : "Continue"}
+              </button>
+            </section>
+            <section className={`career-checklist ${checklistComplete ? "complete" : ""}`} aria-labelledby="career-checklist-title">
+              <div className="career-checklist-heading">
+                <div><h3 id="career-checklist-title">{checklistComplete ? "You're all set" : "Getting started"}</h3><p>{checklist.filter((item) => item.complete).length} of {checklist.length} steps complete</p></div>
+                <button aria-expanded={!checklistCollapsed} className="button button-ghost" onClick={() => setChecklistCollapsed(!checklistCollapsed)} type="button">
+                  {checklistCollapsed ? "Show checklist" : "Hide checklist"}
+                </button>
+              </div>
+              <div aria-label={`${checklist.filter((item) => item.complete).length} of ${checklist.length} steps complete`} className="career-progress-track" role="progressbar" aria-valuemax={checklist.length} aria-valuemin={0} aria-valuenow={checklist.filter((item) => item.complete).length}>
+                <span style={{ width: `${checklist.filter((item) => item.complete).length / checklist.length * 100}%` }} />
+              </div>
+              {!checklistCollapsed ? (
+                <ol className="career-checklist-items">
+                  {checklist.map((item) => <li className={item.complete ? "complete" : ""} key={item.label}>
+                    <span aria-hidden="true">{item.complete ? "✓" : "○"}</span>{item.label}
+                  </li>)}
+                </ol>
+              ) : null}
+            </section>
             <div className="career-stat-grid">
-              <article><span>LAST SUCCESSFUL SCAN</span><strong>{readableDate(overview?.last_success_at)}</strong></article>
-              <article><span>NEW TODAY</span><strong>{overview?.new_jobs_count ?? 0}</strong></article>
-              <article><span>DAILY SHORTLIST</span><strong>{overview?.shortlist_count ?? 0}</strong></article>
-              <article><span>DRAFTS WAITING</span><strong>{overview?.drafts_waiting ?? 0}</strong></article>
+              <article><span>LAST SCAN</span><strong>{overview?.last_success_at ? readableDate(overview.last_success_at) : "Never run"}</strong></article>
+              <article><span>JOBS TO REVIEW</span><strong>{overview?.review_count ?? 0}</strong></article>
+              <article className="career-cap-tile">
+                <span>PREPARED TODAY</span>
+                <div aria-label={`${preparedToday} of ${settings.max_sends_per_day} prepared today`} className="career-progress-ring" title="Current applications in preparation or ready for review, updated today in Nairobi time." style={{ "--progress": `${Math.min(100, preparedToday / Math.max(1, settings.max_sends_per_day) * 100)}%` } as CSSProperties}>
+                  <strong>{preparedToday}<small> / {settings.max_sends_per_day}</small></strong>
+                </div>
+                <small>{preparedToday} of {settings.max_sends_per_day} prepared today · daily cap</small>
+                <small>Counts current preparation or ready-for-review records updated today in Nairobi time.</small>
+              </article>
+              <article><span>FOLLOW-UPS DUE</span><strong>{followupsDue.length}</strong></article>
             </div>
             {overview?.stale ? <p className="career-warning" role="status">No successful scan in the last 12 hours. Source results may be stale.</p> : null}
             <div className="career-actions">
@@ -956,7 +1221,20 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
             <div className="career-two-columns">
               <section className="career-subpanel">
                 <h3>Source health</h3>
-                <SourceHealthList sources={overview?.sources ?? []} onOpenSetup={() => changeTab("Sources and Setup")} />
+                <div className="career-source-dots" aria-label="Job source status">
+                  {(overview?.sources ?? []).map((source) => {
+                    const needsAttention = source.consecutive_failures > 0 || source.last_status === "failed";
+                    const configured = source.enabled && !needsAttention;
+                    const status = needsAttention ? "Needs attention" : configured ? "Configured" : "Not configured";
+                    return <span className={`career-source-dot ${needsAttention ? "warning" : configured ? "success" : "muted"}`} key={source.key}>
+                      <i aria-hidden="true" />{source.name}: {status}
+                    </span>;
+                  })}
+                </div>
+                <details className="career-source-details">
+                  <summary>Details</summary>
+                  <SourceHealthList sources={overview?.sources ?? []} onOpenSetup={() => changeTab("Sources and Setup")} />
+                </details>
               </section>
               <section className="career-subpanel">
                 <h3>Applications by stage</h3>
@@ -1024,8 +1302,10 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                 <button aria-pressed={reviewList === name} className={reviewList === name ? "career-chip active" : "career-chip"} key={name} onClick={() => {
                   setReviewList(name);
                   setError("");
-                  if (name === "Passed" || name === "Dismissed") {
-                    void request(`/api/admin/career/jobs?status=${name === "Passed" ? "not_a_fit" : "duplicate"}&limit=50`, csrfToken)
+                  setMobileReviewDetail(false);
+                  setReviewSearch("");
+                  if (name === "Flagged" || name === "Dismissed") {
+                    void request(`/api/admin/career/jobs?status=${name === "Flagged" ? "flagged" : "duplicate"}&limit=50`, csrfToken)
                       .then((data) => setJobs(isRecord(data) && Array.isArray(data.jobs) ? data.jobs.filter(isCareerJob) : []))
                       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "The review list could not be loaded."));
                   }
@@ -1033,18 +1313,93 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
               ))}
             </div>
             {reviewList === "Maybe" ? <p className="career-warning">These listings need location or work-permission verification before any decision.</p> : null}
-            {reviewJobs.length ? (
-              <div className="career-job-list">
-                {reviewJobs.map((job) => (
-                  <CareerJobCard
-                    busy={busy}
-                    job={job}
-                    key={job.id}
-                    onApplication={() => void createApplication(job)}
-                    onNotes={() => void openNotes(job)}
-                    onStatus={(status) => void updateJobStatus(job, status)}
-                  />
-                ))}
+            <div className="career-review-tools">
+              <label className="career-review-search">
+                <Search aria-hidden="true" size={18} />
+                <span className="sr-only">Search listings</span>
+                <input onChange={(event) => setReviewSearch(event.target.value)} placeholder="Search title, company, location…" value={reviewSearch} />
+              </label>
+              <label className="career-sort-label">Sort
+                <select onChange={(event) => setReviewSort(event.target.value as "best" | "newest")} value={reviewSort}>
+                  <option value="best">Best match</option><option value="newest">Newest</option>
+                </select>
+              </label>
+              <span className="career-key-help">Shortcuts: <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>s</kbd> shortlist · <kbd>n</kbd> not a fit · <kbd>o</kbd> open · <kbd>?</kbd> help</span>
+            </div>
+            {visibleReviewJobs.length ? (
+              <div className={`career-review-workspace ${mobileReviewDetail ? "show-detail" : ""}`}>
+                <div className="career-review-list" aria-label={`${reviewList} jobs`}>
+                  {visibleReviewJobs.map((job) => {
+                    const score = job.assessment?.fit_score;
+                    const fit = typeof score !== "number" ? "No score" : score >= 75 ? "Strong" : score >= 55 ? "Good" : "Weak";
+                    const href = safeHttpsUrl(job.url);
+                    return <button
+                      aria-current={selectedJob?.id === job.id ? "true" : undefined}
+                      className={`career-review-list-card ${selectedJob?.id === job.id ? "active" : ""}`}
+                      key={job.id}
+                      onClick={() => { setSelectedJobId(job.id); setMobileReviewDetail(true); }}
+                      ref={selectedJob?.id === job.id ? selectedJobButton : undefined}
+                      type="button"
+                    >
+                      <span className="career-review-card-top"><strong>{job.title}</strong><span className="career-fit-ring" aria-label={`Fit score ${score ?? "not available"}, ${fit}`}>{score ?? "—"}<small>{fit}</small></span></span>
+                      <span>{job.company ?? "Company not listed"}</span>
+                      <span className="career-review-card-meta"><span className="career-source-chip">{job.source_name}</span><span className={`career-eligibility ${job.assessment?.eligibility ?? "unknown"}`}>{job.assessment?.eligibility === "eligible" ? "Eligible" : job.assessment?.eligibility === "ineligible" ? "Not eligible" : "Needs verification"}</span></span>
+                      <span className="career-risk-label"><AlertTriangle aria-hidden="true" size={14} />{job.risk_assessment ?? "Risk not yet assessed"}</span>
+                      <small>Posted {readableDate(job.posted_at)}</small>
+                      {href ? <span className="career-link-indicator">Original link available <ExternalLink aria-hidden="true" size={13} /></span> : null}
+                    </button>;
+                  })}
+                </div>
+                {selectedJob ? (
+                  <article className="career-review-detail">
+                    <button className="button button-ghost career-review-back" onClick={() => setMobileReviewDetail(false)} type="button"><ArrowLeft aria-hidden="true" size={16} /> Back to listings</button>
+                    <header>
+                      <p className="career-eyebrow">{selectedJob.source_name} · {selectedJob.attribution_text}</p>
+                      <h2>{selectedJob.title}</h2>
+                      <p>{selectedJob.company ?? "Company not listed"} · {selectedJob.location_text || selectedJob.remote_scope_text || "Location not specified"}</p>
+                      <p>Posted {readableDate(selectedJob.posted_at)} · risk: {selectedJob.risk_assessment ?? "not yet assessed"}</p>
+                      {safeHttpsUrl(selectedJob.url) ? <a className="button button-secondary" href={safeHttpsUrl(selectedJob.url) ?? undefined} rel="noopener noreferrer" target="_blank">Open original <ExternalLink aria-hidden="true" size={15} /></a> : <span className="admin-help">No HTTPS original link is available.</span>}
+                    </header>
+                    <div className="career-review-primary-actions">
+                      <button className="button button-primary" disabled={busy} onClick={() => void updateJobStatus(selectedJob, "shortlisted")} type="button">Shortlist <kbd>s</kbd></button>
+                      <button className="button button-secondary" disabled={busy} onClick={() => void updateJobStatus(selectedJob, "not_a_fit")} type="button">Not a fit <kbd>n</kbd></button>
+                      <button className="button button-secondary" disabled={busy} onClick={() => void updateJobStatus(selectedJob, "duplicate")} type="button">Duplicate</button>
+                      <button className="button button-secondary" disabled={busy} onClick={() => void openNotes(selectedJob)} type="button">Add note</button>
+                      {applications.some((application) => application.job_id === selectedJob.id)
+                        ? <span className="career-in-pipeline">In Pipeline</span>
+                        : <button className="button button-secondary" disabled={busy} onClick={() => void createApplication(selectedJob)} type="button">Add to Pipeline</button>}
+                    </div>
+                    <div className="career-review-sections">
+                      <details open>
+                        <summary>Why this score</summary>
+                        <p>Fit score: {selectedJob.assessment?.fit_score ?? "not available"} / 100</p>
+                        <div className="career-chip-cloud"><strong>Matched</strong>{selectedJob.assessment?.matched.length ? selectedJob.assessment.matched.map((item, index) => <span key={`${item.value ?? item.phrase}-${index}`}>{item.value ?? item.phrase ?? item.type ?? "Match"}</span>) : <span>None recorded</span>}</div>
+                        <div className="career-chip-cloud"><strong>Missing</strong>{selectedJob.assessment?.missing.length ? selectedJob.assessment.missing.map((item, index) => <span key={`${item.value}-${index}`}>{item.value ?? item.type ?? "Requirement"}</span>) : <span>None recorded</span>}</div>
+                        <ul>{Object.entries(selectedJob.assessment?.fit_breakdown ?? {}).flatMap(([key, value]) => isRecord(value) && typeof value.points === "number" && typeof value.weight === "number" ? [<li key={key}>{readableLabel(key)}: {value.points} / {value.weight}</li>] : [])}</ul>
+                      </details>
+                      <details><summary>Eligibility evidence</summary>
+                        <p>{selectedJob.assessment?.eligibility_evidence.map((entry) => entry.phrase ?? entry.rule ?? "").filter(Boolean).join("; ") || "No explicit eligibility phrase was recorded."}</p>
+                      </details>
+                      <details><summary>Risk checks</summary>
+                        <p>Risk has not been assessed. Verify the employer and listing independently; no safety conclusion is implied.</p>
+                        {safeHttpsUrl(selectedJob.url) ? <a href={safeHttpsUrl(selectedJob.url) ?? undefined} rel="noopener noreferrer" target="_blank">Check the original listing <ExternalLink aria-hidden="true" size={14} /></a> : <p>No HTTPS listing link is available to check.</p>}
+                      </details>
+                      <details><summary>Documents requested</summary><p>Document request details are not provided for this listing.</p></details>
+                      <details><summary>Notes</summary>
+                        <p>{applications.find((application) => application.job_id === selectedJob.id)?.private_notes || "No private note saved."}</p>
+                        <button className="button button-ghost" onClick={() => void openNotes(selectedJob)} type="button">Add or edit note</button>
+                      </details>
+                      {selectedJob.description_text ? <details><summary>Advert text</summary><p className="career-advert-text">{selectedJob.description_text}</p></details> : null}
+                      <details><summary>5-point manual check</summary><ol>
+                        <li>Confirm the employer identity using an independent source.</li>
+                        <li>Review the original listing URL and application domain.</li>
+                        <li>Check role, location, and work-permission requirements.</li>
+                        <li>Never pay fees or share sensitive documents before verifying the process.</li>
+                        <li>Record concerns as needs verification; this workspace does not assess risk.</li>
+                      </ol></details>
+                    </div>
+                  </article>
+                ) : null}
               </div>
             ) : (
               <EmptyState
@@ -1077,7 +1432,8 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
 
         {tab === "Resume profiles" ? (
           <div className="career-two-columns career-profile-layout">
-            <form className="career-form" onSubmit={(event) => void saveProfile(event)}>
+            <form aria-label={activeProfile ? "Edit resume profile" : "Create resume profile"} className={activeProfile ? "career-form career-resume-drawer is-open" : "career-form career-resume-create"} onSubmit={(event) => void saveProfile(event)} role={activeProfile ? "dialog" : undefined} aria-modal={activeProfile ? true : undefined}>
+              {activeProfile ? <button aria-label="Close resume editor" className="career-drawer-close" onClick={() => { setActiveProfile(""); setProfileForm(emptyProfileForm); }} type="button"><X aria-hidden="true" size={18} /></button> : null}
               <h3>{activeProfile ? "Edit verified profile" : "Create master profile"}</h3>
               <label htmlFor="career-profile-name">Profile name</label>
               <input id="career-profile-name" maxLength={120} onChange={(event) => setProfileForm({ ...profileForm, name: event.target.value })} required value={profileForm.name} />
@@ -1090,7 +1446,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                   <label htmlFor="career-profile-original">Master resume text <span>immutable after creation</span></label>
                   <textarea id="career-profile-original" maxLength={60000} onChange={(event) => setProfileForm({ ...profileForm, original_text: event.target.value })} required rows={7} value={profileForm.original_text} />
                 </>
-              ) : <p className="career-warning">Original resume text is immutable. Update only verified skills, tasks, and preferences below.</p>}
+              ) : <p className="career-warning">The original resume text cannot be changed. Update only verified skills, tasks, and preferences below.</p>}
               <p className="admin-help">Add or remove individual entries. Keep every skill and task accurate and supported by your master resume before saving.</p>
               <CareerListEditor
                 id="career-profile-required"
@@ -1121,8 +1477,8 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
             <section className="career-subpanel">
               <h3>Saved profiles</h3>
               {profiles.filter((profile) => !profile.archived_at).length ? profiles.filter((profile) => !profile.archived_at).map((profile) => (
-                <article className="career-profile-row" key={profile.id}>
-                  <div><strong>{profile.name}</strong><p>{profile.track}</p></div>
+                <article className="career-profile-row career-profile-card" key={profile.id}>
+                  <div><strong>{profile.name}</strong><p>{profile.track}</p><small>Updated {readableDate(profile.updated_at)}</small></div>
                   <div className="career-actions">
                     <button className="button button-secondary" onClick={() => {
                       setActiveProfile(profile.id);
@@ -1213,7 +1569,47 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
             </section>
             <section className="career-subpanel">
               <h3>Sources</h3>
-              <SourceHealthList sources={sources} onOpenSetup={() => document.getElementById("career-setup-checklist")?.focus()} />
+              <div className="career-integrations">
+                {sources.map((source) => {
+                  const envNames = integrationEnvironment[source.key] ?? [];
+                  const recentRun = sourceRuns.find((run) => isRecord(run.summary[source.key]));
+                  let sourceRun: JsonRecord | null = null;
+                  if (recentRun) {
+                    const sourceSummary = recentRun.summary[source.key];
+                    if (isRecord(sourceSummary)) sourceRun = sourceSummary;
+                  }
+                  const sourceError = sourceRun && string(sourceRun.error) ? sourceRun.error : "";
+                  const attention = source.consecutive_failures > 0 || source.last_status === "failed" || Boolean(sourceError);
+                  const envConfigured = envNames.every((name) => setup?.configuration[name]?.configured === true);
+                  const configured = source.enabled && envConfigured;
+                  const status = attention ? "Needs attention" : configured ? "Configured" : "Not configured";
+                  return <article className={`career-integration-card ${attention ? "attention" : configured ? "configured" : "not-configured"}`} key={source.key}>
+                    <div className="career-integration-heading"><h4>{source.name}</h4><span className={`career-integration-status ${attention ? "warning" : configured ? "success" : "muted"}`}><i aria-hidden="true" />{status}</span></div>
+                    <p>{integrationDescriptions[source.key] ?? source.attribution_text}</p>
+                    <dl>
+                      <dt>Environment variables</dt><dd>{envNames.length ? envNames.join(", ") : "None required"}</dd>
+                      <dt>Last run</dt><dd>{readableDate(source.last_attempt_at)} · {source.last_status ?? "Not run"}</dd>
+                      <dt>Error summary</dt><dd>{sourceError || (attention ? `${source.consecutive_failures} consecutive failure${source.consecutive_failures === 1 ? "" : "s"}` : "No recent source errors reported.")}</dd>
+                      <dt>Interval / daily usage</dt><dd>{Math.round(source.min_interval_seconds / 60)} min · {source.requests_today ?? 0}/{source.max_requests_per_day}</dd>
+                      <dt>Attribution</dt><dd>{source.attribution_text}</dd>
+                    </dl>
+                    {source.docs_url && safeHttpsUrl(source.docs_url) ? <a href={safeHttpsUrl(source.docs_url) ?? undefined} rel="noopener noreferrer" target="_blank">Provider documentation</a> : null}
+                  </article>;
+                })}
+              </div>
+            </section>
+            <section className="career-subpanel">
+              <h3>Run history</h3>
+              {sourceRuns.length ? <div className="career-run-table-wrap"><table className="career-run-table">
+                <thead><tr><th>Started</th><th>Trigger</th><th>Status</th><th>Summary</th></tr></thead>
+                <tbody>{sourceRuns.map((run) => {
+                  const errors = Object.entries(run.summary).flatMap(([sourceKey, result]) =>
+                    isRecord(result) && string(result.error) ? [`${readableLabel(sourceKey)}: ${result.error}`] : []);
+                  const summary = run.summary.message ?? run.summary.error ?? run.summary.error_summary;
+                  const summaryText = errors.length ? errors.join("; ") : string(summary) ? summary : run.status === "succeeded" ? "Run completed." : "No additional details recorded.";
+                  return <tr key={run.id}><td>{readableDate(run.started_at)}</td><td>{readableLabel(run.trigger)}</td><td>{readableLabel(run.status)}</td><td>{summaryText}</td></tr>;
+                })}</tbody>
+              </table></div> : <p>No run history is available yet.</p>}
             </section>
             <section className="career-subpanel">
               <h3>ATS watchlist</h3>
@@ -1263,40 +1659,77 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
 
         {tab === "Tracker" ? (
           <div className="career-stack">
-            <p className="admin-help">Your tracker is private. No messages or documents are sent from here.</p>
+            <div className="career-pipeline-heading">
+              <p>Track each job and its next step. This workspace does not send applications.</p>
+              <div aria-label="Pipeline view" className="career-view-toggle" role="group">
+                <button aria-pressed={pipelineView === "table"} className={pipelineView === "table" ? "active" : ""} onClick={() => setPipelineView("table")} type="button">Table</button>
+                <button aria-pressed={pipelineView === "board"} className={pipelineView === "board" ? "active" : ""} onClick={() => setPipelineView("board")} type="button">Board</button>
+              </div>
+            </div>
             <label className="career-filter-label" htmlFor="career-application-filter">Filter applications
               <select id="career-application-filter" onChange={(event) => setApplicationFilter(event.target.value)} value={applicationFilter}>
                 <option value="all">All groups</option>
                 {applicationStates.map((state) => <option key={state} value={state}>{applicationStateLabels[state]}</option>)}
               </select>
             </label>
-            {filteredApplications.length ? filteredApplications.map((application) => (
-              <article className="career-application" key={application.id}>
-                <div className="career-application-heading">
-                  <div><h3>{application.title}</h3><p>{application.company ?? "Company not listed"} · {application.location_text} · {application.source_name}</p></div>
-                  <label>State
-                    <select onChange={(event) => void changeApplicationState(application, event.target.value)} value={application.state}>
-                      {applicationStates.map((state) => <option disabled={state === "approved_to_send" || state === "sent"} key={state} value={state}>{applicationStateLabels[state]}{state === "approved_to_send" || state === "sent" ? " (Unavailable)" : ""}</option>)}
-                    </select>
-                  </label>
-                </div>
-                <div className="career-two-columns">
-                  <div>
-                    <label htmlFor={`application-notes-${application.id}`}>Private notes</label>
-                    <textarea id={`application-notes-${application.id}`} maxLength={12000} onChange={(event) => setNotesByApplication({ ...notesByApplication, [application.id]: event.target.value })} rows={3} value={notesByApplication[application.id] ?? application.private_notes} />
-                  </div>
-                  <div>
-                    <label htmlFor={`application-followup-${application.id}`}>Follow-up date</label>
-                    <input id={`application-followup-${application.id}`} onChange={(event) => setFollowupsByApplication({ ...followupsByApplication, [application.id]: event.target.value })} type="datetime-local" value={followupsByApplication[application.id] ?? (application.followup_at ? application.followup_at.slice(0, 16) : "")} />
-                    <div className="career-actions">
-                      <button className="button button-quiet" disabled={busy} onClick={() => void saveApplicationDetails(application)} type="button">Save notes and follow-up</button>
-                      <button className="button button-ghost" onClick={() => void loadApplicationEvents(application.id).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Timeline could not be loaded."))} type="button">View timeline</button>
-                    </div>
-                  </div>
-                </div>
-                {activeApplication === application.id ? <ApplicationTimeline events={applicationEvents} /> : null}
-              </article>
-            )) : applications.length ? (
+            {filteredApplications.length ? pipelineView === "table" ? (
+              <div className="career-pipeline-table-wrap">
+                <table className="career-pipeline-table">
+                  <thead><tr><th>Job</th><th>Stage</th><th>Next action</th><th>Due</th><th>Change state</th></tr></thead>
+                  <tbody>{filteredApplications.map((application) => {
+                    const due = Boolean(application.followup_at && new Date(application.followup_at) <= now);
+                    return <tr className={due ? "due" : ""} key={application.id}>
+                      <td><strong>{application.title}</strong><span>{application.company ?? "Company not listed"} · {application.location_text} · {application.source_name}</span>
+                        <details className="career-table-details"><summary>Notes and timeline</summary>
+                          <label htmlFor={`application-notes-${application.id}`}>Private notes</label>
+                          <textarea id={`application-notes-${application.id}`} maxLength={12000} onChange={(event) => setNotesByApplication({ ...notesByApplication, [application.id]: event.target.value })} rows={3} value={notesByApplication[application.id] ?? application.private_notes} />
+                          <label htmlFor={`application-followup-${application.id}`}>Follow-up date</label>
+                          <input id={`application-followup-${application.id}`} onChange={(event) => setFollowupsByApplication({ ...followupsByApplication, [application.id]: event.target.value })} type="datetime-local" value={followupsByApplication[application.id] ?? (application.followup_at ? application.followup_at.slice(0, 16) : "")} />
+                          <div className="career-actions">
+                            <button className="button button-secondary" disabled={busy} onClick={() => void saveApplicationDetails(application)} type="button">Save notes and follow-up</button>
+                            <button className="button button-ghost" onClick={() => void loadApplicationEvents(application.id).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Timeline could not be loaded."))} type="button">View timeline</button>
+                          </div>
+                          {activeApplication === application.id ? <ApplicationTimeline events={applicationEvents} /> : null}
+                        </details>
+                      </td>
+                      <td>{applicationStateLabels[application.state] ?? readableLabel(application.state)}</td>
+                      <td>{nextApplicationAction(application.state)}</td>
+                      <td>{application.followup_at ? readableDate(application.followup_at) : "—"}{due ? <span className="career-due-label">Due</span> : null}</td>
+                      <td><ApplicationStateSelect application={application} busy={busy} onChange={(state) => void changeApplicationState(application, state)} /></td>
+                    </tr>;
+                  })}</tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="career-pipeline-board">
+                {applicationStages.map((stage) => {
+                  const stageApplications = filteredApplications.filter((application) => (stage.states as readonly string[]).includes(application.state));
+                  return <section className="career-pipeline-column" key={stage.name}>
+                    <h3>{stage.name}<span>{stageApplications.length}</span></h3>
+                    {stageApplications.length ? stageApplications.map((application) => (
+                      <article className={`career-pipeline-card ${application.followup_at && new Date(application.followup_at) <= now ? "due" : ""}`} key={application.id}>
+                        <h4>{application.title}</h4>
+                        <p>{application.company ?? "Company not listed"} · {application.location_text}</p>
+                        <p><strong>Next action:</strong> {nextApplicationAction(application.state)}</p>
+                        <p><strong>Due:</strong> {application.followup_at ? readableDate(application.followup_at) : "Not set"}</p>
+                        <ApplicationStateSelect application={application} busy={busy} onChange={(state) => void changeApplicationState(application, state)} />
+                        <details><summary>Private notes and timeline</summary>
+                          <label htmlFor={`application-notes-${application.id}`}>Private notes</label>
+                          <textarea id={`application-notes-${application.id}`} maxLength={12000} onChange={(event) => setNotesByApplication({ ...notesByApplication, [application.id]: event.target.value })} rows={3} value={notesByApplication[application.id] ?? application.private_notes} />
+                          <label htmlFor={`application-followup-${application.id}`}>Follow-up date</label>
+                          <input id={`application-followup-${application.id}`} onChange={(event) => setFollowupsByApplication({ ...followupsByApplication, [application.id]: event.target.value })} type="datetime-local" value={followupsByApplication[application.id] ?? (application.followup_at ? application.followup_at.slice(0, 16) : "")} />
+                          <div className="career-actions">
+                            <button className="button button-secondary" disabled={busy} onClick={() => void saveApplicationDetails(application)} type="button">Save notes and follow-up</button>
+                            <button className="button button-ghost" onClick={() => void loadApplicationEvents(application.id).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Timeline could not be loaded."))} type="button">View timeline</button>
+                          </div>
+                          {activeApplication === application.id ? <ApplicationTimeline events={applicationEvents} /> : null}
+                        </details>
+                      </article>
+                    )) : <p className="career-empty-column">No jobs in this stage</p>}
+                  </section>;
+                })}
+              </div>
+            ) : applications.length ? (
               <EmptyState
                 title="No applications in this group"
                 actions={[{ label: "Show all applications", onClick: () => setApplicationFilter("all") }]}
@@ -1361,65 +1794,46 @@ function SourceHealthList({ sources, onOpenSetup }: { sources: SourceHealth[]; o
   );
 }
 
-function CareerJobCard({
-  job,
+function nextApplicationAction(state: string): string {
+  if (state === "discovered" || state === "screened" || state === "match_review") return "Review listing";
+  if (state === "shortlisted") return "Check requirements";
+  if (state === "preparation_in_progress") return "Continue preparation";
+  if (state === "ready_for_review") return "Complete manual review";
+  if (state === "failed_send") return "Review the recorded issue";
+  if (state === "blocked_risk") return "Verify the concern";
+  if (state === "submitted" || state === "sent") return "Check for a response";
+  if (state === "needs_manual_attention") return "Review details";
+  return "No action";
+}
+
+function ApplicationStateSelect({
+  application,
   busy,
-  onStatus,
-  onNotes,
-  onApplication,
+  onChange,
 }: {
-  job: CareerJob;
+  application: Application;
   busy: boolean;
-  onStatus: (status: string) => void;
-  onNotes: () => void;
-  onApplication: () => void;
+  onChange: (state: string) => void;
 }) {
-  const assessment = job.assessment;
-  const externalUrl = safeHttpUrl(job.url);
-  const breakdown = assessment?.fit_breakdown ?? {};
-  const breakdownItems = Object.entries(breakdown).flatMap(([label, value]) =>
-    isRecord(value) && typeof value.weight === "number" && typeof value.points === "number"
-      ? [{ label, points: value.points, weight: value.weight }]
-      : []);
   return (
-    <article className="career-job-card">
-      <div className="career-job-head">
-        <div>
-          <p className="eyebrow">
-            {externalUrl ? <a href={externalUrl} rel="noopener noreferrer" target="_blank">{job.attribution_text}</a> : job.attribution_text}
-            {" · "}{job.source_name}
-          </p>
-          <h3>{job.title}</h3>
-          <p>{job.company ?? "Company not listed"} · {job.location_text || job.remote_scope_text || "Location not specified"}</p>
-          <small>Posted: {readableDate(job.posted_at)} · Attribution: {job.attribution_text}</small>
-        </div>
-        <div className="career-score"><strong>{assessment?.fit_score ?? "—"}</strong><span>FIT / 100</span></div>
-      </div>
-      {job.description_text ? <p className="career-advert-text">{job.description_text}</p> : null}
-      {assessment ? (
-        <div className="career-assessment-details">
-          <p><strong>Eligibility:</strong> {assessment.eligibility === "eligible" ? "Eligible" : assessment.eligibility === "ineligible" ? "Not eligible" : "Needs verification"}</p>
-          <p><strong>Eligibility evidence:</strong> {assessment.eligibility_evidence.map((item) => item.phrase ?? item.rule ?? "").filter(Boolean).join("; ") || "No explicit phrase recorded."}</p>
-          <p><strong>Risk:</strong> {job.risk_assessment ?? "not yet assessed"} — no safety conclusion is implied.</p>
-          <p><strong>Matched:</strong> {assessment.matched.map((item) => item.value ?? item.phrase ?? "").filter(Boolean).join(", ") || "None recorded"}</p>
-          <p><strong>Missing:</strong> {assessment.missing.map((item) => item.value ?? "").filter(Boolean).join(", ") || "None recorded"}</p>
-          <p><strong>Assessment notes:</strong> {assessment.reason_codes.map(readableLabel).join(", ") || "None recorded"}</p>
-          {assessment.uncertainty.length ? <p><strong>Uncertainty:</strong> {assessment.uncertainty.join(" ")}</p> : null}
-          <details>
-            <summary>Fit score breakdown</summary>
-            <ul>{breakdownItems.map(({ label, points, weight }) => <li key={label}>{readableLabel(label)}: {points} / {weight}</li>)}</ul>
-          </details>
-        </div>
-      ) : <p className="career-warning">No fit assessment is available yet.</p>}
-      <div className="career-actions">
-        {externalUrl ? <a className="button button-quiet" href={externalUrl} rel="noopener noreferrer" target="_blank">Open original</a> : <span className="admin-help">No valid original link</span>}
-        <button className="button button-quiet" disabled={busy} onClick={() => onStatus("shortlisted")} type="button">Shortlist</button>
-        <button className="button button-destructive" disabled={busy} onClick={() => onStatus("not_a_fit")} type="button">Not a fit</button>
-        <button className="button button-destructive" disabled={busy} onClick={() => onStatus("duplicate")} type="button">Mark duplicate</button>
-        <button className="button button-quiet" disabled={busy} onClick={onNotes} type="button">Add notes</button>
-        <button className="button button-quiet" disabled={busy} onClick={onApplication} type="button">Add to tracker</button>
-      </div>
-    </article>
+    <label className="career-state-select-label">
+      <span className="sr-only">Change state for {application.title}</span>
+      <select aria-label={`Change state for ${application.title}`} disabled={busy} onChange={(event) => onChange(event.target.value)} value={application.state}>
+        {applicationStates.map((state) => {
+          const protectedState = state === "approved_to_send" || state === "sent";
+          const allowed = applicationTransitions[application.state]?.includes(state) === true;
+          const disabled = state !== application.state && (protectedState || !allowed);
+          const reason = protectedState
+            ? "This state is unavailable in this workflow."
+            : state === application.state
+              ? "Current state"
+              : allowed ? "" : "The current workflow does not allow this transition.";
+          return <option disabled={disabled} key={state} title={reason} value={state}>
+            {applicationStateLabels[state]}{protectedState ? " (Unavailable)" : ""}
+          </option>;
+        })}
+      </select>
+    </label>
   );
 }
 
