@@ -45,7 +45,8 @@ function createDb({ qualifiedRows = [], dailyCap = 2 } = {}) {
       const statement = sql.replace(/\s+/g, " ").trim();
       queries.push({ statement, values });
       if (statement.startsWith("SELECT table_name FROM information_schema.tables")) {
-        return { rows: values[0].map((table_name) => ({ table_name })) };
+        const absent = new Set(["jr_application_packets", "jr_gmail_oauth_states", "jr_gmail_credentials"]);
+        return { rows: values[0].filter((table_name) => !absent.has(table_name)).map((table_name) => ({ table_name })) };
       }
       if (statement.startsWith("SELECT score_threshold, max_packets_per_day")) {
         return { rows: [{ score_threshold: 65, max_packets_per_day: dailyCap }] };
