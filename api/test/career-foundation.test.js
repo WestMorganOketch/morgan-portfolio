@@ -609,7 +609,7 @@ test("Phase 5 and Phase 7 migrations are additive, private, and synchronized wit
   const verify5 = readFileSync(new URL("../../docs/career-automation/sql/phase-5.verify.sql", import.meta.url), "utf8");
   const verify7 = readFileSync(new URL("../../docs/career-automation/sql/phase-7.verify.sql", import.meta.url), "utf8");
   for (const verify of [verify5, verify7]) {
-    assert.match(verify, /has_table_privilege\\('anon'/);
-    assert.match(verify, /has_table_privilege\\('authenticated'/);
+    assert.match(verify, /has_table_privilege\('anon'/);
+    assert.match(verify, /has_table_privilege\('authenticated'/);
   }
 });
