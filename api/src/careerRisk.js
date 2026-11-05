@@ -1,9 +1,9 @@
 import { isIP } from "node:net";
 
 const HIGH_RISK_PATTERNS = [
-  ["candidate_payment_requested", /\b(?:application|registration|processing|recruitment|placement)\s+fee\b/i],
+  ["candidate_payment_requested", /\b(?:pay|paying|send|transfer|deposit|purchase|buy)\b[^.!?\n]{0,80}\b(?:application|registration|processing|recruitment|placement|training|onboarding|visa)?\s*(?:fee|deposit|charge|payment)\b/i],
   ["candidate_payment_requested", /\bpay\s+(?:a|the|an)\s+(?:fee|deposit|charge)\b/i],
-  ["sensitive_credentials_requested", /\b(?:password|one[- ]time password|\bOTP\b|seed phrase|private key)\b/i],
+  ["sensitive_credentials_requested", /\b(?:send|share|provide|reveal|enter|tell us|give us)\b[^.!?\n]{0,55}\b(?:password|one[- ]time password|\bOTP\b|seed phrase|private key|bank login)\b/i],
 ];
 const REVIEW_PATTERNS = [
   ["high_pressure_or_unrealistic_offer", /\b(?:guaranteed|instant)\s+(?:job|employment|offer)\b/i],
@@ -30,6 +30,11 @@ function isPrivateIp(host) {
       || value.startsWith("fe8") || value.startsWith("fe9") || value.startsWith("fea") || value.startsWith("feb");
   }
   return false;
+}
+
+function isNegatedRequest(value, matchIndex) {
+  const prefix = value.slice(Math.max(0, matchIndex - 70), matchIndex);
+  return /\b(?:never|no|not|don't|do not|doesn't|does not|won't|will not|must not|should not)\b[^.!?\n]{0,60}$/i.test(prefix);
 }
 
 function checkUrl(raw) {
@@ -72,11 +77,11 @@ export function assessCareerRisk(job, { now = () => new Date() } = {}) {
   };
   for (const [code, pattern] of HIGH_RISK_PATTERNS) {
     const match = pattern.exec(advert);
-    if (match) add(code, "high", 0.96, match[0]);
+    if (match && !isNegatedRequest(advert, match.index)) add(code, "high", 0.96, match[0]);
   }
   for (const [code, pattern] of REVIEW_PATTERNS) {
     const match = pattern.exec(advert);
-    if (match) add(code, "medium", 0.78, match[0]);
+    if (match && !isNegatedRequest(advert, match.index)) add(code, "medium", 0.78, match[0]);
   }
   const company = text(job?.company, 200);
   if (!company || /^(?:confidential|undisclosed|unknown|not provided)$/i.test(company)) {
