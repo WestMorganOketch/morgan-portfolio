@@ -667,6 +667,23 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   }, [csrfToken]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const gmailStatus = params.get("gmail");
+    if (gmailStatus) {
+      setTab("Sources and Setup");
+      setMessage(gmailStatus === "connected"
+        ? "Gmail connected. Email sending remains off until the server is deliberately switched to live mode."
+        : gmailStatus === "denied"
+          ? "Gmail connection was cancelled. No sending permission was saved."
+          : "Gmail could not be connected. Check the server setup checklist and retry.");
+      params.delete("gmail");
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.delete("gmail");
+      window.history.replaceState({}, "", nextUrl.toString());
+    }
+  }, []);
+
+  useEffect(() => {
     let active = true;
     const timer = window.setTimeout(() => {
       const initialize = async () => {
@@ -1140,8 +1157,8 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
       setError("Enter the recipient email address exactly as shown on the employer's official advert.");
       return;
     }
-    if (activePacket.warnings.length && !confirmSendWarnings) {
-      setError("Review the packet warnings and explicitly acknowledge them before sending.");
+    if ((activePacket.warnings.length > 0 || activePacket.missing_requirements.length > 0) && !confirmSendWarnings) {
+      setError("Review the packet warnings and possible missing requirements, then explicitly acknowledge them before sending.");
       return;
     }
     if (activePacket.source_snapshot.eligibility === "unknown" && !confirmSendEligibility) {
@@ -1770,7 +1787,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
 
         {tab === "Tracker" ? (
           <div className="career-stack">
-            <p className="admin-help">Private application tracker. No documents are attached or sent in this phase.</p>
+            <p className="admin-help">Track each reviewed job, keep private notes, record follow-up dates, and inspect the event timeline. Application packets and confirmed email sends are managed in Application drafts.</p>
             <label className="career-filter-label" htmlFor="career-application-filter">Filter by application state
               <select id="career-application-filter" onChange={(event) => setApplicationFilter(event.target.value)} value={applicationFilter}>
                 <option value="all">All states</option>
