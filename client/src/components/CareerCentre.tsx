@@ -267,6 +267,48 @@ function isApplication(value: unknown): value is Application {
     && string(value.source_name);
 }
 
+function isApplicationPacket(value: unknown): value is ApplicationPacket {
+  return isRecord(value)
+    && string(value.id)
+    && string(value.application_id)
+    && string(value.job_id)
+    && string(value.source_profile_id)
+    && typeof value.version === "number"
+    && string(value.status)
+    && (value.resume_text === undefined || string(value.resume_text))
+    && (value.cover_letter_text === undefined || string(value.cover_letter_text))
+    && string(value.recipient_email)
+    && Array.isArray(value.highlights)
+    && Array.isArray(value.missing_requirements)
+    && value.missing_requirements.every(string)
+    && Array.isArray(value.warnings)
+    && value.warnings.every(string)
+    && isRecord(value.source_snapshot)
+    && string(value.master_resume_sha256)
+    && (value.gmail_message_id === null || string(value.gmail_message_id))
+    && (value.sent_at === null || string(value.sent_at))
+    && string(value.created_at)
+    && string(value.updated_at)
+    && string(value.title)
+    && (value.company === null || string(value.company))
+    && string(value.location_text)
+    && (value.application_url === null || string(value.application_url))
+    && (value.source_name === null || string(value.source_name))
+    && string(value.profile_name)
+    && string(value.profile_track)
+    && string(value.application_state);
+}
+
+function isCareerRun(value: unknown): value is CareerRun {
+  return isRecord(value)
+    && string(value.id)
+    && string(value.trigger)
+    && string(value.status)
+    && string(value.started_at)
+    && (value.finished_at === null || string(value.finished_at))
+    && isRecord(value.summary);
+}
+
 function isSource(value: unknown): value is SourceHealth {
   return isRecord(value)
     && string(value.key)
@@ -413,6 +455,18 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   const [searchLinks, setSearchLinks] = useState<SearchLink[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [applicationFilter, setApplicationFilter] = useState("all");
+  const [runHistory, setRunHistory] = useState<CareerRun[]>([]);
+  const [applicationPackets, setApplicationPackets] = useState<ApplicationPacket[]>([]);
+  const [activePacket, setActivePacket] = useState<ApplicationPacket | null>(null);
+  const [preparationJobs, setPreparationJobs] = useState<CareerJob[]>([]);
+  const [selectedPreparationJobId, setSelectedPreparationJobId] = useState("");
+  const [selectedPreparationProfileId, setSelectedPreparationProfileId] = useState("");
+  const [draftResumeText, setDraftResumeText] = useState("");
+  const [draftCoverLetterText, setDraftCoverLetterText] = useState("");
+  const [draftRecipientEmail, setDraftRecipientEmail] = useState("");
+  const [confirmSendWarnings, setConfirmSendWarnings] = useState(false);
+  const [confirmSendEligibility, setConfirmSendEligibility] = useState(false);
+  const [gmailActionBusy, setGmailActionBusy] = useState(false);
   const [applicationEvents, setApplicationEvents] = useState<ApplicationEvent[]>([]);
   const [activeApplication, setActiveApplication] = useState("");
   const [activeProfile, setActiveProfile] = useState("");
