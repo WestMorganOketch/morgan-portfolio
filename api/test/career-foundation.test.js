@@ -563,3 +563,24 @@ test("phase 3A SQL is additive, repeatable, and protects its new table", () => {
   assert.match(verify, /has_table_privilege\('authenticated'/);
   assert.match(verify.trim(), /ORDER BY c\.relname;$/);
 });
+
+
+test("career migration runner is explicit, ordered, and absent from API startup", () => {
+  const runner = readFileSync(new URL("../scripts/migrate-career.js", import.meta.url), "utf8");
+  const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const appSource = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
+  const migrationFiles = [
+    "004_career_foundation.sql",
+    "005_career_intake.sql",
+    "006_career_assessments.sql",
+    "007_career_applications.sql",
+    "008_career_preparation.sql",
+  ];
+  assert.equal(packageJson.scripts["db:migrate-career"], "node scripts/migrate-career.js");
+  const positions = migrationFiles.map((filename) => runner.indexOf(`"${filename}"`));
+  assert.ok(positions.every((position) => position >= 0), "every implemented Career Radar migration is included");
+  assert.deepEqual(positions, [...positions].sort((left, right) => left - right), "migrations run in dependency order");
+  assert.match(runner, /await pool\\.query\\(sql\\)/);
+  assert.match(runner, /finally \\{[\\s\\S]*await pool\\.end\\(\\)/);
+  assert.doesNotMatch(appSource, /migrate-career|migrations\\/00[4-8]_career/);
+});

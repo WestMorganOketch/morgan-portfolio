@@ -127,7 +127,8 @@ Phase 0 findings are retained as a record. Phase 1 and Phase 2 are recorded belo
 
 ## Latest quality follow-up (5 November 2026)
 
-- Risk-screening fix: payment-demand matching now stops at contrast clauses (`but`, `however`, etc.) so an earlier anti-scam disclaimer cannot suppress a later payment demand. The public CI run for the prior commit failed this regression test; a fresh passing run is required before calling it resolved.
-
-- The latest observed CI run had client lint, type-check, and production build passing; API lint passed, but 1 of 111 API tests failed in `api/test/career-risk.test.js`. Re-run quality checks after the fix.
-- The current branch is not merged or deployed. Database migrations, cron secrets, Gmail OAuth, the encryption key, and live end-to-end scan remain owner-controlled release steps.
+- Fixed the contrast-clause regression in `api/src/careerRisk.js`: a prior anti-scam disclaimer no longer suppresses a later, separate payment request.
+- Removed the CodeQL-triggering test assertion that re-hashed the random OAuth state as though it were a password. The implementation still stores only the SHA-256 digest of a high-entropy, CSPRNG-generated, one-use OAuth state; the current code scan reported no new alerts.
+- The run for commit `1d955a01c8e30b8074c7861e9b16be6a5a7d84d7` passed API lint/tests, client lint/type-check/production build, both CodeQL analyses, and reported no new CodeQL alerts. The Vercel PR preview was marked ready. This verifies the code in that commit, not the live production API/database.
+- Added an explicit `npm run db:migrate-career` command for the ordered, additive Career Radar migrations `004`–`008`. It is never invoked by API startup, and it has not been run against any database in this work. Back up and verify the target database before an owner runs it.
+- The feature PR remains draft/unmerged. No production deployment, database migration, cron-secret configuration, Gmail OAuth connection, or email send has been performed. The encrypted document vault (planned Phase 5) and owner-approved public snapshot/publishing flow (planned Phase 7) remain unimplemented and are not claimed as complete.
