@@ -87,6 +87,8 @@ export const applicationPacketSendSchema = z.object({
   confirm_send: z.literal(true),
   confirm_warnings: z.boolean(),
   confirm_eligibility: z.boolean(),
+  document_id: z.string().uuid().nullable().optional().default(null),
+  confirm_document_release: z.boolean().default(false),
 }).strict();
 export const jobReviewStatusSchema = z.object({
   status: z.enum(["match_review", "shortlisted", "duplicate", "not_a_fit", "needs_manual_attention"]),
