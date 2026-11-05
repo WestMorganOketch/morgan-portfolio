@@ -22,7 +22,7 @@ CREATE INDEX IF NOT EXISTS jr_career_documents_kind_idx
   ON public.jr_career_documents (kind, created_at DESC) WHERE archived_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS public.jr_career_document_consents (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   document_id uuid NOT NULL REFERENCES public.jr_career_documents(id) ON DELETE RESTRICT,
   purpose text NOT NULL CHECK (purpose IN ('application_email')),
   action text NOT NULL CHECK (action IN ('granted', 'revoked')),
