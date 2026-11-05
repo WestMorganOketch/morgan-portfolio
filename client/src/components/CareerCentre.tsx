@@ -1601,7 +1601,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
               </ul>
               <div className="career-actions">
                 <a className="button button-quiet" href="https://github.com/WestMorganOketch/morgan-portfolio/actions/workflows/career-radar-scheduled-scan.yml" rel="noopener noreferrer" target="_blank">Open scheduled scan workflow</a>
-                <button className="button button-quiet" disabled={busy} onClick={() => void runAction(async () => { await startScan(); }, "Scan request submitted.")} type="button">Run scan now</button>
+                <button className="button button-quiet" disabled={busy || scanStatus === "running"} onClick={() => void startScan()} type="button">Run scan now</button>
               </div>
             </section>
             <section className="career-subpanel">
