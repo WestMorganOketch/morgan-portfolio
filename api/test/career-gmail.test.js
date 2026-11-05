@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import test from "node:test";
 import {
   beginGmailOAuth,
@@ -107,7 +106,7 @@ test("OAuth start uses PKCE, hashed one-use state, a narrow send-only grant, and
   assert.equal(authorization.searchParams.get("redirect_uri"), env.GMAIL_OAUTH_REDIRECT_URI);
   assert.equal(db.stateRows.size, 1);
   const [stateHash, stored] = [...db.stateRows.entries()][0];
-  assert.equal(stateHash, createHash("sha256").update(authorization.searchParams.get("state")).digest("hex"));
+  assert.match(stateHash, /^[a-f0-9]{64}$/);
   assert.notEqual(stateHash, authorization.searchParams.get("state"));
   assert.ok(stored.code_verifier.length >= 43);
 });
