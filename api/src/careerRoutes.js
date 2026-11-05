@@ -49,10 +49,6 @@ const setupSecretNames = [
   "GMAIL_OAUTH_CLIENT_ID",
   "GMAIL_OAUTH_CLIENT_SECRET",
   "GMAIL_OAUTH_REDIRECT_URI",
-  "GEMINI_API_KEY",
-  "JOOBLE_API_KEY",
-  "CAREERJET_API_KEY",
-  "RELIEFWEB_APPNAME",
 ];
 const missingTablesError = {
   error: "Career foundation tables are missing. Run docs/career-automation/sql/phase-1.sql in Supabase SQL Editor.",
