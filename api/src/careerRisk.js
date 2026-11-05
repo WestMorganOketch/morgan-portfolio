@@ -13,6 +13,7 @@ const REVIEW_PATTERNS = [
 const SHORTENERS = new Set(["bit.ly", "tinyurl.com", "t.co", "cutt.ly", "is.gd"]);
 
 function text(value, max = 12000) {
+  // eslint-disable-next-line no-control-regex
   return String(value ?? "").replace(/<[^>]*>/g, " ").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 }
 
