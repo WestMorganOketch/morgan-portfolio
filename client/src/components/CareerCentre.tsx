@@ -1221,7 +1221,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
             tabIndex={tab === name ? 0 : -1}
             type="button"
           >
-            {name}
+            {careerTabLabels[name]}
             {name === "Overview" && overview?.review_count ? <span className="career-tab-count">{overview.review_count}</span> : null}
           </button>
         ))}
@@ -1322,6 +1322,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                     key={job.id}
                     onApplication={() => void createApplication(job)}
                     onNotes={() => void openNotes(job)}
+                    onPrepare={() => void openPreparation(job)}
                     onStatus={(status) => void updateJobStatus(job, status)}
                   />
                 ))}
@@ -1590,12 +1591,14 @@ function CareerJobCard({
   onStatus,
   onNotes,
   onApplication,
+  onPrepare,
 }: {
   job: CareerJob;
   busy: boolean;
   onStatus: (status: string) => void;
   onNotes: () => void;
   onApplication: () => void;
+  onPrepare: () => void;
 }) {
   const assessment = job.assessment;
   const externalUrl = safeHttpUrl(job.url);
@@ -1639,6 +1642,7 @@ function CareerJobCard({
         <button className="button button-quiet" disabled={busy} onClick={() => onStatus("shortlisted")} type="button">Shortlist</button>
         <button className="button button-quiet" disabled={busy} onClick={() => onStatus("not_a_fit")} type="button">Not a fit</button>
         <button className="button button-quiet" disabled={busy} onClick={() => onStatus("duplicate")} type="button">Mark duplicate</button>
+        <button className="button button-primary" disabled={busy} onClick={onPrepare} type="button">Prepare application</button>
         <button className="button button-quiet" disabled={busy} onClick={onNotes} type="button">Add notes</button>
         <button className="button button-quiet" disabled={busy} onClick={onApplication} type="button">Add to tracker</button>
       </div>
