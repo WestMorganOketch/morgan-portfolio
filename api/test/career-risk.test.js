@@ -110,3 +110,12 @@ test("a genuine later payment demand is still detected after an anti-scam discla
   assert.equal(result.risk_level, "high");
   assert.ok(result.risk_findings.some((finding) => finding.code === "candidate_payment_requested"));
 });
+
+test("a contrast clause cannot hide a later payment demand after a scam disclaimer", () => {
+  const result = assessCareerRisk({
+    ...baseJob,
+    description_text: "We never ask applicants to pay an application fee, but applicants must pay a registration fee before the interview.",
+  });
+  assert.equal(result.risk_level, "high");
+  assert.ok(result.risk_findings.some((finding) => finding.code === "candidate_payment_requested"));
+});
