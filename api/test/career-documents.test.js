@@ -140,16 +140,16 @@ function makeDb() {
         docs.set(id, row);
         return { rows: [{ ...row, application_email_consent: false, public_profile_consent: false }] };
       }
-      if (statement.includes("FROM public.jr_career_documents") && statement.includes("WHERE id = $1 AND archived_at IS NULL")) {
-        const row = docs.get(values[0]);
-        return { rows: row && !row.archived_at ? [row] : [] };
-      }
       if (statement.startsWith("INSERT INTO public.jr_career_document_consents")) {
         const [documentId, purpose, action, actor, acknowledgement, createdAt] = values;
         if (!docs.has(documentId) || docs.get(documentId).archived_at) return { rows: [] };
         const row = { id: "consent-" + (consents.length + 1), document_id: documentId, purpose, action, actor, acknowledgement, created_at: createdAt };
         consents.push(row);
         return { rows: [row] };
+      }
+      if (statement.includes("FROM public.jr_career_documents") && statement.includes("WHERE id = $1 AND archived_at IS NULL")) {
+        const row = docs.get(values[0]);
+        return { rows: row && !row.archived_at ? [row] : [] };
       }
       if (statement.startsWith("UPDATE public.jr_career_documents")) {
         const row = docs.get(values[0]);
