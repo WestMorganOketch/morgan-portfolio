@@ -47,8 +47,8 @@ jobs:
             --header "Content-Type: application/json" \
             --header "x-cron-secret: $JOB_CRON_SECRET" \
             --data '{}')"
-          if ! printf '%s' "$response" | jq -e '.status and .id' >/dev/null; then
+          if ! printf '%s' "$response" | jq -e '(.status == "already_running") or (.status and .id)' >/dev/null; then
             echo "::error::Career Radar returned an unexpected scan response."
             exit 1
           fi
-          printf '%s' "$response" | jq -r '"Career Radar scan accepted: status=\(.status), run=\(.id)"'
+          printf '%s' "$response" | jq -r '"Career Radar scan response: status=\(.status), run=\(.id // "not-created")"'
