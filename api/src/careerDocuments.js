@@ -12,7 +12,7 @@ export const CAREER_DOCUMENT_KINDS = Object.freeze([
   "master_resume", "certificate", "supporting_document", "employment_record",
 ]);
 export const CAREER_DOCUMENT_CONSENT_PURPOSES = Object.freeze([
-  "application_email", "public_profile",
+  "application_email",
 ]);
 
 const AAD_PREFIX = "morgan-career-document:v1:";
