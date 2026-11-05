@@ -998,6 +998,197 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     }, "Job added to the application tracker.");
   }
 
+  async function openPreparation(job: CareerJob) {
+    setError("");
+    setMessage("");
+    setTab("Application drafts");
+    setSelectedPreparationJobId(job.id);
+    setActivePacket(null);
+    setDraftResumeText("");
+    setDraftCoverLetterText("");
+    setDraftRecipientEmail("");
+    setConfirmSendWarnings(false);
+    setConfirmSendEligibility(false);
+    try {
+      const availableProfiles = await loadProfiles();
+      const suggested = suggestedProfileForJob(job, availableProfiles);
+      if (suggested) setSelectedPreparationProfileId(suggested.id);
+      else setSelectedPreparationProfileId("");
+      void loadApplicationPackets().catch((cause: unknown) =>
+        setError(cause instanceof Error ? cause.message : "Application drafts could not be loaded."));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The master CV profiles could not be loaded.");
+    }
+  }
+
+  function applyPacketToEditor(packet: ApplicationPacket) {
+    setActivePacket(packet);
+    setSelectedPreparationJobId(packet.job_id);
+    setSelectedPreparationProfileId(packet.source_profile_id);
+    setDraftResumeText(packet.resume_text ?? "");
+    setDraftCoverLetterText(packet.cover_letter_text ?? "");
+    setDraftRecipientEmail(packet.recipient_email ?? "");
+    setConfirmSendWarnings(false);
+    setConfirmSendEligibility(false);
+  }
+
+  async function openPacket(packetId: string) {
+    setError("");
+    setMessage("");
+    try {
+      const value = await request(`/api/admin/career/application-packets/${packetId}`, csrfToken);
+      if (!isApplicationPacket(value) || !string(value.resume_text) || !string(value.cover_letter_text)) {
+        throw new Error("The application packet returned unexpected data. Refresh the list and try again.");
+      }
+      applyPacketToEditor(value);
+      setTab("Application drafts");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The application draft could not be opened.");
+    }
+  }
+
+  async function prepareSelectedJob() {
+    if (!selectedPreparationJobId || !selectedPreparationProfileId) {
+      setError("Choose a job and a master CV profile first.");
+      return;
+    }
+    await runAction(async () => {
+      const value = await request(`/api/admin/career/jobs/${selectedPreparationJobId}/prepare`, csrfToken, {
+        method: "POST",
+        body: JSON.stringify({ profile_id: selectedPreparationProfileId }),
+      });
+      if (!isApplicationPacket(value) || !string(value.resume_text) || !string(value.cover_letter_text)) {
+        throw new Error("The application preparation service returned an invalid packet.");
+      }
+      applyPacketToEditor(value);
+      await Promise.all([loadApplicationPackets(), loadApplications(), loadOverview()]);
+    }, "Application draft generated from the selected master CV. Review every line before sending.");
+  }
+
+  async function savePacketDraft() {
+    if (!activePacket) return;
+    await runAction(async () => {
+      const value = await request(`/api/admin/career/application-packets/${activePacket.id}`, csrfToken, {
+        method: "PATCH",
+        body: JSON.stringify({
+          resume_text: draftResumeText,
+          cover_letter_text: draftCoverLetterText,
+          recipient_email: draftRecipientEmail,
+        }),
+      });
+      if (!isApplicationPacket(value) || !string(value.resume_text) || !string(value.cover_letter_text)) {
+        throw new Error("The saved application packet could not be reloaded.");
+      }
+      applyPacketToEditor(value);
+      await loadApplicationPackets();
+      await loadApplications();
+      await loadOverview();
+    }, "Saved a new reviewable version. Review the version number and warnings again before sending.");
+  }
+
+  async function connectGmail() {
+    setGmailActionBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const value = await request("/api/admin/career/gmail/oauth/start", csrfToken, {
+        method: "POST",
+        body: "{}",
+      });
+      if (!isRecord(value) || !string(value.authorization_url)) {
+        throw new Error("The Gmail connection service returned an invalid authorization link.");
+      }
+      const target = new URL(value.authorization_url);
+      if (target.origin !== "https://accounts.google.com" || target.pathname !== "/o/oauth2/v2/auth") {
+        throw new Error("The Gmail authorization link failed the destination check.");
+      }
+      window.location.assign(target.toString());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Gmail could not be connected.");
+      setGmailActionBusy(false);
+    }
+  }
+
+  async function disconnectGmailAccount() {
+    if (!window.confirm("Disconnect Gmail and revoke this app's saved send permission? This will stop email sending until you connect again.")) return;
+    await runAction(async () => {
+      await request("/api/admin/career/gmail/disconnect", csrfToken, { method: "POST", body: "{}" });
+      const setupData = await request("/api/admin/career/setup", csrfToken);
+      const parsedSetup = parseSetupStatus(setupData);
+      if (parsedSetup) setSetup(parsedSetup);
+    }, "Gmail disconnected and its grant revoked.");
+  }
+
+  async function sendApplicationPacket() {
+    if (!activePacket) return;
+    if (activePacketDirty) {
+      setError("Save your latest CV, cover letter, and recipient first. The send action only uses a saved packet version.");
+      return;
+    }
+    if (activePacket.status !== "ready_for_review") {
+      setError("Save the packet to create a reviewable version before sending.");
+      return;
+    }
+    if (!setup?.gmail?.connected || setup.JR_SEND_MODE !== "live") {
+      setError("Gmail sending is not ready. Connect Gmail and have the server owner enable live sending after reviewing the setup checklist.");
+      return;
+    }
+    if (!draftRecipientEmail.trim()) {
+      setError("Enter the recipient email address exactly as shown on the employer's official advert.");
+      return;
+    }
+    if (activePacket.warnings.length && !confirmSendWarnings) {
+      setError("Review the packet warnings and explicitly acknowledge them before sending.");
+      return;
+    }
+    if (activePacket.source_snapshot.eligibility === "unknown" && !confirmSendEligibility) {
+      setError("Confirm you manually checked location and work-authorization eligibility before sending.");
+      return;
+    }
+    if (activePacket.source_snapshot.eligibility === "ineligible") {
+      setError("This advert failed the eligibility rules. Job Radar will not send it.");
+      return;
+    }
+    if (!window.confirm(`Send application version ${activePacket.version} to ${draftRecipientEmail.trim()} from ${setup.gmail.email}? This sends an email with the saved CV and cover-letter PDFs. It cannot be recalled here.`)) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const value = await request(`/api/admin/career/application-packets/${activePacket.id}/send`, csrfToken, {
+        method: "POST",
+        body: JSON.stringify({
+          reviewed_version: activePacket.version,
+          recipient_email: draftRecipientEmail.trim(),
+          confirm_send: true,
+          confirm_warnings: confirmSendWarnings,
+          confirm_eligibility: confirmSendEligibility,
+        }),
+      });
+      if (!isApplicationPacket(value)) throw new Error("Gmail returned an unexpected application state. Check the packet and Gmail Sent before any retry.");
+      applyPacketToEditor(value);
+      setMessage("Gmail confirmed the application email was sent. The packet is locked to prevent a duplicate send.");
+      await Promise.all([loadApplicationPackets(), loadApplications(), loadOverview(), loadRunHistory()]);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The email outcome could not be confirmed. Check Gmail Sent before retrying.");
+      try {
+        const latest = await request(`/api/admin/career/application-packets/${activePacket.id}`, csrfToken);
+        if (isApplicationPacket(latest) && string(latest.resume_text) && string(latest.cover_letter_text)) applyPacketToEditor(latest);
+        await loadApplicationPackets();
+      } catch {
+        // Keep the original send error visible if the refresh also fails.
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const activePacketDirty = Boolean(activePacket
+    && (
+      draftResumeText !== (activePacket.resume_text ?? "")
+      || draftCoverLetterText !== (activePacket.cover_letter_text ?? "")
+      || draftRecipientEmail !== (activePacket.recipient_email ?? "")
+    ));
+
   const reviewJobs = reviewList === "Shortlist" ? overview?.shortlist ?? []
     : reviewList === "Maybe" ? overview?.maybe ?? []
       : reviewList === "Qualified" ? overview?.qualified ?? []
