@@ -17,6 +17,16 @@ type Assessment = {
   reason_codes: string[];
   uncertainty: string[];
 };
+type RiskFinding = { code: string; severity: string; confidence: number; evidence: string };
+type RiskAssessment = {
+  risk_level: "low" | "medium" | "high" | string;
+  label: string;
+  risk_findings: RiskFinding[];
+  risk_confidence: number;
+  unknowns: string[];
+  url_checks: { hostname?: string | null; error?: string; https_ok?: boolean };
+  risk_assessed_at?: string | null;
+};
 type CareerJob = {
   id: string;
   title: string;
@@ -32,7 +42,7 @@ type CareerJob = {
   first_seen_at: string;
   status: string;
   assessment: Assessment | null;
-  risk_assessment?: string;
+  risk_assessment?: string | RiskAssessment;
 };
 type SourceHealth = {
   key: string;
@@ -1349,7 +1359,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
             </div>
             <section className="career-subpanel">
               <div className="career-review-heading">
-                <div><h3>Jobs needing review</h3><p>{overview?.shortlist_count ?? 0} daily shortlist items · risk is not yet assessed</p></div>
+                <div><h3>Jobs needing review</h3><p>{overview?.shortlist_count ?? 0} daily shortlist items · low-risk rule screening only; employer legitimacy is not verified</p></div>
                 <button className="text-link" onClick={() => changeTab("Review")} type="button">Open review queue</button>
               </div>
               {overview?.shortlist.length ? (
@@ -1357,7 +1367,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                   {overview.shortlist.map((job) => {
                     const href = safeHttpUrl(job.url);
                     return <li key={job.id}>
-                      <div><strong>{job.title}</strong><span>{job.location_text || job.remote_scope_text || "Location not specified"} · {job.assessment?.fit_score ?? "—"}/100 · risk: not yet assessed</span></div>
+                      <div><strong>{job.title}</strong><span>{job.location_text || job.remote_scope_text || "Location not specified"} · {job.assessment?.fit_score ?? "—"}/100 · risk: {isRecord(job.risk_assessment) ? string(job.risk_assessment.label) || "review required" : typeof job.risk_assessment === "string" ? job.risk_assessment : "not yet assessed"}</span></div>
                       {href ? <a href={href} rel="noopener noreferrer" target="_blank">{job.attribution_text}</a> : <span>{job.attribution_text}</span>}
                     </li>;
                   })}
@@ -1944,6 +1954,7 @@ function CareerJobCard({
   const assessment = job.assessment;
   const externalUrl = safeHttpUrl(job.url);
   const breakdown = assessment?.fit_breakdown ?? {};
+  const risk = isRecord(job.risk_assessment) ? job.risk_assessment as unknown as RiskAssessment : null;
   const breakdownItems = Object.entries(breakdown).flatMap(([label, value]) =>
     isRecord(value) && typeof value.weight === "number" && typeof value.points === "number"
       ? [{ label, points: value.points, weight: value.weight }]
@@ -1967,7 +1978,9 @@ function CareerJobCard({
         <div className="career-assessment-details">
           <p><strong>Eligibility:</strong> {assessment.eligibility}</p>
           <p><strong>Eligibility evidence:</strong> {assessment.eligibility_evidence.map((item) => item.phrase ?? item.rule ?? "").filter(Boolean).join("; ") || "No explicit phrase recorded."}</p>
-          <p><strong>Risk:</strong> {job.risk_assessment ?? "not yet assessed"} — no safety conclusion is implied.</p>
+          <p><strong>Risk:</strong> {risk?.label ?? (typeof job.risk_assessment === "string" ? job.risk_assessment : "not yet assessed")}</p>
+          {risk?.risk_findings.length ? <ul className="career-risk-findings" aria-label="Advert risk indicators">{risk.risk_findings.map((finding) => <li key={finding.code}><strong>{finding.severity}:</strong> {finding.evidence}</li>)}</ul> : null}
+          {risk?.unknowns.length ? <p><strong>Still to verify:</strong> {risk.unknowns.join(" ")}</p> : null}
           <p><strong>Matched:</strong> {assessment.matched.map((item) => item.value ?? item.phrase ?? "").filter(Boolean).join(", ") || "None recorded"}</p>
           <p><strong>Missing:</strong> {assessment.missing.map((item) => item.value ?? "").filter(Boolean).join(", ") || "None recorded"}</p>
           <p><strong>Reason codes:</strong> {assessment.reason_codes.join(", ") || "None"}</p>
@@ -1983,7 +1996,7 @@ function CareerJobCard({
         <button className="button button-quiet" disabled={busy} onClick={() => onStatus("shortlisted")} type="button">Shortlist</button>
         <button className="button button-quiet" disabled={busy} onClick={() => onStatus("not_a_fit")} type="button">Not a fit</button>
         <button className="button button-quiet" disabled={busy} onClick={() => onStatus("duplicate")} type="button">Mark duplicate</button>
-        <button className="button button-primary" disabled={busy} onClick={onPrepare} type="button">Prepare application</button>
+        <button className="button button-primary" disabled={busy || risk?.risk_level === "high"} onClick={onPrepare} type="button">Prepare application</button>
         <button className="button button-quiet" disabled={busy} onClick={onNotes} type="button">Add notes</button>
         <button className="button button-quiet" disabled={busy} onClick={onApplication} type="button">Add to tracker</button>
       </div>
