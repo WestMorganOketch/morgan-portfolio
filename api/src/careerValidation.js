@@ -66,6 +66,28 @@ export const applicationPatchSchema = z.object({
   private_notes: z.string().max(12_000).optional(),
   followup_at: z.string().datetime({ offset: true }).nullable().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, "Provide notes or a follow-up date.");
+
+export const applicationPrepareSchema = z.object({
+  profile_id: z.string().uuid(),
+}).strict();
+
+export const applicationPacketPatchSchema = z.object({
+  resume_text: z.string().trim().min(1).max(65_000).optional(),
+  cover_letter_text: z.string().trim().min(1).max(12_000).optional(),
+  recipient_email: z.union([
+    z.string().trim().email().max(254),
+    z.literal(""),
+    z.null(),
+  ]).optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, "Provide at least one application draft field.");
+
+export const applicationPacketSendSchema = z.object({
+  reviewed_version: z.number().int().min(1),
+  recipient_email: z.string().trim().email().max(254),
+  confirm_send: z.literal(true),
+  confirm_warnings: z.boolean(),
+  confirm_eligibility: z.boolean(),
+}).strict();
 export const jobReviewStatusSchema = z.object({
   status: z.enum(["match_review", "shortlisted", "duplicate", "not_a_fit", "needs_manual_attention"]),
 }).strict();
