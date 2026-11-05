@@ -1416,7 +1416,7 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
           }
           const finalPacket = await findApplicationPacket(db, packet.id);
           return res.json(applicationPacketResponse(finalPacket));
-        } catch (error) {
+        } catch {
           const failedAt = now();
           const client = await db.connect();
           try {
