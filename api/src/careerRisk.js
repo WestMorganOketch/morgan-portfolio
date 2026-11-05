@@ -1,7 +1,7 @@
 import { isIP } from "node:net";
 
 const HIGH_RISK_PATTERNS = [
-  ["candidate_payment_requested", /\b(?:pay|paying|send|transfer|deposit|purchase|buy)\b[^.!?\n]{0,80}\b(?:application|registration|processing|recruitment|placement|training|onboarding|visa)?\s*(?:fee|deposit|charge|payment)\b/i],
+  ["candidate_payment_requested", /\b(?:pay|paying|send|transfer|deposit|purchase|buy)\b(?:(?!\b(?:but|however|yet|except|nevertheless|although|though)\b)[^.!?;\n]){0,80}\b(?:application|registration|processing|recruitment|placement|training|onboarding|visa)?\s*(?:fee|deposit|charge|payment)\b/i],
   ["candidate_payment_requested", /\bpay\s+(?:a|the|an)\s+(?:fee|deposit|charge)\b/i],
   ["sensitive_credentials_requested", /\b(?:send|share|provide|reveal|enter|tell us|give us)\b[^.!?\n]{0,55}\b(?:password|one[- ]time password|\bOTP\b|seed phrase|private key|bank login)\b/i],
 ];
