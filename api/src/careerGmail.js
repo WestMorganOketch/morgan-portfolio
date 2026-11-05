@@ -249,6 +249,7 @@ function safeEmail(value) {
 }
 
 function safeHeader(value) {
+  // eslint-disable-next-line no-control-regex
   return String(value ?? "").replace(/[\r\n\u0000-\u001f\u007f]/g, " ").trim().slice(0, 250);
 }
 
