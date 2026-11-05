@@ -596,11 +596,11 @@ test("Phase 5 and Phase 7 migrations are additive, private, and synchronized wit
   assert.equal(phase5, migration5);
   assert.equal(phase7, migration7);
   for (const sql of [phase5, phase7]) {
-    assert.match(sql, /^\\s*BEGIN;/);
-    assert.match(sql, /COMMIT;\\s*$/);
+    assert.match(sql, /^\s*BEGIN;/);
+    assert.match(sql, /COMMIT;\s*$/);
     assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
-    assert.match(sql, /REVOKE ALL PRIVILEGES ON TABLE public\\.jr_/);
-    assert.doesNotMatch(sql, /CREATE\\s+POLICY/i);
+    assert.match(sql, /REVOKE ALL PRIVILEGES ON TABLE public\.jr_/);
+    assert.doesNotMatch(sql, /CREATE\s+POLICY/i);
   }
   assert.match(phase5, /application_email/);
   assert.match(phase5, /encryption/i);
