@@ -125,7 +125,7 @@ test("PDF attachment generator produces a valid basic PDF envelope and bounded p
   assert.match(text, /xref\n/);
   assert.match(text, /startxref\n\d+\n%%EOF/);
   assert.match(text, /Private application draft/);
-  assert.match(text, /\(master\)/);
+  assert.ok(text.includes("\\(master\\)"));
   assert.ok(text.length < 200_000);
 });
 
