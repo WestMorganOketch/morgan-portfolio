@@ -862,6 +862,552 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
     },
   );
 
+  admin.post(
+    "/jobs/:id/prepare",
+    createRateLimiter(20, "Too many application packet requests."),
+    requireSameOrigin,
+    requireCsrfToken,
+    async (req, res, next) => {
+      const parsedId = parseCareerInput(uuidSchema, req.params.id);
+      const parsed = parseCareerInput(applicationPrepareSchema, req.body);
+      if (parsedId.error || parsed.error) {
+        return res.status(400).json({ error: "Choose a valid job and master CV profile.", details: parsed.error ?? parsedId.error });
+      }
+      try {
+        const missingJobs = await findMissingCareerTables(db);
+        if (missingJobs.length) return sendMissingIntakeTables(res, missingJobs);
+        const missingAssessments = await findMissingAssessmentTable(db);
+        if (missingAssessments.length) return sendMissingAssessmentTable(res);
+        const missingApplications = await findMissingApplicationTables(db);
+        if (missingApplications.length) return sendMissingApplicationTables(res, missingApplications);
+        const missingPreparation = await findMissingPreparationTables(db);
+        if (missingPreparation.length) return sendMissingPreparationTables(res, missingPreparation);
+
+        const [{ rows: jobRows }, { rows: profileRows }, { rows: settingsRows }] = await Promise.all([
+          db.query(
+            \`SELECT j.id, j.source_key, s.name AS source_name, s.attribution_text,
+                    j.url, j.title, j.company, j.location_text, j.remote_scope_text,
+                    j.description_text, j.tags, j.posted_at, j.status
+             FROM public.jr_jobs AS j
+             JOIN public.jr_sources AS s ON s.key = j.source_key
+             WHERE j.id = $1\`,
+            [parsedId.data],
+          ),
+          db.query(
+            \`SELECT id, name, track, original_text, verified_facts
+             FROM public.jr_resume_profiles
+             WHERE id = $1 AND archived_at IS NULL\`,
+            [parsed.data.profile_id],
+          ),
+          db.query(
+            \`SELECT role_tracks, score_threshold, excluded_keywords, excluded_companies
+             FROM public.jr_settings WHERE id = 1\`,
+          ),
+        ]);
+        const job = jobRows[0];
+        const profile = profileRows[0];
+        const settings = settingsRows[0];
+        if (!job) return res.status(404).json({ error: "This advert is no longer available in Job Radar." });
+        if (["duplicate", "expired", "closed"].includes(job.status)) {
+          return res.status(409).json({ error: "This advert is marked as duplicate, expired, or closed. Review its status before preparing an application." });
+        }
+        if (!profile) return res.status(404).json({ error: "The selected master CV profile is missing or archived." });
+        if (!settings) return sendMissingTables(res, ["jr_settings (seed row id=1)"]);
+
+        const assessment = calculateCareerJobAssessment(job, profile, settings, { now: now() });
+        if (!profileMatchesCareerTrack(assessment.track, profile.track)) {
+          return res.status(409).json({
+            error: "The selected master CV does not match this advert's assessed role track. Choose the correct CV profile or update Search Preferences before preparing the packet.",
+            assessedTrack: assessment.track,
+            selectedProfileTrack: profile.track,
+          });
+        }
+
+        await db.query(
+          \`INSERT INTO public.jr_assessments (
+             job_id, profile_id, track, eligibility, eligibility_evidence, fit_score,
+             fit_breakdown, matched, missing, reason_codes, uncertainty, rules_version
+           ) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11::jsonb, 1)
+           ON CONFLICT (job_id, profile_id) DO UPDATE SET
+             track = EXCLUDED.track, eligibility = EXCLUDED.eligibility,
+             eligibility_evidence = EXCLUDED.eligibility_evidence, fit_score = EXCLUDED.fit_score,
+             fit_breakdown = EXCLUDED.fit_breakdown, matched = EXCLUDED.matched,
+             missing = EXCLUDED.missing, reason_codes = EXCLUDED.reason_codes,
+             uncertainty = EXCLUDED.uncertainty, rules_version = EXCLUDED.rules_version,
+             assessed_at = now()\`,
+          [
+            job.id, profile.id, assessment.track, assessment.eligibility,
+            JSON.stringify(assessment.eligibility_evidence), assessment.fit_score,
+            JSON.stringify(assessment.fit_breakdown), JSON.stringify(assessment.matched),
+            JSON.stringify(assessment.missing), assessment.reason_codes,
+            JSON.stringify(assessment.uncertainty),
+          ],
+        );
+
+        const created = await applicationService.create(job.id);
+        const applicationId = created.application?.id ?? created.id;
+        if (created.notFound || !applicationId) return res.status(404).json({ error: "The application tracker could not find this job." });
+        const existingApplication = created.application ?? await applicationService.get(applicationId);
+        if (!existingApplication) return res.status(404).json({ error: "The application tracker record could not be loaded." });
+        if (["sent", "approved_to_send", "needs_manual_attention"].includes(existingApplication.state)) {
+          return res.status(409).json({ error: "This job already has a send or uncertain-send state. Check the existing packet and Gmail Sent before taking any further action." });
+        }
+
+        const draft = buildApplicationDraft({ job, profile, assessment, now: now() });
+        const masterResumeSha = createHash("sha256").update(profile.original_text, "utf8").digest("hex");
+        const sourceSnapshot = {
+          jobId: job.id,
+          applicationUrl: draft.source.applicationUrl,
+          sourceName: draft.source.sourceName,
+          sourceAttribution: draft.source.sourceAttribution,
+          assessmentScore: draft.source.assessmentScore,
+          eligibility: draft.source.eligibility,
+          matched: assessment.matched,
+          missing: assessment.missing,
+          reasonCodes: assessment.reason_codes,
+          generatedAt: draft.source.generatedAt,
+          sourceProfileId: profile.id,
+          sourceProfileName: profile.name,
+          sourceProfileTrack: profile.track,
+        };
+        const client = await db.connect();
+        let packetId;
+        try {
+          await client.query("BEGIN");
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [\`jr-application-packet:\${applicationId}\`]);
+          const { rows: latestRows } = await client.query(
+            "SELECT id, version, status FROM public.jr_application_packets WHERE application_id = $1 ORDER BY version DESC LIMIT 1 FOR UPDATE",
+            [applicationId],
+          );
+          const latest = latestRows[0];
+          if (latest && ["sent", "sending", "approved_to_send", "needs_manual_attention"].includes(latest.status)) {
+            await client.query("ROLLBACK");
+            return res.status(409).json({
+              error: "A previous packet has already been sent or has an uncertain send outcome. Check Gmail Sent and the application timeline before preparing another version.",
+            });
+          }
+          const version = Number(latest?.version ?? 0) + 1;
+          const { rows: inserted } = await client.query(
+            \`INSERT INTO public.jr_application_packets (
+               application_id, job_id, source_profile_id, version, status,
+               resume_text, cover_letter_text, recipient_email, highlights,
+               missing_requirements, warnings, source_snapshot, master_resume_sha256
+             ) VALUES ($1, $2, $3, $4, 'draft', $5, $6, NULL, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11)
+             RETURNING id\`,
+            [
+              applicationId, job.id, profile.id, version, draft.resumeText, draft.coverLetterText,
+              JSON.stringify(draft.highlights), JSON.stringify(draft.missingRequirements),
+              JSON.stringify(draft.warnings), JSON.stringify(sourceSnapshot), masterResumeSha,
+            ],
+          );
+          packetId = inserted[0]?.id;
+          await client.query(
+            \`UPDATE public.jr_applications
+             SET state = 'preparation_in_progress', updated_at = $2
+             WHERE id = $1 AND state NOT IN ('sent', 'approved_to_send', 'needs_manual_attention')\`,
+            [applicationId, now()],
+          );
+          await client.query(
+            \`INSERT INTO public.jr_application_events (application_id, event, detail)
+             VALUES ($1, 'application.packet_generated', $2::jsonb)\`,
+            [applicationId, JSON.stringify({ packet_id: packetId, version, profile_id: profile.id, master_resume_sha256: masterResumeSha })],
+          );
+          await client.query("COMMIT");
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        } finally {
+          client.release();
+        }
+        const packet = await findApplicationPacket(db, packetId);
+        if (!packet) return res.status(500).json({ error: "The packet was generated but could not be reloaded. Refresh the Application drafts tab." });
+        res.status(201).json(applicationPacketResponse(packet));
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  admin.get("/application-packets", async (_req, res, next) => {
+    try {
+      const missing = await findMissingPreparationTables(db);
+      if (missing.length) return sendMissingPreparationTables(res, missing);
+      const { rows } = await db.query(
+        \`SELECT p.id, p.application_id, p.job_id, p.source_profile_id, p.version, p.status,
+                p.recipient_email, p.highlights, p.missing_requirements, p.warnings,
+                p.source_snapshot, p.master_resume_sha256, p.gmail_message_id, p.sent_at,
+                p.created_at, p.updated_at, a.state AS application_state,
+                j.title, j.company, j.location_text, j.url AS application_url,
+                s.name AS source_name, rp.name AS profile_name, rp.track AS profile_track
+         FROM public.jr_application_packets AS p
+         JOIN public.jr_applications AS a ON a.id = p.application_id
+         JOIN public.jr_jobs AS j ON j.id = p.job_id
+         LEFT JOIN public.jr_sources AS s ON s.key = j.source_key
+         JOIN public.jr_resume_profiles AS rp ON rp.id = p.source_profile_id
+         WHERE p.version = (
+           SELECT max(p2.version) FROM public.jr_application_packets AS p2
+           WHERE p2.application_id = p.application_id
+         )
+         ORDER BY p.updated_at DESC LIMIT 100\`,
+      );
+      res.json(rows.map((row) => ({
+        ...applicationPacketResponse(row),
+        has_resume: true,
+        has_cover_letter: true,
+      })));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  admin.get("/application-packets/:id/resume.pdf", async (req, res, next) => {
+    const parsedId = parseCareerInput(uuidSchema, req.params.id);
+    if (parsedId.error) return res.status(400).json({ error: "Application packet ID is invalid." });
+    try {
+      const missing = await findMissingPreparationTables(db);
+      if (missing.length) return sendMissingPreparationTables(res, missing);
+      const packet = await findApplicationPacket(db, parsedId.data);
+      if (!packet) return res.status(404).json({ error: "Application packet was not found." });
+      const latest = await findLatestApplicationPacket(db, packet.application_id);
+      if (latest?.id !== packet.id) return res.status(409).json({ error: "This is an older packet version. Open the latest version before downloading." });
+      const pdf = createTextPdf({ title: \`\${packet.title} — CV draft\`, text: packet.resume_text, generatedAt: new Date(packet.updated_at) });
+      const filename = \`Morgan-West-Oketch-CV-\${String(packet.title).replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70) || "application"}.pdf\`;
+      res.set({
+        "Content-Type": "application/pdf",
+        "Content-Disposition": \`attachment; filename="\${filename}"\`,
+        "Content-Length": String(pdf.length),
+        "Cache-Control": "no-store",
+      });
+      return res.send(pdf);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  admin.get("/application-packets/:id/cover-letter.pdf", async (req, res, next) => {
+    const parsedId = parseCareerInput(uuidSchema, req.params.id);
+    if (parsedId.error) return res.status(400).json({ error: "Application packet ID is invalid." });
+    try {
+      const missing = await findMissingPreparationTables(db);
+      if (missing.length) return sendMissingPreparationTables(res, missing);
+      const packet = await findApplicationPacket(db, parsedId.data);
+      if (!packet) return res.status(404).json({ error: "Application packet was not found." });
+      const latest = await findLatestApplicationPacket(db, packet.application_id);
+      if (latest?.id !== packet.id) return res.status(409).json({ error: "This is an older packet version. Open the latest version before downloading." });
+      const pdf = createTextPdf({ title: \`\${packet.title} — cover letter\`, text: packet.cover_letter_text, generatedAt: new Date(packet.updated_at) });
+      const filename = \`Morgan-West-Oketch-Cover-Letter-\${String(packet.title).replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "application"}.pdf\`;
+      res.set({
+        "Content-Type": "application/pdf",
+        "Content-Disposition": \`attachment; filename="\${filename}"\`,
+        "Content-Length": String(pdf.length),
+        "Cache-Control": "no-store",
+      });
+      return res.send(pdf);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  admin.get("/application-packets/:id", async (req, res, next) => {
+    const parsedId = parseCareerInput(uuidSchema, req.params.id);
+    if (parsedId.error) return res.status(400).json({ error: "Application packet ID is invalid." });
+    try {
+      const missing = await findMissingPreparationTables(db);
+      if (missing.length) return sendMissingPreparationTables(res, missing);
+      const packet = await findApplicationPacket(db, parsedId.data);
+      if (!packet) return res.status(404).json({ error: "Application packet was not found." });
+      const latest = await findLatestApplicationPacket(db, packet.application_id);
+      if (latest?.id !== packet.id) {
+        return res.status(409).json({ error: "This packet has an older version. Refresh the Application drafts list to open the current version." });
+      }
+      return res.json(applicationPacketResponse(packet));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  admin.patch(
+    "/application-packets/:id",
+    createRateLimiter(60, "Too many application draft edits."),
+    requireSameOrigin,
+    requireCsrfToken,
+    async (req, res, next) => {
+      const parsedId = parseCareerInput(uuidSchema, req.params.id);
+      const parsed = parseCareerInput(applicationPacketPatchSchema, req.body);
+      if (parsedId.error || parsed.error) {
+        return res.status(400).json({ error: "Check the application draft fields.", details: parsed.error ?? parsedId.error });
+      }
+      try {
+        const missing = await findMissingPreparationTables(db);
+        if (missing.length) return sendMissingPreparationTables(res, missing);
+        const packet = await findApplicationPacket(db, parsedId.data);
+        if (!packet) return res.status(404).json({ error: "Application packet was not found." });
+        const latest = await findLatestApplicationPacket(db, packet.application_id);
+        if (latest?.id !== packet.id) return res.status(409).json({ error: "This is an older packet version. Open the latest version before editing." });
+        if (!["draft", "ready_for_review"].includes(packet.status)) {
+          return res.status(409).json({ error: "This packet can no longer be edited because it is sending, sent, or needs manual review." });
+        }
+        const { rows: profiles } = await db.query(
+          "SELECT original_text FROM public.jr_resume_profiles WHERE id = $1 AND archived_at IS NULL",
+          [packet.source_profile_id],
+        );
+        const originalResume = profiles[0]?.original_text;
+        if (typeof originalResume !== "string"
+          || createHash("sha256").update(originalResume, "utf8").digest("hex") !== packet.master_resume_sha256) {
+          return res.status(409).json({ error: "The master CV source could not be verified. Do not send this packet; review the profile first." });
+        }
+        const nextResume = parsed.data.resume_text ?? packet.resume_text;
+        if (!nextResume.includes(originalResume)) {
+          return res.status(422).json({
+            error: "Keep the complete master CV text unchanged inside the tailored CV draft. You may edit the role-aligned highlights above it, but must not alter the original CV section.",
+          });
+        }
+        const nextCoverLetter = parsed.data.cover_letter_text ?? packet.cover_letter_text;
+        const recipient = parsed.data.recipient_email === undefined
+          ? packet.recipient_email
+          : parsed.data.recipient_email || null;
+        const client = await db.connect();
+        let nextId;
+        try {
+          await client.query("BEGIN");
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [\`jr-application-packet:\${packet.application_id}\`]);
+          const { rows: latestRows } = await client.query(
+            "SELECT id, version, status FROM public.jr_application_packets WHERE application_id = $1 ORDER BY version DESC LIMIT 1 FOR UPDATE",
+            [packet.application_id],
+          );
+          if (latestRows[0]?.id !== packet.id || !["draft", "ready_for_review"].includes(latestRows[0]?.status)) {
+            await client.query("ROLLBACK");
+            return res.status(409).json({ error: "This packet changed while you were editing it. Refresh and review the latest version." });
+          }
+          const { rows: inserted } = await client.query(
+            \`INSERT INTO public.jr_application_packets (
+               application_id, job_id, source_profile_id, version, status,
+               resume_text, cover_letter_text, recipient_email, highlights,
+               missing_requirements, warnings, source_snapshot, master_resume_sha256
+             ) VALUES ($1, $2, $3, $4, 'ready_for_review', $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb, $12)
+             RETURNING id\`,
+            [
+              packet.application_id, packet.job_id, packet.source_profile_id, Number(packet.version) + 1,
+              nextResume, nextCoverLetter, recipient, JSON.stringify(packet.highlights),
+              JSON.stringify(packet.missing_requirements), JSON.stringify(packet.warnings),
+              JSON.stringify(packet.source_snapshot), packet.master_resume_sha256,
+            ],
+          );
+          nextId = inserted[0]?.id;
+          await client.query(
+            \`INSERT INTO public.jr_application_events (application_id, event, detail)
+             VALUES ($1, 'application.packet_edited', $2::jsonb)\`,
+            [packet.application_id, JSON.stringify({ packet_id: nextId, version: Number(packet.version) + 1 })],
+          );
+          await client.query("COMMIT");
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        } finally {
+          client.release();
+        }
+        const updated = await findApplicationPacket(db, nextId);
+        return res.status(201).json(applicationPacketResponse(updated));
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  admin.post(
+    "/application-packets/:id/send",
+    createRateLimiter(5, "Too many send attempts. Review the latest packet and Gmail Sent before trying again.", 24 * 60 * 60 * 1000),
+    requireSameOrigin,
+    requireCsrfToken,
+    async (req, res, next) => {
+      const parsedId = parseCareerInput(uuidSchema, req.params.id);
+      const parsed = parseCareerInput(applicationPacketSendSchema, req.body);
+      if (parsedId.error || parsed.error) {
+        return res.status(400).json({ error: "Review the exact packet version and confirm the send details.", details: parsed.error ?? parsedId.error });
+      }
+      try {
+        const missing = await findMissingPreparationTables(db);
+        if (missing.length) return sendMissingPreparationTables(res, missing);
+        const packet = await findApplicationPacket(db, parsedId.data);
+        if (!packet) return res.status(404).json({ error: "Application packet was not found." });
+        const latest = await findLatestApplicationPacket(db, packet.application_id);
+        if (latest?.id !== packet.id || Number(packet.version) !== parsed.data.reviewed_version) {
+          return res.status(409).json({ error: "The packet changed after you reviewed it. Refresh the packet and review the new version before sending." });
+        }
+        if (!["draft", "ready_for_review"].includes(packet.status)) {
+          return res.status(409).json({ error: "This packet has already been sent, is already sending, or requires manual review. Do not resend automatically." });
+        }
+        const snapshot = packet.source_snapshot && typeof packet.source_snapshot === "object" ? packet.source_snapshot : {};
+        const eligibility = snapshot.eligibility ?? "unknown";
+        if (eligibility === "ineligible") {
+          return res.status(409).json({ error: "This advert failed the location/work-authorization rules. The platform will not send it automatically." });
+        }
+        if (eligibility === "unknown" && !parsed.data.confirm_eligibility) {
+          return res.status(409).json({ error: "Confirm that you manually checked location and work-authorization eligibility before sending." });
+        }
+        const warnings = Array.isArray(packet.warnings) ? packet.warnings : [];
+        const missingRequirements = Array.isArray(packet.missing_requirements) ? packet.missing_requirements : [];
+        if ((warnings.length || missingRequirements.length) && !parsed.data.confirm_warnings) {
+          return res.status(409).json({ error: "Review the packet warnings and possible missing requirements, then explicitly confirm you understand them." });
+        }
+        if (!parsed.data.recipient_email || !packet.resume_text.trim() || !packet.cover_letter_text.trim()) {
+          return res.status(422).json({ error: "A recruiter email, tailored CV draft, and cover letter are required." });
+        }
+
+        let gmailAccess;
+        try {
+          gmailAccess = await getGmailSendAccessToken({ db, env: process.env, fetchImpl });
+        } catch (error) {
+          return res.status(409).json({ error: String(error?.message ?? "Gmail is not ready to send.") });
+        }
+
+        const { rows: settingsRows } = await db.query(
+          "SELECT max_sends_per_day FROM public.jr_settings WHERE id = 1",
+        );
+        if (!settingsRows[0]) return sendMissingTables(res, ["jr_settings (seed row id=1)"]);
+        const today = nairobiDate(now());
+        const client = await db.connect();
+        try {
+          await client.query("BEGIN");
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [\`jr-application-send:\${today}\`]);
+          const { rows: latestRows } = await client.query(
+            \`SELECT id, application_id, version, status
+             FROM public.jr_application_packets
+             WHERE id = $1
+             FOR UPDATE\`,
+            [packet.id],
+          );
+          if (!latestRows[0] || latestRows[0].application_id !== packet.application_id
+            || Number(latestRows[0].version) !== parsed.data.reviewed_version
+            || !["draft", "ready_for_review"].includes(latestRows[0].status)) {
+            await client.query("ROLLBACK");
+            return res.status(409).json({ error: "The packet status changed. Reload and review it before another send attempt." });
+          }
+          const { rows: sentCountRows } = await client.query(
+            \`SELECT count(*)::integer AS count FROM public.jr_application_packets
+             WHERE sent_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Nairobi')
+               AND sent_at < (($1::date + 1)::timestamp AT TIME ZONE 'Africa/Nairobi')\`,
+            [today],
+          );
+          const sendsToday = Number(sentCountRows[0]?.count ?? 0);
+          if (sendsToday >= Number(settingsRows[0].max_sends_per_day)) {
+            await client.query("ROLLBACK");
+            return res.status(429).json({ error: "The daily send cap has been reached. Review and send another day." });
+          }
+          const { rows: lastSentRows } = await client.query(
+            "SELECT sent_at FROM public.jr_application_packets WHERE sent_at IS NOT NULL ORDER BY sent_at DESC LIMIT 1",
+          );
+          if (lastSentRows[0]?.sent_at && now().getTime() - new Date(lastSentRows[0].sent_at).getTime() < 60_000) {
+            await client.query("ROLLBACK");
+            return res.status(429).json({ error: "Wait at least 60 seconds between application emails." });
+          }
+          await client.query(
+            \`UPDATE public.jr_application_packets
+             SET status = 'sending', recipient_email = $2, send_attempted_at = $3, updated_at = $3
+             WHERE id = $1\`,
+            [packet.id, parsed.data.recipient_email, now()],
+          );
+          await client.query(
+            "UPDATE public.jr_applications SET state = 'approved_to_send', updated_at = $2 WHERE id = $1",
+            [packet.application_id, now()],
+          );
+          await client.query(
+            \`INSERT INTO public.jr_application_events (application_id, event, detail)
+             VALUES ($1, 'application.email_send_started', $2::jsonb)\`,
+            [packet.application_id, JSON.stringify({ packet_id: packet.id, version: packet.version })],
+          );
+          await client.query("COMMIT");
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        } finally {
+          client.release();
+        }
+
+        try {
+          const resumePdf = createTextPdf({ title: \`\${packet.title} — CV\`, text: packet.resume_text, generatedAt: new Date(packet.updated_at) });
+          const coverLetterPdf = createTextPdf({ title: \`\${packet.title} — cover letter\`, text: packet.cover_letter_text, generatedAt: new Date(packet.updated_at) });
+          const subject = \`Application — \${String(packet.title).replace(/[\\r\\n]/g, " ").slice(0, 150)} — Morgan West Oketch\`;
+          const result = await sendGmailMessage({
+            db,
+            to: parsed.data.recipient_email,
+            subject,
+            body: packet.cover_letter_text,
+            attachments: [
+              { filename: "Morgan-West-Oketch-CV.pdf", contentType: "application/pdf", content: resumePdf },
+              { filename: "Morgan-West-Oketch-Cover-Letter.pdf", contentType: "application/pdf", content: coverLetterPdf },
+            ],
+            messageId: packet.id,
+            accessToken: gmailAccess.accessToken,
+            senderEmail: gmailAccess.senderEmail,
+            env: process.env,
+            fetchImpl,
+          });
+          const sentAt = now();
+          const client = await db.connect();
+          try {
+            await client.query("BEGIN");
+            await client.query(
+              \`UPDATE public.jr_application_packets
+               SET status = 'sent', gmail_message_id = $2, sent_at = $3, updated_at = $3
+               WHERE id = $1 AND status = 'sending'\`,
+              [packet.id, result.id, sentAt],
+            );
+            await client.query(
+              "UPDATE public.jr_applications SET state = 'sent', updated_at = $2 WHERE id = $1",
+              [packet.application_id, sentAt],
+            );
+            await client.query(
+              \`INSERT INTO public.jr_application_events (application_id, event, detail)
+               VALUES ($1, 'application.email_sent', $2::jsonb)\`,
+              [packet.application_id, JSON.stringify({ packet_id: packet.id, version: packet.version, gmail_message_id: result.id, sent_at: sentAt.toISOString() })],
+            );
+            await client.query("COMMIT");
+          } catch (error) {
+            await client.query("ROLLBACK");
+            throw error;
+          } finally {
+            client.release();
+          }
+          const finalPacket = await findApplicationPacket(db, packet.id);
+          return res.json(applicationPacketResponse(finalPacket));
+        } catch (error) {
+          const failedAt = now();
+          const client = await db.connect();
+          try {
+            await client.query("BEGIN");
+            await client.query(
+              \`UPDATE public.jr_application_packets
+               SET status = 'needs_manual_attention', updated_at = $2
+               WHERE id = $1 AND status = 'sending'\`,
+              [packet.id, failedAt],
+            );
+            await client.query(
+              "UPDATE public.jr_applications SET state = 'needs_manual_attention', updated_at = $2 WHERE id = $1",
+              [packet.application_id, failedAt],
+            );
+            await client.query(
+              \`INSERT INTO public.jr_application_events (application_id, event, detail)
+               VALUES ($1, 'application.email_send_needs_manual_review', $2::jsonb)\`,
+              [packet.application_id, JSON.stringify({ packet_id: packet.id, version: packet.version, outcome: "unknown", message: "Check Gmail Sent before any retry." })],
+            );
+            await client.query("COMMIT");
+          } catch (recordError) {
+            await client.query("ROLLBACK");
+            console.error(\`Career email failure state could not be recorded: \${String(recordError?.message ?? "database error").slice(0, 200)}\`);
+          } finally {
+            client.release();
+          }
+          return res.status(502).json({
+            error: "Gmail did not provide a confirmed send result. The packet is blocked to prevent duplicate email. Check Gmail Sent before deciding the next action.",
+          });
+        }
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
   admin.get("/applications", async (req, res, next) => {
     const parsed = parseCareerInput(applicationsQuerySchema, req.query);
     if (parsed.error) return res.status(400).json({ error: "Please check the application filters.", details: parsed.error });
