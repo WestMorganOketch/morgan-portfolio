@@ -1172,9 +1172,9 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
           return res.status(409).json({ error: "The master CV source could not be verified. Do not send this packet; review the profile first." });
         }
         const nextResume = parsed.data.resume_text ?? packet.resume_text;
-        if (!nextResume.includes(originalResume)) {
+        if (!nextResume.endsWith(originalResume)) {
           return res.status(422).json({
-            error: "Keep the complete master CV text unchanged inside the tailored CV draft. You may edit the role-aligned highlights above it, but must not alter the original CV section.",
+            error: "Keep the complete master CV text unchanged at the end of the tailored CV draft. You may edit the role-aligned highlights above it, but must not alter or remove the original CV section.",
           });
         }
         const nextCoverLetter = parsed.data.cover_letter_text ?? packet.cover_letter_text;
