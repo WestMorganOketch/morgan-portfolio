@@ -9,6 +9,7 @@ class FakeRunDatabase {
     "jr_runs", "jr_audit_events", "jr_jobs", "jr_ats_watchlist",
   ]);
   sources = [];
+  roleTracks = ["Security Analyst/SOC", "Computer Skills/ICT Trainer"];
   states = new Map();
   watchlist = [];
   runs = new Map();
