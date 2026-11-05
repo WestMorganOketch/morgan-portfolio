@@ -676,6 +676,9 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     setApplications(value);
   }, [csrfToken]);
 
+  // This one-time effect consumes the Gmail OAuth return marker. Its state updates
+  // intentionally route the user to setup and show the result of that external redirect.
+  /* eslint-disable react-hooks/set-state-in-effect -- navigation callback state is consumed once, then removed from the URL */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const gmailStatus = params.get("gmail");
@@ -692,6 +695,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
       window.history.replaceState({}, "", nextUrl.toString());
     }
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     let active = true;
