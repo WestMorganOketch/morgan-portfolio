@@ -1,9 +1,19 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import express from "express";
 import { rateLimit } from "express-rate-limit";
 import { createCareerRunService, findMissingCareerTables, findMissingJobTables } from "./careerRun.js";
 import { createCareerAssessmentService } from "./careerAssessment.js";
 import { createCareerApplicationService, applicationStates } from "./careerApplications.js";
+import { buildApplicationDraft, createTextPdf } from "./careerPreparation.js";
+import {
+  beginGmailOAuth,
+  completeGmailOAuth,
+  decryptGmailRefreshToken,
+  disconnectGmail,
+  encryptGmailRefreshToken,
+  gmailConnectionStatus,
+  sendGmailMessage,
+} from "./careerGmail.js";
 import { normalizeImportedJob, saveCareerJob } from "./careerImport.js";
 import { matchesRoleTitle, normalizeHttpUrl } from "./careerSources.js";
 import {
@@ -34,8 +44,9 @@ const careerTableNames = [
 const setupSecretNames = [
   "JOB_CRON_SECRET",
   "DOC_ENCRYPTION_KEY",
-  "GMAIL_USER",
-  "GMAIL_APP_PASSWORD",
+  "GMAIL_OAUTH_CLIENT_ID",
+  "GMAIL_OAUTH_CLIENT_SECRET",
+  "GMAIL_OAUTH_REDIRECT_URI",
   "GEMINI_API_KEY",
   "JOOBLE_API_KEY",
   "CAREERJET_API_KEY",
@@ -104,6 +115,14 @@ const applicationTableNames = ["jr_applications", "jr_application_events"];
 const phase4MissingTablesError = {
   error: "Career application tables are missing. Run docs/career-automation/sql/phase-4.sql in Supabase SQL Editor.",
 };
+const preparationTableNames = [
+  "jr_application_packets",
+  "jr_gmail_oauth_states",
+  "jr_gmail_credentials",
+];
+const preparationMissingTablesError = {
+  error: "Application preparation tables are missing. Run api/migrations/008_career_preparation.sql or docs/career-automation/sql/phase-6.sql in Supabase SQL Editor.",
+};
 
 async function findMissingApplicationTables(db) {
   const { rows } = await db.query(
@@ -117,6 +136,65 @@ async function findMissingApplicationTables(db) {
 
 function sendMissingApplicationTables(res, missing) {
   return res.status(409).json({ ...phase4MissingTablesError, missingTables: missing });
+}
+
+async function findMissingPreparationTables(db) {
+  const { rows } = await db.query(
+    `SELECT table_name FROM information_schema.tables
+     WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
+    [preparationTableNames],
+  );
+  const found = new Set(rows.map((row) => row.table_name));
+  return preparationTableNames.filter((name) => !found.has(name));
+}
+
+function sendMissingPreparationTables(res, missing) {
+  return res.status(409).json({ ...preparationMissingTablesError, missingTables: missing });
+}
+
+function applicationPacketResponse(row) {
+  return {
+    id: row.id,
+    application_id: row.application_id,
+    job_id: row.job_id,
+    source_profile_id: row.source_profile_id,
+    version: Number(row.version),
+    status: row.status,
+    resume_text: row.resume_text,
+    cover_letter_text: row.cover_letter_text,
+    recipient_email: row.recipient_email ?? "",
+    highlights: Array.isArray(row.highlights) ? row.highlights : [],
+    missing_requirements: Array.isArray(row.missing_requirements) ? row.missing_requirements : [],
+    warnings: Array.isArray(row.warnings) ? row.warnings : [],
+    source_snapshot: row.source_snapshot && typeof row.source_snapshot === "object" ? row.source_snapshot : {},
+    master_resume_sha256: row.master_resume_sha256,
+    gmail_message_id: row.gmail_message_id ?? null,
+    sent_at: row.sent_at ?? null,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    title: row.title,
+    company: row.company,
+    location_text: row.location_text,
+    application_url: row.application_url,
+    source_name: row.source_name,
+    profile_name: row.profile_name,
+    profile_track: row.profile_track,
+    application_state: row.application_state,
+  };
+}
+
+function redirectToCareerCentre(res, query) {
+  const allowedOrigin = (process.env.WEB_ORIGINS ?? "").split(",").map((value) => value.trim()).find(Boolean);
+  let target;
+  try {
+    const origin = new URL(allowedOrigin ?? "");
+    if (!["http:", "https:"].includes(origin.protocol) || origin.origin !== allowedOrigin) throw new Error("invalid origin");
+    target = new URL("/admin/career", origin.origin);
+  } catch {
+    return res.status(503).send("Career centre return URL is not configured.");
+  }
+  for (const [key, value] of Object.entries(query)) target.searchParams.set(key, value);
+  return res.redirect(303, target.toString());
 }
 
 function nairobiDate(value = new Date()) {
@@ -163,6 +241,8 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
   runService = createCareerRunService({ db }),
   assessmentService = createCareerAssessmentService({ db }),
   applicationService = createCareerApplicationService({ db }),
+  fetchImpl = fetch,
+  now = () => new Date(),
 } = {}) {
   const admin = express.Router();
   admin.use(noStore, requireAdmin);
