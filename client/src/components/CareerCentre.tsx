@@ -5,6 +5,9 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type Keyboard
 type JsonRecord = Record<string, unknown>;
 type Eligibility = "eligible" | "unknown" | "ineligible";
 type Assessment = {
+  track?: string | null;
+  profile_id?: string | null;
+  assessed_at?: string;
   eligibility: Eligibility;
   eligibility_evidence: { phrase?: string; rule?: string }[];
   fit_score: number;
@@ -401,6 +404,20 @@ function valuesFromFacts(value: unknown): string[] {
   return Array.isArray(value) ? value.filter(string) : [];
 }
 
+function suggestedProfileForJob(job: CareerJob, profiles: Profile[]): Profile | null {
+  const active = profiles.filter((profile) => !profile.archived_at);
+  const target = normalizedRole(job.assessment?.track ?? job.title);
+  const exact = active.find((profile) => normalizedRole(profile.track) === target);
+  if (exact) return exact;
+  if (/security|cyber|soc/.test(target)) {
+    return active.find((profile) => /(security|cyber|soc)/.test(normalizedRole(profile.track))) ?? active[0] ?? null;
+  }
+  if (/trainer|training|computer|ict|digital skills/.test(target)) {
+    return active.find((profile) => /(trainer|training|computer|ict|digital skills)/.test(normalizedRole(profile.track))) ?? active[0] ?? null;
+  }
+  return active[0] ?? null;
+}
+
 function CareerListEditor({
   id,
   label,
@@ -534,6 +551,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
         const value = await request("/api/admin/career/runs", csrfToken);
         if (!Array.isArray(value)) throw new Error("The scan status response was not valid.");
         const rows = value.filter(isRecord);
+        setRunHistory(rows.filter(isCareerRun));
         const current = (scanRunId ? rows.find((row) => row.id === scanRunId) : null) ?? rows[0];
         if (!current || !string(current.status) || !active) return;
         if (current.status === "running") return;
@@ -655,6 +673,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
           try {
             const runData = await request("/api/admin/career/runs", csrfToken);
             if (active && Array.isArray(runData)) {
+              setRunHistory(runData.filter(isCareerRun));
               const latestRunning = runData.filter(isRecord).find((row) => row.status === "running");
               if (latestRunning) {
                 setScanRunId(string(latestRunning.id) ? latestRunning.id : null);
@@ -706,12 +725,16 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
       }
       if (tab === "Sources and Setup") void loadSources().catch((cause: unknown) => reportError(cause, "Source settings could not be loaded."));
       if (tab === "Tracker") void loadApplications().catch((cause: unknown) => reportError(cause, "Applications could not be loaded."));
+      if (tab === "Application drafts") {
+        void Promise.all([loadApplicationPackets(), loadPreparationOptions()]).catch((cause: unknown) =>
+          reportError(cause, cause instanceof Error ? cause.message : "Application preparation could not be loaded."));
+      }
     }, 0);
     return () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [csrfToken, loadApplications, loadProfiles, loadReview, loadSources, tab]);
+  }, [csrfToken, loadApplicationPackets, loadApplications, loadPreparationOptions, loadProfiles, loadReview, loadSources, tab]);
 
   async function runAction(action: () => Promise<void>, success?: string) {
     setBusy(true);
