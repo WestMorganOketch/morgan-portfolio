@@ -49,6 +49,7 @@ class FakeCareerDatabase {
     if (statement.startsWith("SELECT table_name FROM information_schema.tables")) {
       return { rows: values[0].filter((name) => this.tables.has(name)).map((table_name) => ({ table_name })) };
     }
+    if (statement.startsWith("SELECT role_tracks FROM public.jr_settings")) return { rows: [{ role_tracks: this.settings.role_tracks }] };
     if (statement.startsWith("SELECT role_tracks, countries")) return { rows: [{ ...this.settings }] };
     if (statement.startsWith("UPDATE public.jr_settings")) {
       this.settings = {
