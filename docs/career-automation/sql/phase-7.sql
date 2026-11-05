@@ -1,7 +1,7 @@
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.jr_public_snapshots (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   snapshot_json jsonb NOT NULL CHECK (jsonb_typeof(snapshot_json) = 'object'),
   snapshot_sha256 text NOT NULL CHECK (snapshot_sha256 ~ '^[a-f0-9]{64}$'),
   job_count integer NOT NULL CHECK (job_count BETWEEN 1 AND 100),
