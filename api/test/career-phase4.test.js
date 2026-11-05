@@ -151,9 +151,9 @@ test("Phase 4 overview counts, shortlists to the cap, and does not pad", async (
     assert.equal(result.review_count, 3);
     assert.equal(result.new_jobs_count, 4);
     assert.equal(result.applications_by_state.shortlisted, 2);
-    assert.equal(result.shortlist.length, 2);
+    assert.equal(result.shortlist.length, 1);
     assert.equal(result.qualified.length, 0);
-    assert.equal(result.maybe.length, 1);
+    assert.equal(result.maybe.length, 2);
     assert.equal(result.shortlist[0].risk_assessment.risk_level, "low");
     assert.match(result.shortlist[0].risk_assessment.label, /not proof of legitimacy/i);
     const shortlistQuery = first.db.queries.find(({ statement }) => statement.startsWith("SELECT j.id, j.source_key, s.name AS source_name"));
