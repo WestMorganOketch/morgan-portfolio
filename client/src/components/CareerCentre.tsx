@@ -51,6 +51,8 @@ type SourceHealth = {
 };
 type Overview = {
   last_success_at: string | null;
+  preparation_tables_configured?: boolean;
+  preparation_tables_missing?: string[];
   stale: boolean;
   new_jobs_count: number;
   shortlist_count: number;
@@ -1263,6 +1265,43 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
             {["failed", "interrupted", "skipped"].includes(scanStatus) ? (
               <p className="career-scan-result career-scan-warning" role="status">Latest scan: {scanStatus}. Check source health and run history for details.</p>
             ) : null}
+            {overview?.preparation_tables_configured === false ? (
+              <p className="career-warning" role="status">
+                Application drafts are not ready yet. Install the private preparation schema from <code>api/migrations/008_career_preparation.sql</code> in Supabase before generating CVs or cover letters.
+              </p>
+            ) : null}
+            <section className="career-subpanel">
+              <div className="career-review-heading">
+                <div><h3>Recent scan activity</h3><p>{runHistory.length} recent runs · latest run first</p></div>
+                <button className="text-link" disabled={busy} onClick={() => void runAction(async () => { await loadRunHistory(); }, "Scan history refreshed.")} type="button">Refresh history</button>
+              </div>
+              <p className="career-schedule-note">
+                Automatic scans run every six hours only after the repository Actions secrets <code>CAREER_API_BASE_URL</code> and <code>JOB_CRON_SECRET</code> are configured, with the same <code>JOB_CRON_SECRET</code> on the API service. Use <strong>Scan now</strong> to start an immediate scan.
+              </p>
+              {runHistory.length ? (
+                <ol className="career-run-list">
+                  {runHistory.slice(0, 6).map((run) => {
+                    const details = Object.entries(run.summary).filter(([, value]) => isRecord(value)).slice(0, 6);
+                    return (
+                      <li key={run.id}>
+                        <div className="career-run-heading">
+                          <strong>{run.trigger === "cron" ? "Scheduled scan" : "Manual scan"}</strong>
+                          <span className={`career-run-state state-${run.status}`}>{run.status.replaceAll("_", " ")}</span>
+                        </div>
+                        <small>{readableDate(run.finished_at ?? run.started_at)}</small>
+                        {details.length ? <p>{details.map(([source, detail]) => {
+                          const result = detail as JsonRecord;
+                          const info = string(result.error) ? "error"
+                            : string(result.skipped_reason) ? `skipped: ${result.skipped_reason}`
+                              : `${typeof result.new === "number" ? result.new : 0} new · ${typeof result.fetched === "number" ? result.fetched : 0} fetched`;
+                          return `${source}: ${info}`;
+                        }).join(" · ")}</p> : <p>No source-level diagnostics were recorded for this run.</p>}
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : <p className="admin-help">No scan runs have been recorded yet. Select Scan now to test your enabled sources.</p>}
+            </section>
             <div className="career-two-columns">
               <section className="career-subpanel">
                 <h3>Source health</h3>
