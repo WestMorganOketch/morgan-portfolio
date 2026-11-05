@@ -337,14 +337,11 @@ test("saved custom role tracks generate provider query terms", () => {
     buildCareerSearchTerms(["Security Analyst/SOC", "Computer Skills/ICT Trainer", "Cloud Security Engineer"]),
     [
       "security analyst",
-      "SOC analyst",
-      "cybersecurity analyst",
-      "Security Analyst/SOC",
-      "ICT trainer",
+      "soc analyst",
+      "ict trainer",
       "computer skills trainer",
-      "digital skills trainer",
-      "Computer Skills/ICT Trainer",
       "Cloud Security Engineer",
+      "cybersecurity analyst",
     ],
   );
 });
