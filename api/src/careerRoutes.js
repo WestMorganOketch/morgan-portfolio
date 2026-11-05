@@ -260,17 +260,24 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
       const missing = await findMissingTables(db);
       const missingIntake = await findMissingJobTables(db);
       const missingAssessments = await findMissingAssessmentTable(db);
+      const missingPreparation = await findMissingPreparationTables(db);
       const configuration = Object.fromEntries(setupSecretNames.map((name) => [
         name,
         { configured: typeof process.env[name] === "string" && process.env[name].length > 0 },
       ]));
       const sendMode = process.env.JR_SEND_MODE === "live" ? "live" : "draft";
+      let gmail = { connected: false, email: null, scopes: [], connected_at: null };
+      if (missingPreparation.length === 0) {
+        gmail = await gmailConnectionStatus(db);
+      }
       res.json({
         configuration,
         JR_SEND_MODE: sendMode,
         tables: { configured: missing.length === 0, missing },
         intakeTables: { configured: missingIntake.length === 0, missing: missingIntake },
         assessmentTables: { configured: missingAssessments.length === 0, missing: missingAssessments },
+        preparationTables: { configured: missingPreparation.length === 0, missing: missingPreparation },
+        gmail,
       });
     } catch (error) {
       next(error);
