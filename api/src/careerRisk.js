@@ -102,7 +102,7 @@ export function assessCareerRisk(job, { now = () => new Date() } = {}) {
     risk_findings: findings,
     risk_confidence: findings.length ? Math.max(...findings.map((item) => item.confidence)) : 0.35,
     unknowns: [
-      "Offline rule-based screening only; employer identity, live DNS, TLS, redirects, domain age, and independent reputation have not been verified.",
+      "Offline, rule-based screening only; employer identity, live DNS, TLS, redirects, domain age, and independent reputation have not been verified.",
       urlChecks.hostname ? "Open the employer's official careers page and confirm that this exact vacancy exists." : "Find the vacancy through the employer's official careers page before applying.",
     ],
     url_checks: { ...urlChecks, status: null, redirect_count: 0, redirected_to_different_host: false, dns_ok: false, ats_provider: urlChecks.ats_provider ?? null, rdap_age_days: null },
