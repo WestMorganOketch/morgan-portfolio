@@ -2,15 +2,13 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import express from "express";
 import { rateLimit } from "express-rate-limit";
 import { createCareerRunService, findMissingCareerTables, findMissingJobTables } from "./careerRun.js";
-import { createCareerAssessmentService } from "./careerAssessment.js";
+import { assessJob as calculateCareerJobAssessment, createCareerAssessmentService } from "./careerAssessment.js";
 import { createCareerApplicationService, applicationStates } from "./careerApplications.js";
 import { buildApplicationDraft, createTextPdf } from "./careerPreparation.js";
 import {
   beginGmailOAuth,
   completeGmailOAuth,
-  decryptGmailRefreshToken,
   disconnectGmail,
-  encryptGmailRefreshToken,
   gmailConnectionStatus,
   sendGmailMessage,
 } from "./careerGmail.js";
@@ -19,6 +17,9 @@ import { matchesRoleTitle, normalizeHttpUrl } from "./careerSources.js";
 import {
   atsWatchlistCreateSchema,
   applicationCreateSchema,
+  applicationPacketPatchSchema,
+  applicationPacketSendSchema,
+  applicationPrepareSchema,
   applicationPatchSchema,
   applicationStateSchema,
   applicationsQuerySchema,
