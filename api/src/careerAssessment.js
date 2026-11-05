@@ -37,13 +37,15 @@ function findPattern(text, patterns) {
 
 function detectTrack(title, tags = [], customRoleTracks = []) {
   const haystack = normalized([title, ...tags].join(" "));
+  const custom = customRoleTracks
+    .filter((track) => typeof track === "string" && normalized(track).length >= 2)
+    .sort((left, right) => normalized(right).length - normalized(left).length);
+  const exactCustom = custom.find((track) => normalized(track) === normalized(title));
+  if (exactCustom) return exactCustom;
   const builtIn = Object.entries(careerRoleTrackTerms).find(([, terms]) =>
     terms.some((term) => ` ${haystack} `.includes(` ${normalized(term)} `)));
   if (builtIn) return builtIn[0];
-  return customRoleTracks
-    .filter((track) => typeof track === "string" && normalized(track).length >= 2)
-    .sort((left, right) => normalized(right).length - normalized(left).length)
-    .find((track) => ` ${haystack} `.includes(` ${normalized(track)} `)) ?? null;
+  return custom.find((track) => ` ${haystack} `.includes(` ${normalized(track)} `)) ?? null;
 }
 
 export function assessEligibility(job) {
