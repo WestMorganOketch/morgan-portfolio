@@ -20,7 +20,7 @@ test("ordinary adverts with a public HTTPS URL have no obvious rule-based red fl
   assert.equal(risk.url_checks.ok, true);
   assert.equal(risk.url_checks.https_ok, true);
   assert.equal(risk.url_checks.dns_ok, false);
-  assert.ok(risk.unknowns.some((value) => value.includes("offline, rule-based")));
+  assert.ok(risk.unknowns.some((value) => value.toLowerCase().includes("offline, rule-based")));
   assert.equal(risk.risk_assessed_at, "2026-11-05T08:00:00.000Z");
 });
 
