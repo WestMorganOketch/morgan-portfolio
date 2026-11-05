@@ -154,9 +154,42 @@ type CareerRun = {
 };
 type WatchlistEntry = { id: string; provider: "greenhouse" | "lever"; token: string; label: string; enabled: boolean };
 type SearchLink = { name: string; url: string };
+type CareerDocument = {
+  id: string;
+  title: string;
+  kind: "master_resume" | "certificate" | "supporting_document" | "employment_record";
+  original_filename: string;
+  content_type: "application/pdf" | "image/png" | "image/jpeg";
+  byte_size: number;
+  plaintext_sha256: string;
+  created_at: string;
+  application_email_consent: boolean;
+  public_profile_consent?: boolean;
+};
+type PublicSnapshotJob = {
+  title: string;
+  location: string;
+  remote_scope: string;
+  source: string;
+  attribution: string;
+  url: string;
+  posted_at: string | null;
+  first_seen_at: string | null;
+  company?: string;
+};
+type PublicSnapshotPreview = {
+  snapshot_sha256: string;
+  job_count: number;
+  snapshot: { schema_version: number; generated_at: string; verification_notice: string; jobs: PublicSnapshotJob[] };
+};
+type PublicSnapshotStatus = {
+  public_publishing_enabled: boolean;
+  latest: { id: string; snapshot_sha256: string; job_count: number; published_by: string; created_at: string } | null;
+};
 
 const careerTabs = [
-  "Overview", "Review", "Import", "Resume profiles", "Preferences", "Sources and Setup", "Application drafts", "Tracker",
+  "Overview", "Review", "Import", "Resume profiles", "Preferences", "Sources and Setup",
+  "Private documents", "Application drafts", "Tracker",
 ] as const;
 const careerTabLabels: Record<CareerTab, string> = {
   Overview: "Dashboard",
@@ -165,6 +198,7 @@ const careerTabLabels: Record<CareerTab, string> = {
   "Resume profiles": "Master CV",
   Preferences: "Search preferences",
   "Sources and Setup": "Sources & automation",
+  "Private documents": "Private documents",
   "Application drafts": "Application drafts",
   Tracker: "Applications",
 };
@@ -312,6 +346,58 @@ function isApplicationPacket(value: unknown): value is ApplicationPacket {
     && string(value.profile_name)
     && string(value.profile_track)
     && string(value.application_state);
+}
+
+function isCareerDocument(value: unknown): value is CareerDocument {
+  return isRecord(value)
+    && string(value.id)
+    && string(value.title)
+    && ["master_resume", "certificate", "supporting_document", "employment_record"].includes(String(value.kind))
+    && string(value.original_filename)
+    && ["application/pdf", "image/png", "image/jpeg"].includes(String(value.content_type))
+    && typeof value.byte_size === "number"
+    && string(value.plaintext_sha256)
+    && string(value.created_at)
+    && typeof value.application_email_consent === "boolean";
+}
+
+function isPublicSnapshotJob(value: unknown): value is PublicSnapshotJob {
+  return isRecord(value)
+    && string(value.title)
+    && string(value.location)
+    && string(value.remote_scope)
+    && string(value.source)
+    && string(value.attribution)
+    && string(value.url)
+    && (value.posted_at === null || string(value.posted_at))
+    && (value.first_seen_at === null || string(value.first_seen_at))
+    && (value.company === undefined || string(value.company));
+}
+
+function isPublicSnapshotPreview(value: unknown): value is PublicSnapshotPreview {
+  return isRecord(value)
+    && string(value.snapshot_sha256)
+    && typeof value.job_count === "number"
+    && isRecord(value.snapshot)
+    && typeof value.snapshot.schema_version === "number"
+    && string(value.snapshot.generated_at)
+    && string(value.snapshot.verification_notice)
+    && Array.isArray(value.snapshot.jobs)
+    && value.snapshot.jobs.every(isPublicSnapshotJob)
+    && value.job_count === value.snapshot.jobs.length;
+}
+
+function isPublicSnapshotStatus(value: unknown): value is PublicSnapshotStatus {
+  return isRecord(value)
+    && typeof value.public_publishing_enabled === "boolean"
+    && (value.latest === null || (
+      isRecord(value.latest)
+      && string(value.latest.id)
+      && string(value.latest.snapshot_sha256)
+      && typeof value.latest.job_count === "number"
+      && string(value.latest.published_by)
+      && string(value.latest.created_at)
+    ));
 }
 
 function isCareerRun(value: unknown): value is CareerRun {
@@ -522,6 +608,17 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   const [applicationFilter, setApplicationFilter] = useState("all");
   const [runHistory, setRunHistory] = useState<CareerRun[]>([]);
   const [applicationPackets, setApplicationPackets] = useState<ApplicationPacket[]>([]);
+  const [careerDocuments, setCareerDocuments] = useState<CareerDocument[]>([]);
+  const [documentTitle, setDocumentTitle] = useState("");
+  const [documentKind, setDocumentKind] = useState<CareerDocument["kind"]>("master_resume");
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [documentVaultError, setDocumentVaultError] = useState("");
+  const [selectedSendDocumentId, setSelectedSendDocumentId] = useState("");
+  const [confirmSendDocumentRelease, setConfirmSendDocumentRelease] = useState(false);
+  const [snapshotPreview, setSnapshotPreview] = useState<PublicSnapshotPreview | null>(null);
+  const [snapshotStatus, setSnapshotStatus] = useState<PublicSnapshotStatus | null>(null);
+  const [snapshotError, setSnapshotError] = useState("");
+  const [confirmSnapshotPublication, setConfirmSnapshotPublication] = useState(false);
   const [activePacket, setActivePacket] = useState<ApplicationPacket | null>(null);
   const [preparationJobs, setPreparationJobs] = useState<CareerJob[]>([]);
   const [selectedPreparationJobId, setSelectedPreparationJobId] = useState("");
