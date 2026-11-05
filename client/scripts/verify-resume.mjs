@@ -69,11 +69,23 @@ async function waitForServer() {
   throw new Error(`Production server did not become ready:\n${serverOutput}`);
 }
 
+function stripScriptAndStyleBlocks(input) {
+  let previous;
+  let current = input;
+  do {
+    previous = current;
+    current = current
+      .replace(/<script\b[\s\S]*?<\/script>/gi, "")
+      .replace(/<style\b[\s\S]*?<\/style>/gi, "");
+  } while (current !== previous);
+  return current;
+}
+
 async function fetchPageAndPdf() {
   const pageResponse = await fetch(`${origin}/resume`);
   assert.equal(pageResponse.status, 200, "GET /resume must return 200.");
   const html = await pageResponse.text();
-  const visibleHtml = html.replace(/<script\b[\s\S]*?<\/script>/gi, "").replace(/<style\b[\s\S]*?<\/style>/gi, "");
+  const visibleHtml = stripScriptAndStyleBlocks(html);
   const headings = [...visibleHtml.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/gi)];
   assert.equal(headings.length, 1, "The page must contain exactly one h1.");
   assert.match(headings[0][1].replace(/<[^>]*>/g, ""), /Morgan West Oketch/);
