@@ -1281,6 +1281,144 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     }, "Saved a new reviewable version. Review the version number and warnings again before sending.");
   }
 
+  async function uploadPrivateDocument(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!documentFile) {
+      setDocumentVaultError("Choose a PDF, PNG, or JPG file before uploading.");
+      return;
+    }
+    const form = event.currentTarget;
+    setDocumentVaultError("");
+    await runAction(async () => {
+      const body = new FormData();
+      body.append("title", documentTitle);
+      body.append("kind", documentKind);
+      body.append("file", documentFile);
+      const value = await requestMultipart("/api/admin/career/documents", csrfToken, body);
+      if (!isCareerDocument(value)) throw new Error("The private document service returned an invalid record.");
+      await loadCareerDocuments();
+      setDocumentTitle("");
+      setDocumentFile(null);
+      form.reset();
+    }, "Document encrypted and stored in the private vault. No release permission was granted.");
+  }
+
+  async function downloadPrivateDocument(item: CareerDocument) {
+    try {
+      const response = await fetch("/api/admin/career/documents/" + item.id + "/download", {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        let detail = "";
+        try {
+          const body = await response.json();
+          if (isRecord(body) && string(body.error)) detail = body.error;
+        } catch { /* use generic HTTP failure below */ }
+        throw new Error(detail || "The private document could not be downloaded.");
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = item.original_filename || item.title + ".pdf";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (cause) {
+      setDocumentVaultError(cause instanceof Error ? cause.message : "The private document could not be downloaded.");
+    }
+  }
+
+  async function updatePrivateDocumentConsent(item: CareerDocument, action: "granted" | "revoked") {
+    const verb = action === "granted" ? "allow this PDF to be attached to a future application email" : "revoke this PDF's application-email attachment permission";
+    if (!window.confirm("Confirm you want to " + verb + " for “" + item.title + "”? This action does not send an email. A final send also requires selecting the file and confirming release.")) return;
+    await runAction(async () => {
+      await request("/api/admin/career/documents/" + item.id + "/consents", csrfToken, {
+        method: "POST",
+        body: JSON.stringify({
+          purpose: "application_email",
+          action,
+          confirmed: true,
+          acknowledgement: action === "granted"
+            ? "I explicitly authorize this document for an application email attachment."
+            : "I revoke my previously granted application email attachment permission.",
+        }),
+      });
+      await loadCareerDocuments();
+      setConfirmSendDocumentRelease(false);
+    }, action === "granted" ? "Per-file application-email consent recorded." : "Per-file application-email consent revoked.");
+  }
+
+  async function archivePrivateDocument(item: CareerDocument) {
+    if (!window.confirm("Archive “" + item.title + "”? It will disappear from the active vault and cannot be attached. This does not erase retained encrypted storage objects.")) return;
+    await runAction(async () => {
+      await request("/api/admin/career/documents/" + item.id + "/archive", csrfToken, {
+        method: "POST",
+        body: JSON.stringify({ confirmed: true }),
+      });
+      await loadCareerDocuments();
+      if (selectedSendDocumentId === item.id) {
+        setSelectedSendDocumentId("");
+        setConfirmSendDocumentRelease(false);
+      }
+    }, "Private document archived.");
+  }
+
+  async function previewPublicSnapshot() {
+    setSnapshotError("");
+    await runAction(async () => {
+      const value = await request("/api/admin/career/public-snapshot/preview", csrfToken, {
+        method: "POST",
+        body: "{}",
+      });
+      if (!isPublicSnapshotPreview(value)) throw new Error("The public snapshot preview returned unexpected data.");
+      setSnapshotPreview(value);
+      setConfirmSnapshotPublication(false);
+      await loadPublicSnapshotStatus();
+    }, "Preview generated. Review every listing before publishing.");
+  }
+
+  async function publishPublicSnapshot() {
+    if (!snapshotPreview || !confirmSnapshotPublication) {
+      setSnapshotError("Review the preview and explicitly confirm publication first.");
+      return;
+    }
+    if (snapshotPreview.job_count === 0) {
+      setSnapshotError("The preview contains no eligible listings. Nothing can be published.");
+      return;
+    }
+    if (!window.confirm("Publish the exact preview shown below to the public read-only Career Radar endpoint? Company names appear only if explicitly enabled and permitted by the source. Private CVs, notes, salary details, fit scores, and application records are not included.")) return;
+    setSnapshotError("");
+    await runAction(async () => {
+      const value = await request("/api/admin/career/public-snapshot/publish", csrfToken, {
+        method: "POST",
+        body: JSON.stringify({ confirmed: true, snapshot_sha256: snapshotPreview.snapshot_sha256 }),
+      });
+      if (!isRecord(value) || value.published !== true || !isRecord(value.latest)) {
+        throw new Error("The snapshot publish endpoint returned unexpected data.");
+      }
+      const latest = value.latest;
+      if (!string(latest.id) || !string(latest.snapshot_sha256) || typeof latest.job_count !== "number"
+          || !string(latest.published_by) || !string(latest.created_at)) {
+        throw new Error("The published snapshot status could not be verified.");
+      }
+      setSnapshotStatus({
+        public_publishing_enabled: true,
+        latest: {
+          id: latest.id,
+          snapshot_sha256: latest.snapshot_sha256,
+          job_count: latest.job_count,
+          published_by: latest.published_by,
+          created_at: latest.created_at,
+        },
+      });
+      setSnapshotPreview(null);
+      setConfirmSnapshotPublication(false);
+    }, "The reviewed Career Radar snapshot was published. The public endpoint now serves this immutable version.");
+  }
+
   async function connectGmail() {
     setGmailActionBusy(true);
     setError("");
