@@ -96,13 +96,63 @@ type Settings = {
 type SetupStatus = {
   configuration: Record<string, { configured: boolean }>;
   JR_SEND_MODE: "draft" | "live";
+  preparationTables?: { configured: boolean; missing: string[] };
+  gmail?: { connected: boolean; email: string | null; scopes: string[]; connected_at: string | null };
+};
+type ApplicationPacket = {
+  id: string;
+  application_id: string;
+  job_id: string;
+  source_profile_id: string;
+  version: number;
+  status: string;
+  resume_text?: string;
+  cover_letter_text?: string;
+  recipient_email: string;
+  highlights: { text?: string; evidenceTerms?: string[]; sourceLine?: number }[];
+  missing_requirements: string[];
+  warnings: string[];
+  source_snapshot: JsonRecord;
+  master_resume_sha256: string;
+  gmail_message_id: string | null;
+  sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+  title: string;
+  company: string | null;
+  location_text: string;
+  application_url: string | null;
+  source_name: string | null;
+  profile_name: string;
+  profile_track: string;
+  application_state: string;
+  has_resume?: boolean;
+  has_cover_letter?: boolean;
+};
+type CareerRun = {
+  id: string;
+  trigger: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  summary: JsonRecord;
 };
 type WatchlistEntry = { id: string; provider: "greenhouse" | "lever"; token: string; label: string; enabled: boolean };
 type SearchLink = { name: string; url: string };
 
 const careerTabs = [
-  "Overview", "Review", "Import", "Resume profiles", "Preferences", "Sources and Setup", "Tracker",
+  "Overview", "Review", "Import", "Resume profiles", "Preferences", "Sources and Setup", "Application drafts", "Tracker",
 ] as const;
+const careerTabLabels: Record<CareerTab, string> = {
+  Overview: "Dashboard",
+  Review: "Find & review",
+  Import: "Add a job",
+  "Resume profiles": "Master CV",
+  Preferences: "Search preferences",
+  "Sources and Setup": "Sources & automation",
+  "Application drafts": "Application drafts",
+  Tracker: "Applications",
+};
 type CareerTab = (typeof careerTabs)[number];
 const reviewLists = ["Shortlist", "Maybe", "Qualified", "Passed", "Dismissed"] as const;
 type ReviewList = (typeof reviewLists)[number];
@@ -114,8 +164,8 @@ const applicationStates = [
 const tracks = ["Security Analyst/SOC", "Computer Skills/ICT Trainer"];
 const countries = ["Kenya", "Tanzania", "Uganda"];
 const secretNames = [
-  "JOB_CRON_SECRET", "DOC_ENCRYPTION_KEY", "GMAIL_USER", "GMAIL_APP_PASSWORD",
-  "GEMINI_API_KEY", "JOOBLE_API_KEY", "CAREERJET_API_KEY", "RELIEFWEB_APPNAME",
+  "JOB_CRON_SECRET", "DOC_ENCRYPTION_KEY",
+  "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REDIRECT_URI",
 ];
 const emptySettings: Settings = {
   role_tracks: [...tracks],
