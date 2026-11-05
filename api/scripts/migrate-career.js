@@ -11,6 +11,8 @@ const migrationFiles = Object.freeze([
   "006_career_assessments.sql",
   "007_career_applications.sql",
   "008_career_preparation.sql",
+  "009_career_documents.sql",
+  "010_career_public_snapshots.sql",
 ]);
 
 let activeMigration = "connection check";
