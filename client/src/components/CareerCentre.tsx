@@ -1542,6 +1542,68 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                 <li><span>JR_SEND_MODE</span><strong>{setup?.JR_SEND_MODE ?? "draft"}</strong></li>
               </ul>
             </section>
+            <section className="career-subpanel career-setup-connect">
+              <h3>Application documents and email</h3>
+              <p className="admin-help">This is private setup. The original master CV stays in your database. The sender permission is limited to Gmail sending.</p>
+              <div className="career-setup-status-list">
+                <div>
+                  <span>Application draft database</span>
+                  <strong className={setup?.preparationTables?.configured ? "setup-ready" : "setup-missing"}>
+                    {setup?.preparationTables?.configured ? "Ready" : "Needs migration"}
+                  </strong>
+                </div>
+                <div>
+                  <span>Gmail sender</span>
+                  <strong className={setup?.gmail?.connected ? "setup-ready" : "setup-missing"}>
+                    {setup?.gmail?.connected ? "Connected" : "Not connected"}
+                  </strong>
+                </div>
+                <div>
+                  <span>Email sending mode</span>
+                  <strong>{setup?.JR_SEND_MODE === "live" ? "Live" : "Safe draft mode"}</strong>
+                </div>
+              </div>
+              {setup?.preparationTables?.configured === false ? (
+                <p className="career-warning">First apply <code>api/migrations/008_career_preparation.sql</code> in Supabase SQL Editor. It creates only the new private application-packet and Gmail connection tables; it does not modify your master CV or admin account.</p>
+              ) : null}
+              {setup?.gmail?.connected ? (
+                <>
+                  <p className="career-gmail-connected">Connected sender: <strong>{setup.gmail.email}</strong> · permission: send email only.</p>
+                  <button className="button button-quiet" disabled={busy || gmailActionBusy} onClick={() => void disconnectGmailAccount()} type="button">Disconnect and revoke Gmail</button>
+                </>
+              ) : (
+                <button
+                  className="button button-primary"
+                  disabled={busy || gmailActionBusy
+                    || setup?.preparationTables?.configured !== true
+                    || !setup?.configuration.GMAIL_OAUTH_CLIENT_ID?.configured
+                    || !setup?.configuration.GMAIL_OAUTH_CLIENT_SECRET?.configured
+                    || !setup?.configuration.GMAIL_OAUTH_REDIRECT_URI?.configured
+                    || !setup?.configuration.DOC_ENCRYPTION_KEY?.configured}
+                  onClick={() => void connectGmail()}
+                  type="button"
+                >{gmailActionBusy ? "Opening Google…" : "Connect Gmail securely"}</button>
+              )}
+              {setup?.gmail?.connected && setup.JR_SEND_MODE !== "live" ? (
+                <p className="career-warning">Gmail is connected, but sending is intentionally disabled. The server owner must set <code>JR_SEND_MODE=live</code> after the sender, quota, and test settings are verified.</p>
+              ) : null}
+              {setup?.preparationTables?.configured !== true ? (
+                <p className="admin-help">After the migration is applied, return here and refresh this section. The new draft editor will become available automatically.</p>
+              ) : null}
+            </section>
+            <section className="career-subpanel career-schedule-setup">
+              <h3>Automatic scanning</h3>
+              <p>GitHub Actions requests a scan four times per day: approximately 06:15, 12:15, 18:15 and 00:15 East Africa Time. Source-specific request caps may skip a source until its next allowed window.</p>
+              <p className="career-warning">The schedule only runs when both GitHub Actions repository secrets are set and <code>JOB_CRON_SECRET</code> on the API service matches the Actions secret. The app cannot read GitHub’s secret values, so it cannot truthfully report that automation is active from this screen alone.</p>
+              <ul>
+                <li><code>CAREER_API_BASE_URL</code> — HTTPS origin of your deployed API service.</li>
+                <li><code>JOB_CRON_SECRET</code> — the same random secret in GitHub Actions and the API service environment.</li>
+              </ul>
+              <div className="career-actions">
+                <a className="button button-quiet" href="https://github.com/WestMorganOketch/morgan-portfolio/actions/workflows/career-radar-scheduled-scan.yml" rel="noopener noreferrer" target="_blank">Open scheduled scan workflow</a>
+                <button className="button button-quiet" disabled={busy} onClick={() => void runAction(async () => { await startScan(); }, "Scan request submitted.")} type="button">Run scan now</button>
+              </div>
+            </section>
             <section className="career-subpanel">
               <h3>Sources</h3>
               <SourceHealthList sources={sources} />
