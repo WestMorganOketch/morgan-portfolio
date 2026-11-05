@@ -284,6 +284,74 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
     }
   });
 
+  admin.post(
+    "/gmail/oauth/start",
+    createRateLimiter(5, "Too many Gmail connection attempts.", 60 * 60 * 1000),
+    requireSameOrigin,
+    requireCsrfToken,
+    async (_req, res, next) => {
+      try {
+        const missing = await findMissingPreparationTables(db);
+        if (missing.length) return sendMissingPreparationTables(res, missing);
+        const result = await beginGmailOAuth({ db, now });
+        res.json(result);
+      } catch (error) {
+        const message = String(error?.message ?? "");
+        if (message.startsWith("Gmail is not configured") || message.startsWith("DOC_ENCRYPTION_KEY")) {
+          return res.status(409).json({ error: message });
+        }
+        next(error);
+      }
+    },
+  );
+
+  admin.get("/gmail/oauth/callback", async (req, res, next) => {
+    if (typeof req.query.error === "string") {
+      return redirectToCareerCentre(res, { gmail: "denied" });
+    }
+    const code = req.query.code;
+    const state = req.query.state;
+    if (typeof code !== "string" || typeof state !== "string") {
+      return redirectToCareerCentre(res, { gmail: "error" });
+    }
+    try {
+      const missing = await findMissingPreparationTables(db);
+      if (missing.length) return sendMissingPreparationTables(res, missing);
+      await completeGmailOAuth({ db, code, state, fetchImpl, now });
+      return redirectToCareerCentre(res, { gmail: "connected" });
+    } catch (error) {
+      const message = String(error?.message ?? "");
+      if (message.includes("authorization response")
+        || message.includes("expired or was already used")
+        || message.includes("does not match")
+        || message.includes("did not return")
+        || message.includes("grant does not include")
+        || message.includes("did not confirm")
+        || message.startsWith("Gmail is not configured")
+        || message.startsWith("DOC_ENCRYPTION_KEY")) {
+        return redirectToCareerCentre(res, { gmail: "error" });
+      }
+      next(error);
+    }
+  });
+
+  admin.post(
+    "/gmail/disconnect",
+    createRateLimiter(10, "Too many Gmail disconnection requests."),
+    requireSameOrigin,
+    requireCsrfToken,
+    async (_req, res, next) => {
+      try {
+        const missing = await findMissingPreparationTables(db);
+        if (missing.length) return sendMissingPreparationTables(res, missing);
+        await disconnectGmail(db);
+        res.json({ connected: false });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
   admin.get("/settings", async (_req, res, next) => {
     try {
       const missing = await findMissingTables(db);
