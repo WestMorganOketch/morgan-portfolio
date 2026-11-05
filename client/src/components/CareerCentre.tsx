@@ -1352,6 +1352,9 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
       });
       await loadCareerDocuments();
       setConfirmSendDocumentRelease(false);
+      if (action === "revoked") {
+        setSelectedSendDocumentId((current) => current === item.id ? "" : current);
+      }
     }, action === "granted" ? "Per-file application-email consent recorded." : "Per-file application-email consent revoked.");
   }
 
@@ -2009,10 +2012,10 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
               <p className="career-warning">
                 The snapshot excludes CVs, documents, private notes, emails, applications, salary, fit scores, and application statuses. Company names remain hidden unless you separately opt in and the source allows public redistribution. Public listings are not verified endorsements; each original employer page must be checked.
               </p>
-              {settings.public_publishing ? (
+              {snapshotStatus?.public_publishing_enabled ? (
                 <p className="admin-help">Public snapshots are enabled in your saved preferences. This permission does not publish anything by itself.</p>
               ) : (
-                <p className="career-warning">Publishing is currently disabled in Search preferences. Enable the optional setting and save it before generating a public preview.</p>
+                <p className="career-warning">Publishing is currently disabled in saved preferences. Enable the optional setting in Search preferences and save it before generating a public preview.</p>
               )}
               <div className="career-actions">
                 <button className="button button-primary" disabled={busy || !snapshotStatus?.public_publishing_enabled} onClick={() => void previewPublicSnapshot()} type="button">Generate current preview</button>
