@@ -25,6 +25,7 @@ function asBuffer(value, label = "document") {
 
 function safeFilename(value) {
   const valueText = String(value ?? "").replace(/\\/g, "/").split("/").pop() ?? "";
+  // eslint-disable-next-line no-control-regex
   const clean = valueText.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 255);
   return clean || "career-document";
 }
@@ -102,6 +103,7 @@ export function validateCareerDocumentMetadata({ title, kind, originalFilename, 
   const cleanKind = String(kind ?? "").trim();
   const cleanFilename = safeFilename(originalFilename);
   const file = asBuffer(buffer);
+  // eslint-disable-next-line no-control-regex
   if (cleanTitle.length < 2 || cleanTitle.length > 120 || /[\u0000-\u001f\u007f]/.test(cleanTitle)) {
     throw new TypeError("Document title must contain 2–120 supported characters.");
   }
