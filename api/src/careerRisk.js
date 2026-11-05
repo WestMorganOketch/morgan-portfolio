@@ -34,8 +34,11 @@ function isPrivateIp(host) {
 }
 
 function isNegatedRequest(value, matchIndex) {
-  const prefix = value.slice(Math.max(0, matchIndex - 70), matchIndex);
-  return /\b(?:never|no|not|don't|do not|doesn't|does not|won't|will not|must not|should not)\b[^.!?\n]{0,60}$/i.test(prefix);
+  const prefix = value.slice(Math.max(0, matchIndex - 100), matchIndex);
+  let clause = prefix.split(/[.!?;\n]/).pop() ?? "";
+  const lastContrast = [...clause.matchAll(/\b(?:but|however|yet|except|nevertheless|although|though)\b/gi)].pop();
+  if (lastContrast?.index !== undefined) clause = clause.slice(lastContrast.index + lastContrast[0].length);
+  return /\b(?:never|no|not|don't|do not|doesn't|does not|won't|will not|must not|should not)\b[^.!?\n]{0,60}$/i.test(clause);
 }
 
 function firstNonNegatedMatch(value, pattern) {
