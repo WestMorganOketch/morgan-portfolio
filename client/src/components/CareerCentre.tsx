@@ -416,6 +416,15 @@ function valuesFromFacts(value: unknown): string[] {
   return Array.isArray(value) ? value.filter(string) : [];
 }
 
+function normalizedRole(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 function suggestedProfileForJob(job: CareerJob, profiles: Profile[]): Profile | null {
   const active = profiles.filter((profile) => !profile.archived_at);
   const target = normalizedRole(job.assessment?.track ?? job.title);
