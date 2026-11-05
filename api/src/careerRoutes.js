@@ -6,6 +6,9 @@ import { assessJob as calculateCareerJobAssessment, createCareerAssessmentServic
 import { createCareerApplicationService, applicationStates } from "./careerApplications.js";
 import { buildApplicationDraft, createTextPdf } from "./careerPreparation.js";
 import { assessCareerRisk } from "./careerRisk.js";
+import { createCareerDocumentService } from "./careerDocuments.js";
+import { registerCareerDocumentRoutes } from "./careerDocumentRoutes.js";
+import { registerPublicCareerSnapshotRoutes } from "./careerPublicSnapshot.js";
 import {
   beginGmailOAuth,
   completeGmailOAuth,
@@ -281,11 +284,14 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
   runService = createCareerRunService({ db }),
   assessmentService = createCareerAssessmentService({ db }),
   applicationService = createCareerApplicationService({ db }),
+  documentService = createCareerDocumentService({ db }),
   fetchImpl = fetch,
   now = () => new Date(),
 } = {}) {
   const admin = express.Router();
   admin.use(noStore, requireAdmin);
+  registerCareerDocumentRoutes(admin, db, { requireSameOrigin, requireCsrfToken, service: documentService });
+  registerPublicCareerSnapshotRoutes(app, admin, db, { now });
 
   const scheduleAssessmentRerun = () => {
     setTimeout(() => {
@@ -1305,6 +1311,61 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
           return res.status(422).json({ error: "A recruiter email, tailored CV draft, and cover letter are required." });
         }
 
+        let selectedDocumentAttachment = null;
+        if (parsed.data.document_id) {
+          if (!parsed.data.confirm_document_release) {
+            return res.status(409).json({ error: "Explicit confirmation is required before attaching the selected private document." });
+          }
+          try {
+            const privateDocuments = await documentService.list();
+            const approvedDocument = privateDocuments.find((item) => item.id === parsed.data.document_id);
+            if (!approvedDocument) return res.status(404).json({ error: "The selected private document is not available." });
+            if (approvedDocument.application_email_consent !== true) {
+              return res.status(409).json({ error: "This document has no current application-email release consent. Grant per-file consent in Private documents, then review again." });
+            }
+            if (approvedDocument.content_type !== "application/pdf") {
+              return res.status(422).json({ error: "Only a PDF from the private document vault can be attached to an application email." });
+            }
+            if (Number(approvedDocument.byte_size) > 5 * 1024 * 1024) {
+              return res.status(422).json({ error: "The selected private PDF is larger than the supported email attachment limit of 5 MB." });
+            }
+            const document = await documentService.download(approvedDocument.id);
+            if (!document || document.contentType !== "application/pdf" || document.buffer.length > 5 * 1024 * 1024) {
+              return res.status(409).json({ error: "The selected document failed the final attachment checks. Nothing was sent." });
+            }
+            const safeStem = String(document.filename ?? "Supporting-document")
+              .replace(/\\/g, "/").split("/").pop().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/\.pdf$/i, "").slice(0, 100) || "Supporting-document";
+            selectedDocumentAttachment = {
+              id: document.id,
+              filename: safeStem + ".pdf",
+              contentType: document.contentType,
+              content: document.buffer,
+            };
+          } catch (error) {
+            return res.status(409).json({ error: String(error?.message ?? "The selected private document could not be safely loaded.") });
+          }
+        } else if (parsed.data.confirm_document_release) {
+          return res.status(400).json({ error: "Document-release confirmation was supplied without selecting a private PDF." });
+        }
+
+        const resumePdf = createTextPdf({ title: packet.title + " — CV", text: packet.resume_text, generatedAt: new Date(packet.updated_at) });
+        const coverLetterPdf = createTextPdf({ title: packet.title + " — cover letter", text: packet.cover_letter_text, generatedAt: new Date(packet.updated_at) });
+        const emailAttachments = [
+          { filename: "Morgan-West-Oketch-CV.pdf", contentType: "application/pdf", content: resumePdf },
+          { filename: "Morgan-West-Oketch-Cover-Letter.pdf", contentType: "application/pdf", content: coverLetterPdf },
+        ];
+        if (selectedDocumentAttachment) {
+          emailAttachments.push({
+            filename: selectedDocumentAttachment.filename,
+            contentType: selectedDocumentAttachment.contentType,
+            content: selectedDocumentAttachment.content,
+          });
+        }
+        const combinedAttachmentBytes = emailAttachments.reduce((total, item) => total + item.content.length, 0);
+        if (combinedAttachmentBytes > 5 * 1024 * 1024) {
+          return res.status(422).json({ error: "The generated PDFs plus the selected private document exceed Gmail's 5 MB combined attachment limit. Remove the private document or choose a smaller PDF." });
+        }
+
         let gmailAccess;
         try {
           gmailAccess = await getGmailSendAccessToken({ db, env: process.env, fetchImpl });
@@ -1366,7 +1427,10 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
           await client.query(
             `INSERT INTO public.jr_application_events (application_id, event, detail)
              VALUES ($1, 'application.email_send_started', $2::jsonb)`,
-            [packet.application_id, JSON.stringify({ packet_id: packet.id, version: packet.version })],
+            [packet.application_id, JSON.stringify({
+              packet_id: packet.id, version: packet.version,
+              attached_private_document_id: selectedDocumentAttachment?.id ?? null,
+            })],
           );
           await client.query("COMMIT");
         } catch (error) {
@@ -1377,18 +1441,13 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         }
 
         try {
-          const resumePdf = createTextPdf({ title: `${packet.title} — CV`, text: packet.resume_text, generatedAt: new Date(packet.updated_at) });
-          const coverLetterPdf = createTextPdf({ title: `${packet.title} — cover letter`, text: packet.cover_letter_text, generatedAt: new Date(packet.updated_at) });
-          const subject = `Application — ${String(packet.title).replace(/[\r\n]/g, " ").slice(0, 150)} — Morgan West Oketch`;
+          const subject = `Application — ${String(packet.title).replace(/[\\r\\n]/g, " ").slice(0, 150)} — Morgan West Oketch`;
           const result = await sendGmailMessage({
             db,
             to: parsed.data.recipient_email,
             subject,
             body: packet.cover_letter_text,
-            attachments: [
-              { filename: "Morgan-West-Oketch-CV.pdf", contentType: "application/pdf", content: resumePdf },
-              { filename: "Morgan-West-Oketch-Cover-Letter.pdf", contentType: "application/pdf", content: coverLetterPdf },
-            ],
+            attachments: emailAttachments,
             messageId: packet.id,
             accessToken: gmailAccess.accessToken,
             senderEmail: gmailAccess.senderEmail,
@@ -1412,7 +1471,11 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
             await client.query(
               `INSERT INTO public.jr_application_events (application_id, event, detail)
                VALUES ($1, 'application.email_sent', $2::jsonb)`,
-              [packet.application_id, JSON.stringify({ packet_id: packet.id, version: packet.version, gmail_message_id: result.id, sent_at: sentAt.toISOString() })],
+              [packet.application_id, JSON.stringify({
+                packet_id: packet.id, version: packet.version, gmail_message_id: result.id,
+                sent_at: sentAt.toISOString(),
+                attached_private_document_id: selectedDocumentAttachment?.id ?? null,
+              })],
             );
             await client.query("COMMIT");
           } catch (error) {
