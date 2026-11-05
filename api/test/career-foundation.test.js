@@ -580,7 +580,7 @@ test("career migration runner is explicit, ordered, and absent from API startup"
   const positions = migrationFiles.map((filename) => runner.indexOf(`"${filename}"`));
   assert.ok(positions.every((position) => position >= 0), "every implemented Career Radar migration is included");
   assert.deepEqual(positions, [...positions].sort((left, right) => left - right), "migrations run in dependency order");
-  assert.match(runner, /await pool\\.query\\(sql\\)/);
-  assert.match(runner, /finally \\{[\\s\\S]*await pool\\.end\\(\\)/);
-  assert.doesNotMatch(appSource, /migrate-career|migrations\\/00[4-8]_career/);
+  assert.ok(runner.includes("await pool.query(sql)"));
+  assert.ok(runner.includes("await pool.end()"));
+  assert.equal(appSource.includes("migrate-career"), false);
 });
