@@ -614,8 +614,9 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
       const missingApplications = await findMissingApplicationTables(db);
       if (missingApplications.length) return sendMissingApplicationTables(res, missingApplications);
       const today = nairobiDate();
+      const missingPreparation = await findMissingPreparationTables(db);
       const [{ rows: settingsRows }, { rows: jobCounts }, { rows: applicationCounts },
-        { rows: scanRows }, { rows: sourceRows }, { rows: reviewRows }, { rows: newRows }] = await Promise.all([
+        { rows: scanRows }, { rows: sourceRows }, { rows: reviewRows }, { rows: newRows }, { rows: draftRows }] = await Promise.all([
         db.query("SELECT score_threshold, max_packets_per_day FROM public.jr_settings WHERE id = 1"),
         db.query("SELECT status, count(*)::integer AS count FROM public.jr_jobs GROUP BY status"),
         db.query("SELECT state, count(*)::integer AS count FROM public.jr_applications GROUP BY state"),
@@ -638,6 +639,17 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
              AND first_seen_at < (($1::date + 1)::timestamp AT TIME ZONE 'Africa/Nairobi')`,
           [today],
         ),
+        missingPreparation.length
+          ? Promise.resolve({ rows: [{ count: 0 }] })
+          : db.query(
+              `SELECT count(*)::integer AS count
+               FROM public.jr_application_packets AS p
+               WHERE p.status IN ('draft', 'ready_for_review')
+                 AND p.version = (
+                   SELECT max(p2.version) FROM public.jr_application_packets AS p2
+                   WHERE p2.application_id = p.application_id
+                 )`,
+            ),
       ]);
       if (!settingsRows[0]) return sendMissingTables(res, ["jr_settings (seed row id=1)"]);
       const threshold = Number(settingsRows[0].score_threshold);
@@ -688,7 +700,9 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         stale,
         new_jobs_count: Number(newRows[0]?.count ?? 0),
         shortlist_count: shortlist.length,
-        drafts_waiting: 0,
+        drafts_waiting: Number(draftRows[0]?.count ?? 0),
+        preparation_tables_configured: missingPreparation.length === 0,
+        preparation_tables_missing: missingPreparation,
         review_count: Number(reviewRows[0]?.count ?? 0),
         job_counts: byStatus,
         applications_by_state: applicationsByState,
