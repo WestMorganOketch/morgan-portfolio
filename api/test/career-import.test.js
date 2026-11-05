@@ -91,6 +91,7 @@ async function createFixture() {
     : res.status(403).json({ error: "Request verification failed." });
   registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin, requireCsrfToken }, {
     runService: { start: async () => ({ id: randomUUID(), status: "running" }) },
+    assessmentService: { assessJob: async () => ({ assessed: true }) },
   });
   app.use((error, _req, res, _next) => res.status(500).json({ error: error.message }));
   const server = app.listen(0, "127.0.0.1");
