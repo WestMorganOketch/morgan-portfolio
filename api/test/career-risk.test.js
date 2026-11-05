@@ -92,3 +92,12 @@ test("ATS branding is informational, unknown text is bounded, and absence of fla
   assert.ok(risk.url_checks.error.includes("not been performed"));
   assert.ok(risk.url_checks.error.length < 250);
 });
+
+test("anti-scam disclaimers are not mistaken for requests to pay or share sensitive information", () => {
+  const result = assessCareerRisk({
+    ...baseJob,
+    description_text: "We never ask applicants to pay an application fee or share their password.",
+  });
+  assert.equal(result.risk_level, "low");
+  assert.equal(result.risk_findings.some((finding) => finding.severity === "high"), false);
+});
