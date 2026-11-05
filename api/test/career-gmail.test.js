@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import test from "node:test";
 import {
   beginGmailOAuth,
@@ -95,23 +94,30 @@ test("AES-GCM refresh tokens round-trip, reject bad key lengths, and detect tamp
 test("OAuth start uses PKCE, hashed one-use state, a narrow send-only grant, and HTTPS Google", async () => {
   const db = oauthDb();
   const now = () => new Date("2026-11-05T08:00:00.000Z");
-  const result = await beginGmailOAuth({ db, env, now });
+  const deterministicBytes = [Buffer.alloc(32, 1), Buffer.alloc(32, 2)];
+  const randomBytesImpl = (size) => {
+    assert.equal(size, 32);
+    const next = deterministicBytes.shift();
+    assert.ok(next, "only the OAuth state and PKCE verifier request random bytes");
+    return next;
+  };
+  const result = await beginGmailOAuth({ db, env, now, randomBytesImpl });
   const authorization = new URL(result.authorization_url);
   assert.equal(authorization.origin, "https://accounts.google.com");
   assert.equal(authorization.pathname, "/o/oauth2/v2/auth");
   assert.equal(authorization.searchParams.get("code_challenge_method"), "S256");
-  assert.ok(authorization.searchParams.get("code_challenge").length > 20);
+  assert.equal(authorization.searchParams.get("code_challenge"), "bB1ju9q0N8VDaMu9iIaohqea2XcpfiZe6_H19fAVM7k");
   assert.equal(authorization.searchParams.get("access_type"), "offline");
   assert.equal(authorization.searchParams.get("prompt"), "consent");
   assert.deepEqual(authorization.searchParams.get("scope").split(" ").sort(), ["openid", "email", GMAIL_SEND_SCOPE].sort());
   assert.equal(authorization.searchParams.get("redirect_uri"), env.GMAIL_OAUTH_REDIRECT_URI);
   assert.equal(db.stateRows.size, 1);
   const [stateHash, stored] = [...db.stateRows.entries()][0];
-  // The state is a CSPRNG-generated 256-bit, one-use OAuth nonce, not a password; SHA-256 is appropriate for storing only its digest.
-  // codeql[js/insufficient-password-hashing]
-  assert.equal(stateHash, createHash("sha256").update(authorization.searchParams.get("state")).digest("hex"));
+  assert.equal(authorization.searchParams.get("state"), "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE");
+  assert.equal(stateHash, "56d5fa7333f6d747db42c239407e5da4c32f4c79f35d092b134fd35a402d9c5c");
   assert.notEqual(stateHash, authorization.searchParams.get("state"));
-  assert.ok(stored.code_verifier.length >= 43);
+  assert.equal(stored.code_verifier, "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI");
+  assert.equal(deterministicBytes.length, 0);
 });
 
 test("OAuth callback verifies state and email and stores only an encrypted refresh token", async () => {

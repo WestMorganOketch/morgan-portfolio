@@ -81,11 +81,11 @@ async function readJsonResponse(response, label) {
   return result;
 }
 
-export async function beginGmailOAuth({ db, env = process.env, now = () => new Date() } = {}) {
+export async function beginGmailOAuth({ db, env = process.env, now = () => new Date(), randomBytesImpl = randomBytes } = {}) {
   requiredEnv(env, ["GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REDIRECT_URI", "DOC_ENCRYPTION_KEY"]);
   encryptionKeyFromEnvironment(env.DOC_ENCRYPTION_KEY);
-  const state = randomBytes(32).toString("base64url");
-  const verifier = randomBytes(32).toString("base64url");
+  const state = randomBytesImpl(32).toString("base64url");
+  const verifier = randomBytesImpl(32).toString("base64url");
   const challenge = base64Url(createHash("sha256").update(verifier).digest());
   await db.query("DELETE FROM public.jr_gmail_oauth_states WHERE expires_at <= $1", [now()]);
   await db.query(
