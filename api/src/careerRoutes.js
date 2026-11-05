@@ -885,23 +885,23 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
 
         const [{ rows: jobRows }, { rows: profileRows }, { rows: settingsRows }] = await Promise.all([
           db.query(
-            \`SELECT j.id, j.source_key, s.name AS source_name, s.attribution_text,
+            `SELECT j.id, j.source_key, s.name AS source_name, s.attribution_text,
                     j.url, j.title, j.company, j.location_text, j.remote_scope_text,
                     j.description_text, j.tags, j.posted_at, j.status
              FROM public.jr_jobs AS j
              JOIN public.jr_sources AS s ON s.key = j.source_key
-             WHERE j.id = $1\`,
+             WHERE j.id = $1`,
             [parsedId.data],
           ),
           db.query(
-            \`SELECT id, name, track, original_text, verified_facts
+            `SELECT id, name, track, original_text, verified_facts
              FROM public.jr_resume_profiles
-             WHERE id = $1 AND archived_at IS NULL\`,
+             WHERE id = $1 AND archived_at IS NULL`,
             [parsed.data.profile_id],
           ),
           db.query(
-            \`SELECT role_tracks, score_threshold, excluded_keywords, excluded_companies
-             FROM public.jr_settings WHERE id = 1\`,
+            `SELECT role_tracks, score_threshold, excluded_keywords, excluded_companies
+             FROM public.jr_settings WHERE id = 1`,
           ),
         ]);
         const job = jobRows[0];
@@ -924,7 +924,7 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         }
 
         await db.query(
-          \`INSERT INTO public.jr_assessments (
+          `INSERT INTO public.jr_assessments (
              job_id, profile_id, track, eligibility, eligibility_evidence, fit_score,
              fit_breakdown, matched, missing, reason_codes, uncertainty, rules_version
            ) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11::jsonb, 1)
@@ -934,7 +934,7 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
              fit_breakdown = EXCLUDED.fit_breakdown, matched = EXCLUDED.matched,
              missing = EXCLUDED.missing, reason_codes = EXCLUDED.reason_codes,
              uncertainty = EXCLUDED.uncertainty, rules_version = EXCLUDED.rules_version,
-             assessed_at = now()\`,
+             assessed_at = now()`,
           [
             job.id, profile.id, assessment.track, assessment.eligibility,
             JSON.stringify(assessment.eligibility_evidence), assessment.fit_score,
@@ -974,7 +974,7 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         let packetId;
         try {
           await client.query("BEGIN");
-          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [\`jr-application-packet:\${applicationId}\`]);
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`jr-application-packet:${applicationId}`]);
           const { rows: latestRows } = await client.query(
             "SELECT id, version, status FROM public.jr_application_packets WHERE application_id = $1 ORDER BY version DESC LIMIT 1 FOR UPDATE",
             [applicationId],
@@ -988,12 +988,12 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
           }
           const version = Number(latest?.version ?? 0) + 1;
           const { rows: inserted } = await client.query(
-            \`INSERT INTO public.jr_application_packets (
+            `INSERT INTO public.jr_application_packets (
                application_id, job_id, source_profile_id, version, status,
                resume_text, cover_letter_text, recipient_email, highlights,
                missing_requirements, warnings, source_snapshot, master_resume_sha256
              ) VALUES ($1, $2, $3, $4, 'draft', $5, $6, NULL, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11)
-             RETURNING id\`,
+             RETURNING id`,
             [
               applicationId, job.id, profile.id, version, draft.resumeText, draft.coverLetterText,
               JSON.stringify(draft.highlights), JSON.stringify(draft.missingRequirements),
@@ -1002,14 +1002,14 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
           );
           packetId = inserted[0]?.id;
           await client.query(
-            \`UPDATE public.jr_applications
+            `UPDATE public.jr_applications
              SET state = 'preparation_in_progress', updated_at = $2
-             WHERE id = $1 AND state NOT IN ('sent', 'approved_to_send', 'needs_manual_attention')\`,
+             WHERE id = $1 AND state NOT IN ('sent', 'approved_to_send', 'needs_manual_attention')`,
             [applicationId, now()],
           );
           await client.query(
-            \`INSERT INTO public.jr_application_events (application_id, event, detail)
-             VALUES ($1, 'application.packet_generated', $2::jsonb)\`,
+            `INSERT INTO public.jr_application_events (application_id, event, detail)
+             VALUES ($1, 'application.packet_generated', $2::jsonb)`,
             [applicationId, JSON.stringify({ packet_id: packetId, version, profile_id: profile.id, master_resume_sha256: masterResumeSha })],
           );
           await client.query("COMMIT");
@@ -1033,7 +1033,7 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
       const missing = await findMissingPreparationTables(db);
       if (missing.length) return sendMissingPreparationTables(res, missing);
       const { rows } = await db.query(
-        \`SELECT p.id, p.application_id, p.job_id, p.source_profile_id, p.version, p.status,
+        `SELECT p.id, p.application_id, p.job_id, p.source_profile_id, p.version, p.status,
                 p.recipient_email, p.highlights, p.missing_requirements, p.warnings,
                 p.source_snapshot, p.master_resume_sha256, p.gmail_message_id, p.sent_at,
                 p.created_at, p.updated_at, a.state AS application_state,
@@ -1048,7 +1048,7 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
            SELECT max(p2.version) FROM public.jr_application_packets AS p2
            WHERE p2.application_id = p.application_id
          )
-         ORDER BY p.updated_at DESC LIMIT 100\`,
+         ORDER BY p.updated_at DESC LIMIT 100`,
       );
       res.json(rows.map((row) => ({
         ...applicationPacketResponse(row),
@@ -1070,11 +1070,11 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
       if (!packet) return res.status(404).json({ error: "Application packet was not found." });
       const latest = await findLatestApplicationPacket(db, packet.application_id);
       if (latest?.id !== packet.id) return res.status(409).json({ error: "This is an older packet version. Open the latest version before downloading." });
-      const pdf = createTextPdf({ title: \`\${packet.title} — CV draft\`, text: packet.resume_text, generatedAt: new Date(packet.updated_at) });
-      const filename = \`Morgan-West-Oketch-CV-\${String(packet.title).replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70) || "application"}.pdf\`;
+      const pdf = createTextPdf({ title: `${packet.title} — CV draft`, text: packet.resume_text, generatedAt: new Date(packet.updated_at) });
+      const filename = `Morgan-West-Oketch-CV-${String(packet.title).replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70) || "application"}.pdf`;
       res.set({
         "Content-Type": "application/pdf",
-        "Content-Disposition": \`attachment; filename="\${filename}"\`,
+        "Content-Disposition": `attachment; filename="${filename}"`,
         "Content-Length": String(pdf.length),
         "Cache-Control": "no-store",
       });
@@ -1094,11 +1094,11 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
       if (!packet) return res.status(404).json({ error: "Application packet was not found." });
       const latest = await findLatestApplicationPacket(db, packet.application_id);
       if (latest?.id !== packet.id) return res.status(409).json({ error: "This is an older packet version. Open the latest version before downloading." });
-      const pdf = createTextPdf({ title: \`\${packet.title} — cover letter\`, text: packet.cover_letter_text, generatedAt: new Date(packet.updated_at) });
-      const filename = \`Morgan-West-Oketch-Cover-Letter-\${String(packet.title).replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "application"}.pdf\`;
+      const pdf = createTextPdf({ title: `${packet.title} — cover letter`, text: packet.cover_letter_text, generatedAt: new Date(packet.updated_at) });
+      const filename = `Morgan-West-Oketch-Cover-Letter-${String(packet.title).replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "application"}.pdf`;
       res.set({
         "Content-Type": "application/pdf",
-        "Content-Disposition": \`attachment; filename="\${filename}"\`,
+        "Content-Disposition": `attachment; filename="${filename}"`,
         "Content-Length": String(pdf.length),
         "Cache-Control": "no-store",
       });
@@ -1170,7 +1170,7 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         let nextId;
         try {
           await client.query("BEGIN");
-          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [\`jr-application-packet:\${packet.application_id}\`]);
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`jr-application-packet:${packet.application_id}`]);
           const { rows: latestRows } = await client.query(
             "SELECT id, version, status FROM public.jr_application_packets WHERE application_id = $1 ORDER BY version DESC LIMIT 1 FOR UPDATE",
             [packet.application_id],
@@ -1180,12 +1180,12 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
             return res.status(409).json({ error: "This packet changed while you were editing it. Refresh and review the latest version." });
           }
           const { rows: inserted } = await client.query(
-            \`INSERT INTO public.jr_application_packets (
+            `INSERT INTO public.jr_application_packets (
                application_id, job_id, source_profile_id, version, status,
                resume_text, cover_letter_text, recipient_email, highlights,
                missing_requirements, warnings, source_snapshot, master_resume_sha256
              ) VALUES ($1, $2, $3, $4, 'ready_for_review', $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb, $12)
-             RETURNING id\`,
+             RETURNING id`,
             [
               packet.application_id, packet.job_id, packet.source_profile_id, Number(packet.version) + 1,
               nextResume, nextCoverLetter, recipient, JSON.stringify(packet.highlights),
@@ -1195,8 +1195,8 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
           );
           nextId = inserted[0]?.id;
           await client.query(
-            \`INSERT INTO public.jr_application_events (application_id, event, detail)
-             VALUES ($1, 'application.packet_edited', $2::jsonb)\`,
+            `INSERT INTO public.jr_application_events (application_id, event, detail)
+             VALUES ($1, 'application.packet_edited', $2::jsonb)`,
             [packet.application_id, JSON.stringify({ packet_id: nextId, version: Number(packet.version) + 1 })],
           );
           await client.query("COMMIT");
@@ -1269,12 +1269,12 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         const client = await db.connect();
         try {
           await client.query("BEGIN");
-          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [\`jr-application-send:\${today}\`]);
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`jr-application-send:${today}`]);
           const { rows: latestRows } = await client.query(
-            \`SELECT id, application_id, version, status
+            `SELECT id, application_id, version, status
              FROM public.jr_application_packets
              WHERE id = $1
-             FOR UPDATE\`,
+             FOR UPDATE`,
             [packet.id],
           );
           if (!latestRows[0] || latestRows[0].application_id !== packet.application_id
@@ -1284,9 +1284,9 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
             return res.status(409).json({ error: "The packet status changed. Reload and review it before another send attempt." });
           }
           const { rows: sentCountRows } = await client.query(
-            \`SELECT count(*)::integer AS count FROM public.jr_application_packets
+            `SELECT count(*)::integer AS count FROM public.jr_application_packets
              WHERE sent_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Nairobi')
-               AND sent_at < (($1::date + 1)::timestamp AT TIME ZONE 'Africa/Nairobi')\`,
+               AND sent_at < (($1::date + 1)::timestamp AT TIME ZONE 'Africa/Nairobi')`,
             [today],
           );
           const sendsToday = Number(sentCountRows[0]?.count ?? 0);
@@ -1302,9 +1302,9 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
             return res.status(429).json({ error: "Wait at least 60 seconds between application emails." });
           }
           await client.query(
-            \`UPDATE public.jr_application_packets
+            `UPDATE public.jr_application_packets
              SET status = 'sending', recipient_email = $2, send_attempted_at = $3, updated_at = $3
-             WHERE id = $1\`,
+             WHERE id = $1`,
             [packet.id, parsed.data.recipient_email, now()],
           );
           await client.query(
@@ -1312,8 +1312,8 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
             [packet.application_id, now()],
           );
           await client.query(
-            \`INSERT INTO public.jr_application_events (application_id, event, detail)
-             VALUES ($1, 'application.email_send_started', $2::jsonb)\`,
+            `INSERT INTO public.jr_application_events (application_id, event, detail)
+             VALUES ($1, 'application.email_send_started', $2::jsonb)`,
             [packet.application_id, JSON.stringify({ packet_id: packet.id, version: packet.version })],
           );
           await client.query("COMMIT");
@@ -1325,9 +1325,9 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         }
 
         try {
-          const resumePdf = createTextPdf({ title: \`\${packet.title} — CV\`, text: packet.resume_text, generatedAt: new Date(packet.updated_at) });
-          const coverLetterPdf = createTextPdf({ title: \`\${packet.title} — cover letter\`, text: packet.cover_letter_text, generatedAt: new Date(packet.updated_at) });
-          const subject = \`Application — \${String(packet.title).replace(/[\\r\\n]/g, " ").slice(0, 150)} — Morgan West Oketch\`;
+          const resumePdf = createTextPdf({ title: `${packet.title} — CV`, text: packet.resume_text, generatedAt: new Date(packet.updated_at) });
+          const coverLetterPdf = createTextPdf({ title: `${packet.title} — cover letter`, text: packet.cover_letter_text, generatedAt: new Date(packet.updated_at) });
+          const subject = `Application — ${String(packet.title).replace(/[\r\n]/g, " ").slice(0, 150)} — Morgan West Oketch`;
           const result = await sendGmailMessage({
             db,
             to: parsed.data.recipient_email,
@@ -1348,9 +1348,9 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
           try {
             await client.query("BEGIN");
             await client.query(
-              \`UPDATE public.jr_application_packets
+              `UPDATE public.jr_application_packets
                SET status = 'sent', gmail_message_id = $2, sent_at = $3, updated_at = $3
-               WHERE id = $1 AND status = 'sending'\`,
+               WHERE id = $1 AND status = 'sending'`,
               [packet.id, result.id, sentAt],
             );
             await client.query(
@@ -1358,8 +1358,8 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
               [packet.application_id, sentAt],
             );
             await client.query(
-              \`INSERT INTO public.jr_application_events (application_id, event, detail)
-               VALUES ($1, 'application.email_sent', $2::jsonb)\`,
+              `INSERT INTO public.jr_application_events (application_id, event, detail)
+               VALUES ($1, 'application.email_sent', $2::jsonb)`,
               [packet.application_id, JSON.stringify({ packet_id: packet.id, version: packet.version, gmail_message_id: result.id, sent_at: sentAt.toISOString() })],
             );
             await client.query("COMMIT");
@@ -1377,9 +1377,9 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
           try {
             await client.query("BEGIN");
             await client.query(
-              \`UPDATE public.jr_application_packets
+              `UPDATE public.jr_application_packets
                SET status = 'needs_manual_attention', updated_at = $2
-               WHERE id = $1 AND status = 'sending'\`,
+               WHERE id = $1 AND status = 'sending'`,
               [packet.id, failedAt],
             );
             await client.query(
@@ -1387,14 +1387,14 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
               [packet.application_id, failedAt],
             );
             await client.query(
-              \`INSERT INTO public.jr_application_events (application_id, event, detail)
-               VALUES ($1, 'application.email_send_needs_manual_review', $2::jsonb)\`,
+              `INSERT INTO public.jr_application_events (application_id, event, detail)
+               VALUES ($1, 'application.email_send_needs_manual_review', $2::jsonb)`,
               [packet.application_id, JSON.stringify({ packet_id: packet.id, version: packet.version, outcome: "unknown", message: "Check Gmail Sent before any retry." })],
             );
             await client.query("COMMIT");
           } catch (recordError) {
             await client.query("ROLLBACK");
-            console.error(\`Career email failure state could not be recorded: \${String(recordError?.message ?? "database error").slice(0, 200)}\`);
+            console.error(`Career email failure state could not be recorded: ${String(recordError?.message ?? "database error").slice(0, 200)}`);
           } finally {
             client.release();
           }
