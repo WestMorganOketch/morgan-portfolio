@@ -10,6 +10,7 @@ function cleanText(value, maxLength = 6000) {
     .replace(/&amp;/gi, "&")
     .replace(/&#x([\da-f]+);/gi, (_, code) => String.fromCodePoint(Number.parseInt(code, 16)))
     .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ")
     .replace(/[ \t]+/g, " ")
     .trim()
@@ -201,6 +202,7 @@ export function buildApplicationDraft({ job, profile, assessment = null, now = n
 }
 
 function winAnsiBytes(value) {
+  // eslint-disable-next-line no-control-regex
   const mapped = String(value)
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201C\u201D]/g, '"')
