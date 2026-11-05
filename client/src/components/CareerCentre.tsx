@@ -309,6 +309,33 @@ function isCareerRun(value: unknown): value is CareerRun {
     && isRecord(value.summary);
 }
 
+function parseSetupStatus(value: unknown): SetupStatus | null {
+  if (!isRecord(value) || !isRecord(value.configuration)) return null;
+  const preparationTables = isRecord(value.preparationTables)
+    ? {
+        configured: value.preparationTables.configured === true,
+        missing: Array.isArray(value.preparationTables.missing) ? value.preparationTables.missing.filter(string) : [],
+      }
+    : undefined;
+  const rawGmail = isRecord(value.gmail) ? value.gmail : null;
+  const gmail = rawGmail
+    ? {
+        connected: rawGmail.connected === true,
+        email: string(rawGmail.email) ? rawGmail.email : null,
+        scopes: Array.isArray(rawGmail.scopes) ? rawGmail.scopes.filter(string) : [],
+        connected_at: string(rawGmail.connected_at) ? rawGmail.connected_at : null,
+      }
+    : undefined;
+  return {
+    configuration: Object.fromEntries(
+      Object.entries(value.configuration).map(([name, entry]) => [name, { configured: isRecord(entry) && entry.configured === true }]),
+    ),
+    JR_SEND_MODE: value.JR_SEND_MODE === "live" ? "live" : "draft",
+    ...(preparationTables ? { preparationTables } : {}),
+    ...(gmail ? { gmail } : {}),
+  };
+}
+
 function isSource(value: unknown): value is SourceHealth {
   return isRecord(value)
     && string(value.key)
@@ -553,7 +580,44 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     const value = await request("/api/admin/career/resume-profiles", csrfToken);
     if (!Array.isArray(value) || !value.every(isProfile)) throw new Error("The career service returned unexpected profile data.");
     setProfiles(value);
+    return value;
   }, [csrfToken]);
+
+  const loadRunHistory = useCallback(async () => {
+    const value = await request("/api/admin/career/runs", csrfToken);
+    if (!Array.isArray(value)) throw new Error("The scan history response was not valid.");
+    const rows = value.filter(isCareerRun);
+    setRunHistory(rows);
+    return rows;
+  }, [csrfToken]);
+
+  const loadApplicationPackets = useCallback(async () => {
+    const value = await request("/api/admin/career/application-packets", csrfToken);
+    if (!Array.isArray(value) || !value.every(isApplicationPacket)) {
+      throw new Error("The application draft service returned unexpected data. Check that the Phase 6 database migration is installed.");
+    }
+    setApplicationPackets(value);
+    return value;
+  }, [csrfToken]);
+
+  const loadPreparationOptions = useCallback(async () => {
+    const [jobData, profileData, setupData] = await Promise.all([
+      request("/api/admin/career/jobs?limit=50", csrfToken),
+      loadProfiles(),
+      request("/api/admin/career/setup", csrfToken),
+    ]);
+    if (!isRecord(jobData) || !Array.isArray(jobData.jobs) || !jobData.jobs.every(isCareerJob)) {
+      throw new Error("The career service returned invalid job options.");
+    }
+    const foundJobs = jobData.jobs;
+    setPreparationJobs(foundJobs);
+    const parsedSetup = parseSetupStatus(setupData);
+    if (!parsedSetup) throw new Error("The setup status response was not valid.");
+    setSetup(parsedSetup);
+    setSelectedPreparationJobId((current) => current || foundJobs[0]?.id || "");
+    setSelectedPreparationProfileId((current) => current || profileData.find((profile) => !profile.archived_at)?.id || "");
+    return { jobs: foundJobs, profiles: profileData, setup: parsedSetup };
+  }, [csrfToken, loadProfiles]);
 
   const loadSources = useCallback(async () => {
     const [sourceData, setupData, watchData, linkData] = await Promise.all([
@@ -566,15 +630,9 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     if (!isRecord(setupData) || !isRecord(setupData.configuration)) throw new Error("The setup status could not be read.");
     if (!Array.isArray(watchData) || !Array.isArray(linkData)) throw new Error("The source tools returned unexpected data.");
     setSources(sourceData);
-    setSetup({
-      configuration: Object.fromEntries(
-        Object.entries(setupData.configuration).map(([name, value]) => [
-          name,
-          { configured: isRecord(value) && value.configured === true },
-        ]),
-      ),
-      JR_SEND_MODE: setupData.JR_SEND_MODE === "live" ? "live" : "draft",
-    });
+    const parsedSetup = parseSetupStatus(setupData);
+    if (!parsedSetup) throw new Error("The setup status response was not valid.");
+    setSetup(parsedSetup);
     setWatchlist(watchData.filter((row): row is WatchlistEntry =>
       isRecord(row) && string(row.id) && string(row.token) && string(row.label)
       && (row.provider === "greenhouse" || row.provider === "lever") && typeof row.enabled === "boolean"));
