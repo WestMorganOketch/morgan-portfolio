@@ -654,7 +654,7 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
       const { rows: qualifiedRows } = await db.query(
         `SELECT j.id, j.source_key, s.name AS source_name, s.attribution_text,
                 j.source_job_id, j.url, j.title, j.company, j.location_text,
-                j.remote_scope_text, j.description_text, j.tags, j.posted_at,
+                j.remote_scope_text, j.description_text, j.salary_text, j.tags, j.posted_at,
                 j.first_seen_at, j.status, 'not yet assessed'::text AS risk_assessment,
                 jsonb_build_object(
                   'eligibility', a.eligibility,
@@ -904,7 +904,7 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
           db.query(
             `SELECT j.id, j.source_key, s.name AS source_name, s.attribution_text,
                     j.url, j.title, j.company, j.location_text, j.remote_scope_text,
-                    j.description_text, j.tags, j.posted_at, j.status
+                    j.description_text, j.salary_text, j.tags, j.posted_at, j.status
              FROM public.jr_jobs AS j
              JOIN public.jr_sources AS s ON s.key = j.source_key
              WHERE j.id = $1`,
