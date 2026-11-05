@@ -684,8 +684,9 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         [today, threshold],
       );
       const riskReviewedRows = qualifiedRows.map((row) => ({ ...row, risk_assessment: assessCareerRisk(row, { now }) }));
-      const lowRiskRows = riskReviewedRows.filter((row) => row.risk_assessment.risk_level === "low");
-      const shortlist = lowRiskRows.slice(0, dailyCap);
+      const eligibleLowRiskRows = riskReviewedRows.filter((row) =>
+        row.eligibility === "eligible" && row.risk_assessment.risk_level === "low");
+      const shortlist = eligibleLowRiskRows.slice(0, dailyCap);
       const shortlistedIds = new Set(shortlist.map((row) => row.id));
       const remaining = riskReviewedRows.filter((row) => row.risk_assessment.risk_level !== "high" && !shortlistedIds.has(row.id));
       const byStatus = Object.fromEntries(jobCounts.map((row) => [row.status, Number(row.count)]));
