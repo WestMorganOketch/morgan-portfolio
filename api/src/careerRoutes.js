@@ -5,6 +5,7 @@ import { createCareerRunService, findMissingCareerTables, findMissingJobTables }
 import { assessJob as calculateCareerJobAssessment, createCareerAssessmentService } from "./careerAssessment.js";
 import { createCareerApplicationService, applicationStates } from "./careerApplications.js";
 import { buildApplicationDraft, createTextPdf } from "./careerPreparation.js";
+import { assessCareerRisk } from "./careerRisk.js";
 import {
   beginGmailOAuth,
   completeGmailOAuth,
@@ -682,8 +683,11 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
          LIMIT 5000`,
         [today, threshold],
       );
-      const shortlist = qualifiedRows.slice(0, dailyCap);
-      const remaining = qualifiedRows.slice(dailyCap);
+      const riskReviewedRows = qualifiedRows.map((row) => ({ ...row, risk_assessment: assessCareerRisk(row, { now }) }));
+      const lowRiskRows = riskReviewedRows.filter((row) => row.risk_assessment.risk_level === "low");
+      const shortlist = lowRiskRows.slice(0, dailyCap);
+      const shortlistedIds = new Set(shortlist.map((row) => row.id));
+      const remaining = riskReviewedRows.filter((row) => row.risk_assessment.risk_level !== "high" && !shortlistedIds.has(row.id));
       const byStatus = Object.fromEntries(jobCounts.map((row) => [row.status, Number(row.count)]));
       const applicationsByState = Object.fromEntries(
         applicationStates.map((state) => [state, 0]),
@@ -704,8 +708,8 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         applications_by_state: applicationsByState,
         sources: sourceRows,
         shortlist,
-        qualified: remaining.filter((job) => job.eligibility === "eligible"),
-        maybe: remaining.filter((job) => job.eligibility === "unknown"),
+        qualified: remaining.filter((job) => job.eligibility === "eligible" && job.risk_assessment.risk_level === "low"),
+        maybe: remaining.filter((job) => job.eligibility === "unknown" || job.risk_assessment.risk_level === "medium"),
       });
     } catch (error) {
       next(error);
@@ -791,7 +795,8 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         values,
       );
       const hasMore = rows.length > limit;
-      const jobs = hasMore ? rows.slice(0, limit) : rows;
+      const jobs = (hasMore ? rows.slice(0, limit) : rows)
+        .map((job) => ({ ...job, risk_assessment: assessCareerRisk(job, { now }) }));
       res.json({
         jobs,
         nextCursor: hasMore ? String(offset + limit) : null,
@@ -926,6 +931,13 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         if (!settings) return sendMissingTables(res, ["jr_settings (seed row id=1)"]);
 
         const assessment = calculateCareerJobAssessment(job, profile, settings, { now: now() });
+        const riskAssessment = assessCareerRisk(job, { now });
+        if (riskAssessment.risk_level === "high") {
+          return res.status(409).json({
+            error: "This advert has high-risk indicators. Job Radar will not prepare an application packet for it.",
+            risk_assessment: riskAssessment,
+          });
+        }
         if (!profileMatchesCareerTrack(assessment.track, profile.track)) {
           return res.status(409).json({
             error: "The selected master CV does not match this advert's assessed role track. Choose the correct CV profile or update Search Preferences before preparing the packet.",
@@ -965,6 +977,12 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         }
 
         const draft = buildApplicationDraft({ job, profile, assessment, now: now() });
+        const packetWarnings = [
+          ...draft.warnings,
+          ...(riskAssessment.risk_level === "medium"
+            ? [`Risk review required: ${riskAssessment.risk_findings.map((item) => item.evidence).filter(Boolean).join("; ") || riskAssessment.label}`]
+            : []),
+        ];
         const masterResumeSha = createHash("sha256").update(profile.original_text, "utf8").digest("hex");
         const sourceSnapshot = {
           jobId: job.id,
@@ -973,6 +991,8 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
           sourceAttribution: draft.source.sourceAttribution,
           assessmentScore: draft.source.assessmentScore,
           eligibility: draft.source.eligibility,
+          riskLevel: riskAssessment.risk_level,
+          riskAssessment,
           matched: assessment.matched,
           missing: assessment.missing,
           reasonCodes: assessment.reason_codes,
@@ -1008,7 +1028,7 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
             [
               applicationId, job.id, profile.id, version, draft.resumeText, draft.coverLetterText,
               JSON.stringify(draft.highlights), JSON.stringify(draft.missingRequirements),
-              JSON.stringify(draft.warnings), JSON.stringify(sourceSnapshot), masterResumeSha,
+              JSON.stringify(packetWarnings), JSON.stringify(sourceSnapshot), masterResumeSha,
             ],
           );
           packetId = inserted[0]?.id;
@@ -1256,10 +1276,23 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         if (eligibility === "unknown" && !parsed.data.confirm_eligibility) {
           return res.status(409).json({ error: "Confirm that you manually checked location and work-authorization eligibility before sending." });
         }
+        const { rows: riskJobRows } = await db.query(
+          `SELECT title, company, location_text, remote_scope_text, description_text, salary_text, tags, url
+           FROM public.jr_jobs WHERE id = $1`,
+          [packet.job_id],
+        );
+        if (!riskJobRows[0]) return res.status(404).json({ error: "The source advert could not be reloaded for the final safety check." });
+        const currentRisk = assessCareerRisk(riskJobRows[0], { now });
+        if (currentRisk.risk_level === "high") {
+          return res.status(409).json({
+            error: "The current advert has high-risk indicators. Sending is blocked even if an older packet was approved.",
+            risk_assessment: currentRisk,
+          });
+        }
         const warnings = Array.isArray(packet.warnings) ? packet.warnings : [];
         const missingRequirements = Array.isArray(packet.missing_requirements) ? packet.missing_requirements : [];
-        if ((warnings.length || missingRequirements.length) && !parsed.data.confirm_warnings) {
-          return res.status(409).json({ error: "Review the packet warnings and possible missing requirements, then explicitly confirm you understand them." });
+        if ((warnings.length || missingRequirements.length || currentRisk.risk_level === "medium") && !parsed.data.confirm_warnings) {
+          return res.status(409).json({ error: "Review packet warnings, missing requirements, and advert-risk indicators; explicitly confirm you understand them." });
         }
         if (!parsed.data.recipient_email || !packet.resume_text.trim() || !packet.cover_letter_text.trim()) {
           return res.status(422).json({ error: "A recruiter email, tailored CV draft, and cover letter are required." });
