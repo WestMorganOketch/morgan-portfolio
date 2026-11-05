@@ -112,8 +112,11 @@ function safeGreetingName(company) {
 
 export function buildApplicationDraft({ job, profile, assessment = null, now = new Date() } = {}) {
   if (!job || !profile) throw new TypeError("A matched job and verified master CV profile are required.");
-  const masterResume = cleanText(profile.original_text, MAX_RESUME_SOURCE_CHARS);
-  if (masterResume.length < 120) {
+  const masterResume = typeof profile.original_text === "string" ? profile.original_text : "";
+  if (masterResume.length > MAX_RESUME_SOURCE_CHARS) {
+    throw new Error("The saved master CV exceeds the 60,000-character limit. Review the saved original CV before generating an application.");
+  }
+  if (masterResume.trim().length < 120) {
     throw new Error("The master CV is too short to prepare a reliable application. Review the saved original CV first.");
   }
   const title = cleanText(job.title, 200);
@@ -147,11 +150,11 @@ export function buildApplicationDraft({ job, profile, assessment = null, now = n
   ].join("\n").slice(0, MAX_RESUME_SOURCE_CHARS + 5000);
   const topFacts = matchEvidence.length ? matchEvidence.slice(0, 4) : verifiedFactList.slice(0, 4);
   const evidenceSentence = topFacts.length
-    ? `My saved CV and verified profile document ${topFacts.join(", ")}. I have kept the supporting details in my original CV and have not added qualifications or experience beyond that source.`
-    : "I have preserved the full original CV for your review and have not added qualifications or experience that are not documented there.";
+    ? `My background includes ${topFacts.slice(0, 3).join(", ")}, with supporting details in my CV. I have kept the application grounded in that documented experience rather than adding new qualifications or claims.`
+    : "I have kept this application grounded in my original CV and have not added qualifications or experience that are not documented there.";
   const roleContext = highlights.length
-    ? `The role caught my attention because it relates to work documented in my background, including ${highlights.slice(0, 2).map((item) => item.text.replace(/[.]+$/, "")).join("; ")}.`
-    : "I reviewed the role and would value the opportunity to discuss how my documented background may be relevant to your team's needs.";
+    ? `I was interested in this opportunity because it connects with experience documented in my CV, including ${highlights.slice(0, 2).map((item) => item.text.replace(/[.]+$/, "")).join("; ")}.`
+    : "I would welcome the opportunity to discuss how my documented background may fit the team's current needs.";
   const coverLetterText = [
     "Dear Hiring Team,",
     "",
