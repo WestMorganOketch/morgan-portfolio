@@ -1871,8 +1871,19 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
               <div><label htmlFor="career-packet-cap">Daily shortlist cap</label><input id="career-packet-cap" max={5} min={1} onChange={(event) => setSettings({ ...settings, max_packets_per_day: Number(event.target.value) })} type="number" value={settings.max_packets_per_day} /></div>
               <div><label htmlFor="career-send-cap">Daily send cap <span>reserved for later phase</span></label><input id="career-send-cap" max={5} min={1} onChange={(event) => setSettings({ ...settings, max_sends_per_day: Number(event.target.value) })} type="number" value={settings.max_sends_per_day} /></div>
             </div>
-            <label className="career-check"><input checked={settings.show_company_name} onChange={(event) => setSettings({ ...settings, show_company_name: event.target.checked })} type="checkbox" />Show company name in any future public view (off by default)</label>
-            <p className="career-warning">Timezone is fixed to Africa/Nairobi. Public publishing remains disabled in this phase.</p>
+            <fieldset>
+              <legend>Optional public Career Radar snapshot</legend>
+              <label className="career-check">
+                <input checked={settings.public_publishing} onChange={(event) => setSettings({ ...settings, public_publishing: event.target.checked })} type="checkbox" />
+                Allow the separate public snapshot feature after preview and explicit publish confirmation (off by default)
+              </label>
+              <label className="career-check">
+                <input checked={settings.show_company_name} onChange={(event) => setSettings({ ...settings, show_company_name: event.target.checked })} type="checkbox" />
+                Allow eligible employer names in that snapshot (off by default and still subject to each source's redisplay permission)
+              </label>
+              <p className="career-warning">Turning this on does not publish anything by itself. You must generate a preview, check every listing, and explicitly publish it in Sources & automation. The public snapshot excludes CVs, contact details, salary, fit scores, private notes, application status and private documents. Source redistribution permissions still apply.</p>
+            </fieldset>
+            <p className="career-warning">Timezone is fixed to Africa/Nairobi. Enabling public snapshots is a separate, optional opt-in and must not be used to publish material that the source does not allow to be redistributed.</p>
             <button className="button button-primary" disabled={busy} type="submit">Save preferences</button>
           </form>
         ) : null}
