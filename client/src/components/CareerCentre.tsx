@@ -482,6 +482,33 @@ async function request(path: string, csrfToken: string, init?: RequestInit): Pro
   return data;
 }
 
+ 
+async function requestMultipart(path: string, csrfToken: string, body: FormData): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "X-CSRF-Token": csrfToken },
+      body,
+    });
+  } catch {
+    throw new Error("Could not reach the career service. Check your connection and try again.");
+  }
+  const responseText = await response.text();
+  let data: unknown = null;
+  if (responseText) {
+    try { data = JSON.parse(responseText); } catch {
+      throw new Error("The career service returned an unreadable response.");
+    }
+  }
+  if (!response.ok) {
+    throw new Error(isRecord(data) && string(data.error) ? data.error : `The request failed (${response.status}).`);
+  }
+  return data;
+}
+
 function safeHttpUrl(value: string | null): string | null {
   if (!value) return null;
   try {
@@ -782,6 +809,24 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     setApplications(value);
   }, [csrfToken]);
 
+  const loadCareerDocuments = useCallback(async () => {
+    const value = await request("/api/admin/career/documents", csrfToken);
+    if (!Array.isArray(value) || !value.every(isCareerDocument)) {
+      throw new Error("The private document vault returned unexpected data.");
+    }
+    setCareerDocuments(value);
+    setDocumentVaultError("");
+    return value;
+  }, [csrfToken]);
+
+  const loadPublicSnapshotStatus = useCallback(async () => {
+    const value = await request("/api/admin/career/public-snapshot/latest", csrfToken);
+    if (!isPublicSnapshotStatus(value)) throw new Error("Public snapshot status returned unexpected data.");
+    setSnapshotStatus(value);
+    setSnapshotError("");
+    return value;
+  }, [csrfToken]);
+
   // This one-time effect consumes the Gmail OAuth return marker. Its state updates
   // intentionally route the user to setup and show the result of that external redirect.
   /* eslint-disable react-hooks/set-state-in-effect -- navigation callback state is consumed once, then removed from the URL */
@@ -862,7 +907,17 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
           });
         }).catch((cause: unknown) => reportError(cause, "Preferences could not be loaded."));
       }
-      if (tab === "Sources and Setup") void loadSources().catch((cause: unknown) => reportError(cause, "Source settings could not be loaded."));
+      if (tab === "Sources and Setup") {
+        void loadSources().catch((cause: unknown) => reportError(cause, "Source settings could not be loaded."));
+        void loadPublicSnapshotStatus().catch((cause: unknown) => {
+          if (active) setSnapshotError(cause instanceof Error ? cause.message : "Snapshot status could not be loaded.");
+        });
+      }
+      if (tab === "Private documents" || tab === "Application drafts") {
+        void loadCareerDocuments().catch((cause: unknown) => {
+          if (active) setDocumentVaultError(cause instanceof Error ? cause.message : "Private documents could not be loaded.");
+        });
+      }
       if (tab === "Tracker") void loadApplications().catch((cause: unknown) => reportError(cause, "Applications could not be loaded."));
       if (tab === "Application drafts") {
         void Promise.all([loadApplicationPackets(), loadPreparationOptions()]).catch((cause: unknown) =>
@@ -873,7 +928,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [csrfToken, loadApplicationPackets, loadApplications, loadPreparationOptions, loadProfiles, loadReview, loadSources, tab]);
+  }, [csrfToken, loadApplicationPackets, loadApplications, loadCareerDocuments, loadPreparationOptions, loadProfiles, loadPublicSnapshotStatus, loadReview, loadSources, tab]);
 
   async function runAction(action: () => Promise<void>, success?: string) {
     setBusy(true);
