@@ -1991,6 +1991,135 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                 })}
               </div>
             </section>
+            <section className="career-subpanel">
+              <div className="career-review-heading">
+                <div>
+                  <h3>Optional public Career Radar snapshot</h3>
+                  <p>Public output is off by default. Only a reviewed snapshot is served, never the live private queue.</p>
+                </div>
+                <button className="button button-quiet" disabled={busy} onClick={() => void loadPublicSnapshotStatus().catch((cause: unknown) => setSnapshotError(cause instanceof Error ? cause.message : "Snapshot status could not be refreshed."))} type="button">Refresh status</button>
+              </div>
+              {snapshotStatus?.latest ? (
+                <p className="career-packet-success" role="status">
+                  Latest snapshot: {snapshotStatus.latest.job_count} listings · published {readableDate(snapshotStatus.latest.created_at)} by {snapshotStatus.latest.published_by} · fingerprint {snapshotStatus.latest.snapshot_sha256.slice(0, 12)}…
+                </p>
+              ) : (
+                <p className="admin-help">No snapshot has been published. The public endpoint returns an empty, safe response until you explicitly publish a reviewed preview.</p>
+              )}
+              <p className="career-warning">
+                The snapshot excludes CVs, documents, private notes, emails, applications, salary, fit scores, and application statuses. Company names remain hidden unless you separately opt in and the source allows public redistribution. Public listings are not verified endorsements; each original employer page must be checked.
+              </p>
+              {settings.public_publishing ? (
+                <p className="admin-help">Public snapshots are enabled in your saved preferences. This permission does not publish anything by itself.</p>
+              ) : (
+                <p className="career-warning">Publishing is currently disabled in Search preferences. Enable the optional setting and save it before generating a public preview.</p>
+              )}
+              <div className="career-actions">
+                <button className="button button-primary" disabled={busy || !snapshotStatus?.public_publishing_enabled} onClick={() => void previewPublicSnapshot()} type="button">Generate current preview</button>
+                <a className="button button-quiet" href="/api/public/radar" rel="noopener noreferrer" target="_blank">View public snapshot endpoint</a>
+              </div>
+              {snapshotError ? <p className="admin-message admin-error" role="alert">{snapshotError}</p> : null}
+              {snapshotPreview ? (
+                <div className="career-snapshot-preview">
+                  <div className="career-review-heading">
+                    <div>
+                      <h4>Preview · {snapshotPreview.job_count} listings</h4>
+                      <small>Generated {readableDate(snapshotPreview.snapshot.generated_at)} · fingerprint {snapshotPreview.snapshot_sha256}</small>
+                    </div>
+                  </div>
+                  <p className="career-warning">{snapshotPreview.snapshot.verification_notice}</p>
+                  {snapshotPreview.snapshot.jobs.length ? (
+                    <div className="career-job-list">
+                      {snapshotPreview.snapshot.jobs.map((job, index) => (
+                        <article className="career-job-card" key={job.url + "-" + index}>
+                          <div className="career-job-head">
+                            <div>
+                              <h4>{job.title}</h4>
+                              <p>{job.location}{job.remote_scope ? " · " + job.remote_scope : ""}</p>
+                              {job.company ? <p><strong>Employer:</strong> {job.company}</p> : null}
+                              <small>Source: {job.source} · attribution: {job.attribution}</small>
+                            </div>
+                            <a href={safeHttpUrl(job.url) ?? undefined} rel="noopener noreferrer" target="_blank">Verify original listing</a>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : <p className="career-warning">No eligible listings passed source-permission, HTTPS and low-risk checks. Nothing can be published from this preview.</p>}
+                  <label className="career-acknowledgement">
+                    <input checked={confirmSnapshotPublication} onChange={(event) => setConfirmSnapshotPublication(event.target.checked)} type="checkbox" />
+                    I reviewed the exact preview above and explicitly approve publishing these fields as a public snapshot.
+                  </label>
+                  <div className="career-actions">
+                    <button className="button button-primary" disabled={busy || !confirmSnapshotPublication || snapshotPreview.job_count < 1} onClick={() => void publishPublicSnapshot()} type="button">Publish reviewed snapshot</button>
+                    <button className="button button-quiet" disabled={busy} onClick={() => { setSnapshotPreview(null); setConfirmSnapshotPublication(false); setSnapshotError(""); }} type="button">Discard preview</button>
+                  </div>
+                </div>
+              ) : null}
+            </section>
+          </div>
+        ) : null}
+
+        {tab === "Private documents" ? (
+          <div className="career-stack">
+            <section className="career-subpanel">
+              <div className="career-review-heading">
+                <div>
+                  <h3>Encrypted private document vault</h3>
+                  <p>Uploaded files are encrypted by the API before they enter the private storage bucket. The vault starts with no sharing permissions.</p>
+                </div>
+                <button className="button button-quiet" disabled={busy} onClick={() => void loadCareerDocuments().catch((cause: unknown) => setDocumentVaultError(cause instanceof Error ? cause.message : "Private documents could not be refreshed."))} type="button">Refresh vault</button>
+              </div>
+              <p className="career-warning">Uploads are capped at 10 MB and accepted only when the server detects a genuine PDF, PNG or JPG. Uploading never grants permission to attach a file to an email. Use a separate per-document consent action, then approve its release again on the exact email.</p>
+              {documentVaultError ? <p className="admin-message admin-error" role="alert">{documentVaultError}</p> : null}
+              <form className="career-form" onSubmit={(event) => void uploadPrivateDocument(event)}>
+                <label htmlFor="career-document-title">Document title</label>
+                <input id="career-document-title" maxLength={120} minLength={2} required onChange={(event) => setDocumentTitle(event.target.value)} value={documentTitle} />
+                <label htmlFor="career-document-kind">Document category</label>
+                <select id="career-document-kind" onChange={(event) => setDocumentKind(event.target.value as CareerDocument["kind"])} value={documentKind}>
+                  <option value="master_resume">Master CV</option>
+                  <option value="certificate">Certificate</option>
+                  <option value="supporting_document">Supporting document</option>
+                  <option value="employment_record">Employment record</option>
+                </select>
+                <label htmlFor="career-document-file">Choose file <span>PDF, PNG or JPG · maximum 10 MB</span></label>
+                <input id="career-document-file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(event) => setDocumentFile(event.target.files?.[0] ?? null)} required type="file" />
+                {documentFile ? <p className="admin-help">Selected: {documentFile.name} · {(documentFile.size / (1024 * 1024)).toFixed(2)} MB</p> : null}
+                <button className="button button-primary" disabled={busy || !documentTitle.trim() || !documentFile} type="submit">Encrypt and store privately</button>
+              </form>
+            </section>
+            <section className="career-subpanel">
+              <div className="career-review-heading">
+                <div><h3>Saved private documents</h3><p>{careerDocuments.length} active files · list reads metadata only</p></div>
+              </div>
+              {careerDocuments.length ? careerDocuments.map((item) => (
+                <article className="career-profile-row" key={item.id}>
+                  <div>
+                    <strong>{item.title}</strong>
+                    <p>{item.kind.replaceAll("_", " ")} · {item.original_filename}</p>
+                    <small>{(item.byte_size / (1024 * 1024)).toFixed(2)} MB · added {readableDate(item.created_at)} · integrity fingerprint {item.plaintext_sha256.slice(0, 12)}…</small>
+                    {item.application_email_consent ? (
+                      <p className="career-packet-success">Application-email release consent is currently granted. The send flow still requires selecting this PDF and confirming its release for that exact email.</p>
+                    ) : (
+                      <p className="admin-help">No active application-email release consent.</p>
+                    )}
+                    {item.content_type !== "application/pdf" || item.byte_size > 5 * 1024 * 1024 ? (
+                      <p className="career-warning">This file cannot be attached to application email; only PDFs up to 5 MB are supported for attachments.</p>
+                    ) : null}
+                  </div>
+                  <div className="career-actions">
+                    <button className="button button-quiet" disabled={busy} onClick={() => void downloadPrivateDocument(item)} type="button">Download original</button>
+                    {item.content_type === "application/pdf" && item.byte_size <= 5 * 1024 * 1024 ? (
+                      item.application_email_consent ? (
+                        <button className="button button-quiet delete-action" disabled={busy} onClick={() => void updatePrivateDocumentConsent(item, "revoked")} type="button">Revoke email consent</button>
+                      ) : (
+                        <button className="button button-quiet" disabled={busy} onClick={() => void updatePrivateDocumentConsent(item, "granted")} type="button">Grant email consent</button>
+                      )
+                    ) : null}
+                    <button className="button button-quiet delete-action" disabled={busy} onClick={() => void archivePrivateDocument(item)} type="button">Archive</button>
+                  </div>
+                </article>
+              )) : <p className="admin-help">No active private documents yet. Start with your master CV or a certificate you may need later.</p>}
+            </section>
           </div>
         ) : null}
 
