@@ -48,8 +48,8 @@ function parseRequest(schema, input) {
 
 async function checkTables(db) {
   const { rows } = await db.query(
-    \`SELECT table_name FROM information_schema.tables
-     WHERE table_schema = 'public' AND table_name = ANY($1::text[])\`,
+    `SELECT table_name FROM information_schema.tables
+     WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
     [["jr_career_documents", "jr_career_document_consents"]],
   );
   const found = new Set(rows.map((row) => row.table_name));
