@@ -291,7 +291,7 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
   const admin = express.Router();
   admin.use(noStore, requireAdmin);
   registerCareerDocumentRoutes(admin, db, { requireSameOrigin, requireCsrfToken, service: documentService });
-  registerPublicCareerSnapshotRoutes(app, admin, db, { now });
+  registerPublicCareerSnapshotRoutes(app, admin, db, { now, requireSameOrigin, requireCsrfToken });
 
   const scheduleAssessmentRerun = () => {
     setTimeout(() => {
