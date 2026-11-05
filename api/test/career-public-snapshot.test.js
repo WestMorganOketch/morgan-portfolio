@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { once } from "node:events";
+import express from "express";
 import test from "node:test";
-import { buildPublicCareerSnapshot, sanitizePublishedCareerSnapshot } from "../src/careerPublicSnapshot.js";
+import { buildPublicCareerSnapshot, registerPublicCareerSnapshotRoutes, sanitizePublishedCareerSnapshot } from "../src/careerPublicSnapshot.js";
 
 const now = () => new Date("2026-11-05T15:00:00.000Z");
 
@@ -96,4 +98,68 @@ test("public serializer strips all fields outside the explicit allowlist", () =>
   assert.equal("resume_text" in sanitized.jobs[0], false);
   assert.equal("private_notes" in sanitized, false);
   assert.equal("signed_url" in sanitized.jobs[0], false);
+});
+
+
+test("snapshot preview and publish require same-origin CSRF and stale previews are rejected", async () => {
+  const baseDb = dbFixture();
+  const db = {
+    async query(statement, values = []) {
+      if (statement.includes("information_schema.tables")) return { rows: [{ table_name: "jr_public_snapshots" }] };
+      return baseDb.query(statement, values);
+    },
+    async connect() { throw new Error("A stale preview must not reach snapshot insertion."); },
+  };
+  const app = express();
+  app.use(express.json());
+  const admin = express.Router();
+  admin.use((req, res, next) => {
+    if (req.get("x-test-admin") !== "yes") return res.status(401).json({ error: "Sign in required." });
+    req.adminSession = { email: "morgan@example.test" };
+    next();
+  });
+  const requireSameOrigin = (req, res, next) => {
+    if (req.get("origin") !== "http://localhost:3000") return res.status(403).json({ error: "Origin rejected." });
+    next();
+  };
+  const requireCsrfToken = (req, res, next) => {
+    if (req.get("x-csrf-token") !== "test-csrf") return res.status(403).json({ error: "CSRF rejected." });
+    next();
+  };
+  registerPublicCareerSnapshotRoutes(app, admin, db, { now, requireSameOrigin, requireCsrfToken });
+  app.use("/api/admin/career", admin);
+  const server = app.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  try {
+    const noOrigin = await fetch("http://127.0.0.1:" + address.port + "/api/admin/career/public-snapshot/preview", {
+      method: "POST",
+      headers: { "x-test-admin": "yes", "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(noOrigin.status, 403);
+
+    const noCsrf = await fetch("http://127.0.0.1:" + address.port + "/api/admin/career/public-snapshot/preview", {
+      method: "POST",
+      headers: { "x-test-admin": "yes", origin: "http://localhost:3000", "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(noCsrf.status, 403);
+
+    const stale = await fetch("http://127.0.0.1:" + address.port + "/api/admin/career/public-snapshot/publish", {
+      method: "POST",
+      headers: {
+        "x-test-admin": "yes",
+        origin: "http://localhost:3000",
+        "x-csrf-token": "test-csrf",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ confirmed: true, snapshot_sha256: "a".repeat(64) }),
+    });
+    assert.equal(stale.status, 409);
+    assert.match((await stale.json()).error, /preview changed or is stale/i);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
 });
