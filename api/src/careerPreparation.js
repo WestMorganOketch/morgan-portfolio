@@ -83,7 +83,9 @@ function relevantSourceLines(masterResume, job, factTerms) {
   const ranked = lines.map((line, index) => {
     const result = scoreSourceLine(line, roleTerms, factTerms);
     return { line: line.trim(), index, ...result };
-  }).filter((entry) => entry.score >= MIN_HIGHLIGHT_SCORE && entry.line.length > 24);
+  }).filter((entry) => entry.score >= MIN_HIGHLIGHT_SCORE
+    && entry.line.length > 24
+    && entry.line.length <= 500);
   ranked.sort((a, b) => b.score - a.score || a.index - b.index);
   const selected = ranked.slice(0, MAX_HIGHLIGHTS).sort((a, b) => a.index - b.index);
   const unique = [];
