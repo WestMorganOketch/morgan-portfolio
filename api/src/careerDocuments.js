@@ -151,7 +151,7 @@ export function createCareerDocumentService({
 
   async function list() {
     const { rows } = await db.query(
-      \`SELECT d.id, d.title, d.kind, d.original_filename, d.content_type,
+      `SELECT d.id, d.title, d.kind, d.original_filename, d.content_type,
               d.byte_size, d.plaintext_sha256, d.created_at,
               COALESCE(app.action = 'granted', false) AS application_email_consent,
               COALESCE(pub.action = 'granted', false) AS public_profile_consent
@@ -168,7 +168,7 @@ export function createCareerDocumentService({
        ) AS pub ON true
        WHERE d.archived_at IS NULL
        ORDER BY d.created_at DESC, d.id
-       LIMIT 100\`,
+       LIMIT 100`,
     );
     return rows;
   }
@@ -189,13 +189,13 @@ export function createCareerDocumentService({
     if (uploadResult.error) throw new Error("The encrypted document could not be stored privately.");
     try {
       const { rows } = await db.query(
-        \`INSERT INTO public.jr_career_documents
+        `INSERT INTO public.jr_career_documents
           (id, title, kind, original_filename, content_type, byte_size, storage_path,
            encryption_iv, encryption_tag, plaintext_sha256, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING id, title, kind, original_filename, content_type, byte_size,
                    plaintext_sha256, created_at, false AS application_email_consent,
-                   false AS public_profile_consent\`,
+                   false AS public_profile_consent`,
         [id, value.title, value.kind, value.originalFilename, value.contentType,
           encrypted.byte_size, storagePath, encrypted.encryption_iv,
           encrypted.encryption_tag, encrypted.plaintext_sha256, now()],
@@ -211,10 +211,10 @@ export function createCareerDocumentService({
   async function download(id) {
     await ensurePrivateBucket();
     const { rows } = await db.query(
-      \`SELECT id, original_filename, content_type, byte_size, storage_path,
+      `SELECT id, original_filename, content_type, byte_size, storage_path,
               encryption_iv, encryption_tag, plaintext_sha256
        FROM public.jr_career_documents
-       WHERE id = $1 AND archived_at IS NULL\`,
+       WHERE id = $1 AND archived_at IS NULL`,
       [id],
     );
     const row = rows[0];
@@ -242,12 +242,12 @@ export function createCareerDocumentService({
       throw new TypeError("Explicit acknowledgement is required before granting document release consent.");
     }
     const { rows } = await db.query(
-      \`INSERT INTO public.jr_career_document_consents
+      `INSERT INTO public.jr_career_document_consents
         (document_id, purpose, action, actor, acknowledgement, created_at)
        SELECT id, $2, $3, $4, $5, $6
        FROM public.jr_career_documents
        WHERE id = $1 AND archived_at IS NULL
-       RETURNING id, document_id, purpose, action, actor, acknowledgement, created_at\`,
+       RETURNING id, document_id, purpose, action, actor, acknowledgement, created_at`,
       [id, purpose, action, cleanActor, cleanAcknowledgement, now()],
     );
     if (!rows[0]) return null;
@@ -256,10 +256,10 @@ export function createCareerDocumentService({
 
   async function archive(id) {
     const { rows } = await db.query(
-      \`UPDATE public.jr_career_documents
+      `UPDATE public.jr_career_documents
        SET archived_at = $2
        WHERE id = $1 AND archived_at IS NULL
-       RETURNING id, title, archived_at\`,
+       RETURNING id, title, archived_at`,
       [id, now()],
     );
     return rows[0] ?? null;
