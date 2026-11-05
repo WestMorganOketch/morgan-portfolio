@@ -123,3 +123,11 @@ Phase 0 findings are retained as a record. Phase 1 and Phase 2 are recorded belo
 3. Apply only the additive career SQL through the explicitly operated migration procedure after confirming a backup and the target environment. Do not execute migration SQL automatically at server startup.
 4. Configure `JOB_CRON_SECRET` and `CAREER_API_BASE_URL` for the scheduled workflow, and verify the API URL is your intended HTTPS API origin. Configure Gmail OAuth redirect/client values and `DOC_ENCRYPTION_KEY` server-side if you choose to enable application preparation/send.
 5. The encrypted document vault, approved public snapshot/publishing flow, full deployment/rollback handoff, and live end-to-end verification remain separate work. Do not treat this risk-screening PR as completion of those phases.
+
+
+## Latest quality follow-up (5 November 2026)
+
+- Risk-screening fix: payment-demand matching now stops at contrast clauses (`but`, `however`, etc.) so an earlier anti-scam disclaimer cannot suppress a later payment demand. The public CI run for the prior commit failed this regression test; a fresh passing run is required before calling it resolved.
+
+- The latest observed CI run had client lint, type-check, and production build passing; API lint passed, but 1 of 111 API tests failed in `api/test/career-risk.test.js`. Re-run quality checks after the fix.
+- The current branch is not merged or deployed. Database migrations, cron secrets, Gmail OAuth, the encryption key, and live end-to-end scan remain owner-controlled release steps.
