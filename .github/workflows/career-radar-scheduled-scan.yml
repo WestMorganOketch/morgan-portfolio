@@ -32,10 +32,24 @@ jobs:
             echo "configured=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          case "$CAREER_API_BASE_URL" in
-            https://*) ;;
-            *) echo "::error::CAREER_API_BASE_URL must be an HTTPS origin."; exit 1 ;;
-          esac
+          node <<'NODE'
+          const { isIP } = require("node:net");
+          let url;
+          try {
+            url = new URL(process.env.CAREER_API_BASE_URL);
+          } catch {
+            console.error("::error::CAREER_API_BASE_URL is not a valid URL.");
+            process.exit(1);
+          }
+          const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+          const localHost = host === "localhost" || host.endsWith(".localhost")
+            || host.endsWith(".local") || host.endsWith(".internal");
+          if (url.protocol !== "https:" || !host || url.username || url.password
+              || url.pathname !== "/" || url.search || url.hash || isIP(host) || localHost) {
+            console.error("::error::CAREER_API_BASE_URL must be a public HTTPS origin only, without credentials, path, query, or fragment.");
+            process.exit(1);
+          }
+          NODE
           echo "configured=true" >> "$GITHUB_OUTPUT"
 
       - name: Request scheduled scan
