@@ -316,8 +316,8 @@ test("assessment filters and rerun route stay admin-protected and reruns profile
 
 test("setup reports only secret configuration booleans and safe metadata", async () => {
   const secretNames = [
-    "JOB_CRON_SECRET", "DOC_ENCRYPTION_KEY", "GMAIL_USER", "GMAIL_APP_PASSWORD",
-    "GEMINI_API_KEY", "JOOBLE_API_KEY", "CAREERJET_API_KEY", "RELIEFWEB_APPNAME",
+    "JOB_CRON_SECRET", "DOC_ENCRYPTION_KEY", "GMAIL_OAUTH_CLIENT_ID",
+    "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REDIRECT_URI",
   ];
   const previous = new Map(secretNames.map((name) => [name, process.env[name]]));
   const previousSendMode = process.env.JR_SEND_MODE;
