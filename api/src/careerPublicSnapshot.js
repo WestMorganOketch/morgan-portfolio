@@ -163,7 +163,7 @@ function publicUnavailable(res) {
   return res.json({ published: false, updated_at: null, snapshot_sha256: null, schema_version: 1, verification_notice: verificationNotice, jobs: [] });
 }
 
-export function registerPublicCareerSnapshotRoutes(app, admin, db, { now = () => new Date() } = {}) {
+export function registerPublicCareerSnapshotRoutes(app, admin, db, { now = () => new Date(), requireSameOrigin, requireCsrfToken } = {}) {
   admin.get("/public-snapshot/latest", async (_req, res, next) => {
     try {
       if (!await snapshotTablesExist(db)) return missingSnapshotResponse(res);
@@ -181,7 +181,7 @@ export function registerPublicCareerSnapshotRoutes(app, admin, db, { now = () =>
     }
   });
 
-  admin.post("/public-snapshot/preview", async (_req, res, next) => {
+  admin.post("/public-snapshot/preview", requireSameOrigin, requireCsrfToken, async (_req, res, next) => {
     try {
       if (!await snapshotTablesExist(db)) return missingSnapshotResponse(res);
       const preview = await buildPublicCareerSnapshot(db, { now });
@@ -194,7 +194,7 @@ export function registerPublicCareerSnapshotRoutes(app, admin, db, { now = () =>
     }
   });
 
-  admin.post("/public-snapshot/publish", async (req, res, next) => {
+  admin.post("/public-snapshot/publish", requireSameOrigin, requireCsrfToken, async (req, res, next) => {
     const body = req.body;
     if (!body || typeof body !== "object" || Array.isArray(body)
         || body.confirmed !== true
