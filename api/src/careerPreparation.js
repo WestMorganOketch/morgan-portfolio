@@ -246,7 +246,7 @@ function wrapLine(value, max = 92) {
 
 export function createTextPdf({ title, text, generatedAt = new Date() } = {}) {
   const cleanedTitle = cleanText(title, 160) || "Application document";
-  const cleanedText = cleanText(text, 60_000);
+  const cleanedText = cleanText(text, MAX_RESUME_SOURCE_CHARS + 5000);
   if (!cleanedText) throw new TypeError("Cannot create a PDF from empty text.");
   const lines = [];
   for (const rawLine of cleanedText.split(/\r?\n/)) lines.push(...wrapLine(rawLine, 92));
