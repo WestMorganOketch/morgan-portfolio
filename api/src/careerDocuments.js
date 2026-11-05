@@ -156,18 +156,13 @@ export function createCareerDocumentService({
       `SELECT d.id, d.title, d.kind, d.original_filename, d.content_type,
               d.byte_size, d.plaintext_sha256, d.created_at,
               COALESCE(app.action = 'granted', false) AS application_email_consent,
-              COALESCE(pub.action = 'granted', false) AS public_profile_consent
+              false AS public_profile_consent
        FROM public.jr_career_documents AS d
        LEFT JOIN LATERAL (
          SELECT action FROM public.jr_career_document_consents
          WHERE document_id = d.id AND purpose = 'application_email'
          ORDER BY created_at DESC, id DESC LIMIT 1
        ) AS app ON true
-       LEFT JOIN LATERAL (
-         SELECT action FROM public.jr_career_document_consents
-         WHERE document_id = d.id AND purpose = 'public_profile'
-         ORDER BY created_at DESC, id DESC LIMIT 1
-       ) AS pub ON true
        WHERE d.archived_at IS NULL
        ORDER BY d.created_at DESC, d.id
        LIMIT 100`,
@@ -177,11 +172,12 @@ export function createCareerDocumentService({
 
   async function upload(input) {
     const value = validateCareerDocumentMetadata(input);
-    await ensurePrivateBucket();
     const id = idFactory();
+    // Fail on a missing/invalid key before creating or contacting the storage bucket.
     const encrypted = encryptCareerDocument(value.buffer, env.DOC_ENCRYPTION_KEY, {
       documentId: id, contentType: value.contentType,
     });
+    await ensurePrivateBucket();
     const storagePath = id + ".enc";
     const uploadResult = await storage.storage.from(bucketName).upload(
       storagePath,
