@@ -6,6 +6,7 @@ export const publicPages = [
   { href: "/skills", label: "Skills", description: "Technical skills and current learning." },
   { href: "/experience", label: "Experience", description: "Teaching, support, and IT experience." },
   { href: "/projects", label: "Projects", description: "Selected work and public GitHub projects." },
+  { href: "/resume", label: "Résumé", description: "Read Morgan West Oketch's résumé or download the ATS-ready PDF." },
   { href: "/education", label: "Education", description: "Academic background and learning." },
   { href: "/certifications", label: "Certifications", description: "Completed programs and training." },
   { href: "/timeline", label: "Timeline", description: "Education, work, and project milestones." },

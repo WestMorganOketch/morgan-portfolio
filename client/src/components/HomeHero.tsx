@@ -564,7 +564,7 @@ export default function HomeHero() {
           <div className="role-line">I work as a <AnimatedRole /></div>
           <p className="hero-summary">{profile.summary}</p>
           <div className="hero-actions">
-            <Link className="button button-primary" href="/documents">
+            <Link className="button button-primary" href="/resume">
               View résumé &amp; documents <ArrowDown size={15} aria-hidden="true" />
             </Link>
             <Link className="button button-quiet" href="/projects">Explore projects <ArrowRight size={15} aria-hidden="true" /></Link>
