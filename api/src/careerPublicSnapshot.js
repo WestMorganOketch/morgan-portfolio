@@ -69,7 +69,7 @@ export async function buildPublicCareerSnapshot(db, { now = () => new Date() } =
   }
 
   const { rows } = await db.query(
-    \`SELECT j.id, j.title, j.company, j.location_text, j.remote_scope_text,
+    `SELECT j.id, j.title, j.company, j.location_text, j.remote_scope_text,
             j.description_text, j.salary_text, j.tags, j.url, j.posted_at,
             j.first_seen_at, j.status, s.key AS source_key, s.name AS source_name,
             s.attribution_text, s.public_redisplay_allowed
@@ -80,7 +80,7 @@ export async function buildPublicCareerSnapshot(db, { now = () => new Date() } =
        AND j.url IS NOT NULL
        AND j.status NOT IN ('duplicate', 'expired', 'not_a_fit', 'passed', 'closed', 'blocked_risk')
      ORDER BY COALESCE(j.posted_at, j.first_seen_at) DESC, j.id
-     LIMIT 500\`,
+     LIMIT 500`,
   );
   const publicJobs = [];
   const seen = new Set();
@@ -144,8 +144,8 @@ export function sanitizePublishedCareerSnapshot(value) {
 
 async function snapshotTablesExist(db) {
   const { rows } = await db.query(
-    \`SELECT table_name FROM information_schema.tables
-     WHERE table_schema = 'public' AND table_name = ANY($1::text[])\`,
+    `SELECT table_name FROM information_schema.tables
+     WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
     [[snapshotTable]],
   );
   return rows.some((row) => row.table_name === snapshotTable);
@@ -168,9 +168,9 @@ export function registerPublicCareerSnapshotRoutes(app, admin, db, { now = () =>
     try {
       if (!await snapshotTablesExist(db)) return missingSnapshotResponse(res);
       const { rows } = await db.query(
-        \`SELECT id, snapshot_sha256, job_count, published_by, created_at
+        `SELECT id, snapshot_sha256, job_count, published_by, created_at
          FROM public.jr_public_snapshots
-         ORDER BY created_at DESC, id DESC LIMIT 1\`,
+         ORDER BY created_at DESC, id DESC LIMIT 1`,
       );
       res.json({
         public_publishing_enabled: (await db.query("SELECT public_publishing FROM public.jr_settings WHERE id = 1")).rows[0]?.public_publishing === true,
@@ -217,16 +217,16 @@ export function registerPublicCareerSnapshotRoutes(app, admin, db, { now = () =>
       try {
         await client.query("BEGIN");
         const { rows } = await client.query(
-          \`INSERT INTO public.jr_public_snapshots
+          `INSERT INTO public.jr_public_snapshots
             (snapshot_json, snapshot_sha256, job_count, published_by, created_at)
            VALUES ($1::jsonb, $2, $3, $4, $5)
-           RETURNING id, snapshot_sha256, job_count, published_by, created_at\`,
+           RETURNING id, snapshot_sha256, job_count, published_by, created_at`,
           [JSON.stringify(current.snapshot), current.snapshot_sha256, current.job_count, actor, now()],
         );
         resultRow = rows[0];
         await client.query(
-          \`INSERT INTO public.jr_audit_events (actor, action, detail)
-           VALUES ($1, 'career.public_snapshot_published', $2::jsonb)\`,
+          `INSERT INTO public.jr_audit_events (actor, action, detail)
+           VALUES ($1, 'career.public_snapshot_published', $2::jsonb)`,
           [actor, JSON.stringify({ snapshot_id: resultRow.id, snapshot_sha256: resultRow.snapshot_sha256, job_count: resultRow.job_count })],
         );
         await client.query("COMMIT");
@@ -250,9 +250,9 @@ export function registerPublicCareerSnapshotRoutes(app, admin, db, { now = () =>
     try {
       if (!await snapshotTablesExist(db)) return publicUnavailable(res);
       const { rows } = await db.query(
-        \`SELECT snapshot_json, snapshot_sha256, created_at
+        `SELECT snapshot_json, snapshot_sha256, created_at
          FROM public.jr_public_snapshots
-         ORDER BY created_at DESC, id DESC LIMIT 1\`,
+         ORDER BY created_at DESC, id DESC LIMIT 1`,
       );
       if (!rows[0]) return publicUnavailable(res);
       const snapshot = sanitizePublishedCareerSnapshot(rows[0].snapshot_json);
