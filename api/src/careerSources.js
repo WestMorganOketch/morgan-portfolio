@@ -50,18 +50,34 @@ const defaultRoleTracks = Object.freeze([
 
 export function buildCareerSearchTerms(roleTracks = defaultRoleTracks) {
   const terms = [];
+  const add = (value) => {
+    const clean = stripHtml(String(value ?? ""), 80).replace(/\s+/g, " ").trim();
+    if (clean && !terms.some((item) => item.toLowerCase() === clean.toLowerCase())) terms.push(clean);
+  };
   for (const track of roleTracks) {
     const clean = stripHtml(String(track ?? ""), 80).replace(/\s+/g, " ").trim();
     const normalized = clean.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
     if (!normalized) continue;
-    const query = /security|cyber|soc/.test(normalized)
-      ? "security analyst"
-      : /trainer|training|ict|computer skills|digital skills|instructor/.test(normalized)
-        ? "ict trainer"
-        : clean;
-    if (!terms.some((item) => item.toLowerCase() === query.toLowerCase())) terms.push(query);
+    if (normalized === "security analyst soc") {
+      add("security analyst");
+      add("soc analyst");
+    } else if (normalized === "computer skills ict trainer") {
+      add("ict trainer");
+      add("computer skills trainer");
+    } else {
+      add(clean);
+      if (/security|cyber|soc/.test(normalized)) {
+        add("security analyst");
+        add("soc analyst");
+        add("cybersecurity analyst");
+      } else if (/trainer|training|ict|computer skills|digital skills|instructor/.test(normalized)) {
+        add("ict trainer");
+        add("computer skills trainer");
+        add("digital skills trainer");
+      }
+    }
   }
-  return (terms.length ? terms : ["security analyst", "ict trainer"]).slice(0, 10);
+  return (terms.length ? terms : ["security analyst", "ict trainer"]).slice(0, 30);
 }
 
 function validSearchTerm(value) {
