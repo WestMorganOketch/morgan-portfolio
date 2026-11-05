@@ -99,5 +99,27 @@ Phase 0 findings are retained as a record. Phase 1 and Phase 2 are recorded belo
 ## Phase 4 status
 
 - Added the private admin Career Centre, including overview, review queues, import, profile and preference management, source setup, and the application tracker.
-- Added the additive application/event SQL, protected tracker and review-status operations, and a Nairobi-day shortlist capped by the saved daily limit; risk remains explicitly unassessed.
+- Added the additive application/event SQL, protected tracker and review-status operations, and a Nairobi-day shortlist capped by the saved daily limit.
+- Advert risk screening is now integrated into the private job list and overview; high-risk adverts are excluded from the automatic shortlist and blocked during packet preparation and the final send check. The screen remains explicitly rule-based and does not verify employer legitimacy or fetch listing URLs.
 - No SQL was applied and no production database, source, application submission, or external service was accessed.
+
+## Advert-risk integration status (5 November 2026)
+
+- Added `api/src/careerRisk.js` for bounded, deterministic screening of already-ingested job data. It identifies explicit candidate-payment requests, requests for passwords/one-time codes, unrealistic offers, chat-only recruitment channels, unidentified employers, shortened links, missing URLs, non-HTTPS links, and unsafe URL syntax/private IP literals.
+- The result includes evidence, severity, confidence, timestamp, and unresolved verification questions. Anti-scam disclaimers are checked so their warnings are not automatically mistaken for demands; later, separately stated demands must still be detected.
+- Only adverts assessed as both location/work-authorization eligible and low-risk enter the daily shortlist. Unknown eligibility and medium-risk adverts remain in a review queue. High-risk adverts cannot have application packets prepared or sent through the protected workflow, including when a prior packet exists.
+- The URL check is intentionally static and makes no network request. `dns_ok`, HTTP status, redirect count, and domain age remain unset/false; a low-risk result means only that these rules found no obvious flag, not that the vacancy or employer is verified. Review the employer's own careers page before applying.
+
+## Phase 6 status — preparation and controlled send
+
+- The feature branch includes additive migration `api/migrations/008_career_preparation.sql`, draft generation from the selected master CV and recorded profile facts, versioned application packets, PDF generation, Gmail OAuth connection handling, and a final-click send endpoint.
+- The Gmail integration requests only OpenID/email and Gmail send scope, encrypts refresh tokens with the configured `DOC_ENCRYPTION_KEY`, and is disabled for live sending unless `JR_SEND_MODE=live`. The final send path requires the reviewed packet version and applicable eligibility/warning confirmations, enforces limits, and records send outcomes. Ambiguous outcomes are not automatically retried.
+- This is implementation-branch status, not a production deployment claim. The migration has not been applied, Gmail has not been connected, no credential was configured by the agent, and no email has been sent. Keep sending in draft mode until the owner has configured secrets, tested OAuth, and reviewed the generated documents.
+
+## Remaining owner-controlled release gates
+
+1. Rotate/revoke the historical database credential already identified in Phase 0, then check provider access and any related secrets. Do not paste values into chat or commit history.
+2. Review the feature PR and its final quality checks before merging; the feature branch has not been merged to `main`.
+3. Apply only the additive career SQL through the explicitly operated migration procedure after confirming a backup and the target environment. Do not execute migration SQL automatically at server startup.
+4. Configure `JOB_CRON_SECRET` and `CAREER_API_BASE_URL` for the scheduled workflow, and verify the API URL is your intended HTTPS API origin. Configure Gmail OAuth redirect/client values and `DOC_ENCRYPTION_KEY` server-side if you choose to enable application preparation/send.
+5. The encrypted document vault, approved public snapshot/publishing flow, full deployment/rollback handoff, and live end-to-end verification remain separate work. Do not treat this risk-screening PR as completion of those phases.
