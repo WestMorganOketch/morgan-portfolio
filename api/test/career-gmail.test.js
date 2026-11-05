@@ -33,6 +33,7 @@ function oauthDb() {
     stateRows,
     writes,
     get credential() { return credential; },
+    set credential(value) { credential = value; },
     async query(sql, values = []) {
       const statement = sql.replace(/\s+/g, " ").trim();
       if (statement.startsWith("DELETE FROM public.jr_gmail_oauth_states WHERE expires_at")) {
