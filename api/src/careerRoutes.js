@@ -184,6 +184,47 @@ function applicationPacketResponse(row) {
   };
 }
 
+function normalizedRole(value) {
+  return String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function profileMatchesCareerTrack(track, profileTrack) {
+  if (!track || !profileTrack) return false;
+  const normalizedTrack = normalizedRole(track);
+  const normalizedProfile = normalizedRole(profileTrack);
+  if (normalizedTrack === normalizedProfile) return true;
+  if (track === "Security Analyst/SOC") return /(security|soc|cyber)/.test(normalizedProfile);
+  if (track === "Computer Skills/ICT Trainer") return /(computer|ict|trainer|training|digital skills)/.test(normalizedProfile);
+  return false;
+}
+
+const applicationPacketSelect = `
+  SELECT p.*, a.state AS application_state,
+         j.title, j.company, j.location_text, j.url AS application_url,
+         s.name AS source_name, rp.name AS profile_name, rp.track AS profile_track
+  FROM public.jr_application_packets AS p
+  JOIN public.jr_applications AS a ON a.id = p.application_id
+  JOIN public.jr_jobs AS j ON j.id = p.job_id
+  LEFT JOIN public.jr_sources AS s ON s.key = j.source_key
+  JOIN public.jr_resume_profiles AS rp ON rp.id = p.source_profile_id
+`;
+
+async function findApplicationPacket(db, id) {
+  const { rows } = await db.query(`${applicationPacketSelect} WHERE p.id = $1 LIMIT 1`, [id]);
+  return rows[0] ?? null;
+}
+
+async function findLatestApplicationPacket(db, applicationId) {
+  const { rows } = await db.query(
+    `${applicationPacketSelect}
+     WHERE p.application_id = $1
+     ORDER BY p.version DESC
+     LIMIT 1`,
+    [applicationId],
+  );
+  return rows[0] ?? null;
+}
+
 function redirectToCareerCentre(res, query) {
   const allowedOrigin = (process.env.WEB_ORIGINS ?? "").split(",").map((value) => value.trim()).find(Boolean);
   let target;
