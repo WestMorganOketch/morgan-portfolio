@@ -9,6 +9,7 @@ import {
   beginGmailOAuth,
   completeGmailOAuth,
   disconnectGmail,
+  getGmailSendAccessToken,
   gmailConnectionStatus,
   sendGmailMessage,
 } from "./careerGmail.js";
@@ -1285,8 +1286,9 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
           }
           const { rows: sentCountRows } = await client.query(
             `SELECT count(*)::integer AS count FROM public.jr_application_packets
-             WHERE sent_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Nairobi')
-               AND sent_at < (($1::date + 1)::timestamp AT TIME ZONE 'Africa/Nairobi')`,
+             WHERE send_attempted_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Nairobi')
+               AND send_attempted_at < (($1::date + 1)::timestamp AT TIME ZONE 'Africa/Nairobi')
+               AND status IN ('sending', 'sent', 'needs_manual_attention')`,
             [today],
           );
           const sendsToday = Number(sentCountRows[0]?.count ?? 0);
@@ -1295,9 +1297,9 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
             return res.status(429).json({ error: "The daily send cap has been reached. Review and send another day." });
           }
           const { rows: lastSentRows } = await client.query(
-            "SELECT sent_at FROM public.jr_application_packets WHERE sent_at IS NOT NULL ORDER BY sent_at DESC LIMIT 1",
+            "SELECT send_attempted_at FROM public.jr_application_packets WHERE send_attempted_at IS NOT NULL ORDER BY send_attempted_at DESC LIMIT 1",
           );
-          if (lastSentRows[0]?.sent_at && now().getTime() - new Date(lastSentRows[0].sent_at).getTime() < 60_000) {
+          if (lastSentRows[0]?.send_attempted_at && now().getTime() - new Date(lastSentRows[0].send_attempted_at).getTime() < 60_000) {
             await client.query("ROLLBACK");
             return res.status(429).json({ error: "Wait at least 60 seconds between application emails." });
           }
