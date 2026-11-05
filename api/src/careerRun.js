@@ -1,5 +1,5 @@
 import { createCareerAssessmentService } from "./careerAssessment.js";
-import { fetchCareerSource, jobicyQueryTerms, remotiveQueryTerms, stripHtml } from "./careerSources.js";
+import { buildCareerSearchTerms, fetchCareerSource, stripHtml } from "./careerSources.js";
 import { saveCareerJob } from "./careerImport.js";
 
 const runBudgetMs = 4 * 60 * 1000;
@@ -203,16 +203,23 @@ export function createCareerRunService({
     if (missing.length) {
       throw new Error(`Career intake tables are missing: ${missing.join(", ")}. Run docs/career-automation/sql/phase-2.sql.`);
     }
-    const { rows: sources } = await db.query(
-      `SELECT s.key, s.name, s.enabled, s.private_use_allowed, s.min_interval_seconds,
-              s.max_requests_per_day, st.last_attempt_at, st.last_success_at,
-              st.last_status, st.consecutive_failures, st.requests_today,
-              st.window_date, st.next_allowed_at
-       FROM public.jr_sources AS s
-       LEFT JOIN public.jr_source_state AS st ON st.source_key = s.key
-       WHERE s.enabled = true
-       ORDER BY s.key`,
-    );
+    const [{ rows: sources }, { rows: settingRows }] = await Promise.all([
+      db.query(
+        `SELECT s.key, s.name, s.enabled, s.private_use_allowed, s.min_interval_seconds,
+                s.max_requests_per_day, st.last_attempt_at, st.last_success_at,
+                st.last_status, st.consecutive_failures, st.requests_today,
+                st.window_date, st.next_allowed_at
+         FROM public.jr_sources AS s
+         LEFT JOIN public.jr_source_state AS st ON st.source_key = s.key
+         WHERE s.enabled = true
+         ORDER BY s.key`,
+      ),
+      db.query("SELECT role_tracks FROM public.jr_settings WHERE id = 1"),
+    ]);
+    const roleTracks = Array.isArray(settingRows[0]?.role_tracks)
+      ? settingRows[0].role_tracks.filter((value) => typeof value === "string" && value.trim()).slice(0, 10)
+      : [];
+    const searchTerms = buildCareerSearchTerms(roleTracks);
     const summary = {};
     for (const source of sources) {
       const entry = emptySummary();
@@ -258,11 +265,9 @@ export function createCareerRunService({
         remainingRequests--;
         await recordRequest(source.key, today, minimumDelaySeconds);
       };
-      const queryTerm = source.key === "jobicy"
-        ? jobicyQueryTerms[used % jobicyQueryTerms.length]
-        : source.key === "remotive"
-          ? remotiveQueryTerms[used % remotiveQueryTerms.length]
-          : undefined;
+      const queryTerm = source.key === "jobicy" || source.key === "remotive"
+        ? searchTerms[used % searchTerms.length]
+        : undefined;
       const queryLabel = source.key === "jobicy" ? `tag:${queryTerm}`
         : source.key === "remotive" ? `search:${queryTerm}`
           : source.key === "remoteok" ? "latest" : "feed";
@@ -275,6 +280,7 @@ export function createCareerRunService({
           onRequest,
           maxRequests: Math.min(3, source.max_requests_per_day - used),
           watchlist,
+          roleTracks,
           ...(queryTerm ? { queryTerm } : {}),
         });
         entry.fetched = Number(result.fetched ?? 0);

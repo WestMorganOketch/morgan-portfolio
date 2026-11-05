@@ -35,10 +35,17 @@ function findPattern(text, patterns) {
   return null;
 }
 
-function detectTrack(title, tags = []) {
+function detectTrack(title, tags = [], customRoleTracks = []) {
   const haystack = normalized([title, ...tags].join(" "));
-  return Object.entries(careerRoleTrackTerms).find(([, terms]) =>
-    terms.some((term) => haystack.includes(normalized(term))))?.[0] ?? null;
+  const custom = customRoleTracks
+    .filter((track) => typeof track === "string" && normalized(track).length >= 2)
+    .sort((left, right) => normalized(right).length - normalized(left).length);
+  const exactCustom = custom.find((track) => normalized(track) === normalized(title));
+  if (exactCustom) return exactCustom;
+  const builtIn = Object.entries(careerRoleTrackTerms).find(([, terms]) =>
+    terms.some((term) => ` ${haystack} `.includes(` ${normalized(term)} `)));
+  if (builtIn) return builtIn[0];
+  return custom.find((track) => ` ${haystack} `.includes(` ${normalized(track)} `)) ?? null;
 }
 
 export function assessEligibility(job) {
@@ -165,16 +172,16 @@ function datePoints(job, now) {
 }
 
 export function assessJob(job, profile, settings, { now = new Date() } = {}) {
-  const track = detectTrack(job.title, job.tags ?? []);
+  const track = detectTrack(job.title, job.tags ?? [], settings.role_tracks ?? []);
   const eligibility = assessEligibility(job);
   const profileFacts = profile?.verified_facts ?? {};
   const requiredTerms = extractFactTerms(profileFacts);
   const preferredTerms = extractPreferredTerms(profileFacts);
-  const roleTerms = track ? careerRoleTrackTerms[track] : [];
+  const roleTerms = track ? (careerRoleTrackTerms[track] ?? [track]) : [];
   const jobText = [job.title, ...(job.tags ?? []), job.description_text].join(" ");
   const requiredMatches = requiredTerms.filter((term) => containsTerm(jobText, term));
   const preferredMatches = preferredTerms.filter((term) => containsTerm(jobText, term));
-  const trackMatches = roleTerms.filter((term) => containsTerm(job.description_text ?? "", term));
+  const trackMatches = roleTerms.filter((term) => containsTerm(jobText, term));
   const hasProfile = Boolean(profile);
   const skillPoints = hasProfile
     ? requiredTerms.length ? 35 * requiredMatches.length / requiredTerms.length : 0
@@ -266,7 +273,7 @@ export function createCareerAssessmentService({ db, now = () => new Date() } = {
         [jobId],
       ),
       db.query(
-        `SELECT score_threshold, excluded_keywords, excluded_companies
+        `SELECT role_tracks, score_threshold, excluded_keywords, excluded_companies
          FROM public.jr_settings WHERE id = 1`,
       ),
     ]);
@@ -274,7 +281,7 @@ export function createCareerAssessmentService({ db, now = () => new Date() } = {
     const settings = settingsRows[0];
     if (!job) return false;
     if (!settings) throw new Error("Career settings row is missing.");
-    const track = detectTrack(job.title, job.tags ?? []);
+    const track = detectTrack(job.title, job.tags ?? [], settings.role_tracks ?? []);
     let profile = null;
     if (track) {
       const { rows } = await db.query(
@@ -285,9 +292,10 @@ export function createCareerAssessmentService({ db, now = () => new Date() } = {
       );
       profile = rows.find((candidate) => {
         const candidateTrack = normalized(candidate.track);
-        return track === "Security Analyst/SOC"
-          ? /(security|soc|cyber)/.test(candidateTrack)
-          : /(computer|ict|trainer|training|digital skills)/.test(candidateTrack);
+        if (candidateTrack === normalized(track)) return true;
+        if (track === "Security Analyst/SOC") return /(security|soc|cyber)/.test(candidateTrack);
+        if (track === "Computer Skills/ICT Trainer") return /(computer|ict|trainer|training|digital skills)/.test(candidateTrack);
+        return false;
       }) ?? null;
     }
     const assessment = assessJob(job, profile, settings, { now: now() });

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { atsWatchlistCreateSchema } from "../src/careerValidation.js";
 import {
+  buildCareerSearchTerms,
   buildJobIdentity,
   fetchArbeitnow,
   fetchAtsWatchlist,
@@ -328,4 +329,81 @@ test("canonical identity combines normalized company, role, location, and origin
   const identity = buildJobIdentity(job);
   assert.equal(identity.canonical_key, "example security|security analyst|nairobi, kenya|https://example.com/jobs/1");
   assert.match(identity.content_hash, /^[a-f0-9]{64}$/);
+});
+
+
+test("saved custom role tracks generate provider query terms", () => {
+  assert.deepEqual(
+    buildCareerSearchTerms(["Security Analyst/SOC", "Computer Skills/ICT Trainer", "Cloud Security Engineer"]),
+    [
+      "security analyst",
+      "soc analyst",
+      "ict trainer",
+      "computer skills trainer",
+      "Cloud Security Engineer",
+      "cybersecurity analyst",
+    ],
+  );
+});
+
+test("Jobicy accepts a user-defined search title and filters using the same preference", async () => {
+  resetRequestPacingForTests();
+  const result = await fetchJobicy({
+    queryTerm: "Cloud Security Engineer",
+    roleTracks: ["Cloud Security Engineer"],
+    fetchImpl: async (url) => {
+      assert.equal(url.searchParams.get("tag"), "Cloud Security Engineer");
+      return jsonResponse({ jobs: [
+        {
+          id: "cloud-1",
+          title: "Cloud Security Engineer",
+          company: "Example Cloud",
+          jobGeo: "Kenya",
+          url: "https://jobicy.com/jobs/cloud-1",
+          description: "Protect cloud infrastructure.",
+        },
+        {
+          id: "data-1",
+          title: "Data Engineer",
+          company: "Example Data",
+          jobGeo: "Kenya",
+          url: "https://jobicy.com/jobs/data-1",
+          description: "Build data pipelines.",
+        },
+      ] });
+    },
+  });
+  assert.equal(result.jobs.length, 1);
+  assert.equal(result.jobs[0].title, "Cloud Security Engineer");
+  assert.equal(result.discarded, 1);
+  assert.deepEqual(result.query_results.map(({ label }) => label), ["tag:Cloud Security Engineer"]);
+});
+
+test("generic feeds use saved custom titles for local matching", async () => {
+  resetRequestPacingForTests();
+  const result = await fetchRemoteOk({
+    roleTracks: ["Cloud Security Engineer"],
+    fetchImpl: async () => jsonResponse([
+      { legal: "Remote OK terms" },
+      {
+        id: "cloud-2",
+        position: "Cloud Security Engineer",
+        company: "Example Cloud",
+        location: "Remote",
+        url: "https://remoteok.com/jobs/cloud-2",
+        description: "Build secure cloud controls.",
+      },
+      {
+        id: "irrelevant-2",
+        position: "Product Manager",
+        company: "Example Product",
+        location: "Remote",
+        url: "https://remoteok.com/jobs/irrelevant-2",
+        description: "Lead product roadmaps.",
+      },
+    ]),
+  });
+  assert.equal(result.jobs.length, 1);
+  assert.equal(result.jobs[0].title, "Cloud Security Engineer");
+  assert.equal(result.discarded, 1);
 });

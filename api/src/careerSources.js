@@ -43,6 +43,48 @@ export const jobicyQueryTerms = [
 ];
 export const remotiveQueryTerms = Object.freeze([...jobicyQueryTerms]);
 
+const defaultRoleTracks = Object.freeze([
+  "Security Analyst/SOC",
+  "Computer Skills/ICT Trainer",
+]);
+
+export function buildCareerSearchTerms(roleTracks = defaultRoleTracks) {
+  const terms = [];
+  const add = (value) => {
+    const clean = stripHtml(String(value ?? ""), 80).replace(/\s+/g, " ").trim();
+    if (clean && !terms.some((item) => item.toLowerCase() === clean.toLowerCase())) terms.push(clean);
+  };
+  for (const track of roleTracks) {
+    const clean = stripHtml(String(track ?? ""), 80).replace(/\s+/g, " ").trim();
+    const normalized = clean.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!normalized) continue;
+    if (normalized === "security analyst soc") {
+      add("security analyst");
+      add("soc analyst");
+    } else if (normalized === "computer skills ict trainer") {
+      add("ict trainer");
+      add("computer skills trainer");
+    } else {
+      add(clean);
+      if (/security|cyber|soc/.test(normalized)) {
+        add("security analyst");
+        add("soc analyst");
+        add("cybersecurity analyst");
+      } else if (/trainer|training|ict|computer skills|digital skills|instructor/.test(normalized)) {
+        add("ict trainer");
+        add("computer skills trainer");
+        add("digital skills trainer");
+      }
+    }
+  }
+  return (terms.length ? terms : ["security analyst", "ict trainer"]).slice(0, 30);
+}
+
+function validSearchTerm(value) {
+  const clean = stripHtml(typeof value === "string" ? value : "", 80).replace(/\\s+/g, " ").trim();
+  return clean.length >= 2 ? clean : null;
+}
+
 function delay(milliseconds, signal) {
   if (milliseconds <= 0) return Promise.resolve();
   return new Promise((resolve, reject) => {
@@ -240,9 +282,15 @@ function normalizeDate(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-export function matchesRoleTitle(title, tags = []) {
-  const haystack = [title, ...tags].map((value) => String(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()).join(" ");
-  return roleTitleVariants.some((variant) => haystack.includes(variant));
+export function matchesRoleTitle(title, tags = [], customRoleTracks = []) {
+  const haystack = [title, ...tags]
+    .map((value) => String(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim())
+    .filter(Boolean)
+    .join(" ");
+  const variants = [...roleTitleVariants, ...customRoleTracks.map((term) =>
+    String(term).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()).filter(Boolean)];
+  return variants.some((variant) => variant.length >= 2
+    && (` ${haystack} `).includes(` ${variant} `));
 }
 
 export function normalizeJob(raw, sourceKey, defaults = {}) {
@@ -289,7 +337,7 @@ function rowsFor(payload, key) {
   return [];
 }
 
-function normalizePayload(rows, sourceKey, defaults = {}) {
+function normalizePayload(rows, sourceKey, defaults = {}, customRoleTracks = []) {
   const jobs = [];
   let malformed = 0;
   let discarded = 0;
@@ -318,7 +366,7 @@ function normalizePayload(rows, sourceKey, defaults = {}) {
       addTitle(sample_discarded_titles, raw?.title ?? raw?.jobTitle ?? raw?.position ?? raw?.text);
       continue;
     }
-    if (!matchesRoleTitle(job.title, job.tags)) {
+    if (!matchesRoleTitle(job.title, job.tags, customRoleTracks)) {
       discarded++;
       discard_reasons.title_no_match++;
       addTitle(sample_discarded_titles, raw.title ?? raw.jobTitle ?? raw.position ?? raw.text);
@@ -343,8 +391,8 @@ async function requestJson(url, options) {
 }
 
 export async function fetchJobicy(options) {
-  const term = options.queryTerm ?? jobicyQueryTerms[0];
-  if (!jobicyQueryTerms.includes(term)) throw new TypeError("Unsupported Jobicy query term.");
+  const term = validSearchTerm(options.queryTerm ?? jobicyQueryTerms[0]);
+  if (!term) throw new TypeError("Jobicy search term must contain 2–80 plain-text characters.");
   const url = new URL("https://jobicy.com/api/jobs");
   url.searchParams.set("tag", term);
   const payload = await requestJson(url, {
@@ -352,7 +400,7 @@ export async function fetchJobicy(options) {
     source: "jobicy",
     maxRequests: Math.min(1, options.maxRequests ?? 3),
   });
-  const result = normalizePayload(rowsFor(payload, "jobs"), "jobicy");
+  const result = normalizePayload(rowsFor(payload, "jobs"), "jobicy", {}, options.roleTracks);
   return {
     ...result,
     query_results: [{
@@ -367,7 +415,7 @@ export async function fetchJobicy(options) {
 export async function fetchRemoteOk(options) {
   const payload = await requestJson("https://remoteok.com/api", { ...options, source: "remoteok" });
   const rows = rowsFor(payload, "jobs");
-  const result = normalizePayload(rows.slice(1), "remoteok");
+  const result = normalizePayload(rows.slice(1), "remoteok", {}, options.roleTracks);
   return {
     ...result,
     query_results: [{
@@ -380,8 +428,8 @@ export async function fetchRemoteOk(options) {
 }
 
 export async function fetchRemotive(options) {
-  const term = options.queryTerm ?? remotiveQueryTerms[0];
-  if (!remotiveQueryTerms.includes(term)) throw new TypeError("Unsupported Remotive query term.");
+  const term = validSearchTerm(options.queryTerm ?? remotiveQueryTerms[0]);
+  if (!term) throw new TypeError("Remotive search term must contain 2–80 plain-text characters.");
   const url = new URL("https://remotive.com/api/remote-jobs");
   url.searchParams.set("search", term);
   const payload = await requestJson(url, {
@@ -389,7 +437,7 @@ export async function fetchRemotive(options) {
     source: "remotive",
     minIntervalMs: 30_000,
   });
-  const result = normalizePayload(rowsFor(payload, "jobs"), "remotive");
+  const result = normalizePayload(rowsFor(payload, "jobs"), "remotive", {}, options.roleTracks);
   return {
     ...result,
     query_results: [{
@@ -407,7 +455,7 @@ export async function fetchArbeitnow(options) {
     source: "arbeitnow",
     maxResponseBytes: ARBEITNOW_MAX_RESPONSE_BYTES,
   });
-  return normalizePayload(rowsFor(payload, "data"), "arbeitnow");
+  return normalizePayload(rowsFor(payload, "data"), "arbeitnow", {}, options.roleTracks);
 }
 
 export async function fetchAtsWatchlist(entries, options) {
@@ -442,7 +490,7 @@ export async function fetchAtsWatchlist(entries, options) {
         defaults: { company: entry.label },
       });
       const rows = Array.isArray(payload) ? payload : rowsFor(payload, "jobs");
-      const normalized = normalizePayload(rows, "ats_watchlist", { company: entry.label });
+      const normalized = normalizePayload(rows, "ats_watchlist", { company: entry.label }, options.roleTracks);
       fetched += normalized.fetched;
       malformed += normalized.malformed;
       discarded += normalized.discarded;
