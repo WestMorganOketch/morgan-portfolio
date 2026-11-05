@@ -197,7 +197,22 @@ export async function gmailConnectionStatus(db) {
   };
 }
 
-export async function disconnectGmail(db) {
+export async function disconnectGmail(db, { env = process.env, fetchImpl = fetch } = {}) {
+  const { rows } = await db.query(
+    "SELECT encrypted_refresh_token, encryption_iv, encryption_tag FROM public.jr_gmail_credentials WHERE id = 1",
+  );
+  if (!rows[0]) return { connected: false };
+  const refreshToken = decryptGmailRefreshToken(rows[0], env.DOC_ENCRYPTION_KEY);
+  const response = await fetchImpl(REVOKE_ENDPOINT, {
+    method: "POST",
+    redirect: "error",
+    signal: AbortSignal.timeout(12_000),
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ token: refreshToken }),
+  });
+  if (!response.ok && response.status !== 400) {
+    throw new Error("Google could not revoke the Gmail grant. The local connection was kept so you can retry safely.");
+  }
   await db.query("DELETE FROM public.jr_gmail_credentials WHERE id = 1");
   return { connected: false };
 }
@@ -272,6 +287,27 @@ function buildMime({ sender, recipient, subject, body, attachments, messageId })
   return lines.join("\r\n");
 }
 
+export async function getGmailSendAccessToken({ db, env = process.env, fetchImpl = fetch } = {}) {
+  if (env.JR_SEND_MODE !== "live") {
+    throw new Error("Email sending is disabled. Set JR_SEND_MODE=live only after checking the Gmail OAuth connection and send limits.");
+  }
+  requiredEnv(env, ["GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "DOC_ENCRYPTION_KEY"]);
+  const { rows } = await db.query(
+    "SELECT email, encrypted_refresh_token, encryption_iv, encryption_tag, granted_scopes FROM public.jr_gmail_credentials WHERE id = 1",
+  );
+  const credential = rows[0];
+  if (!credential) throw new Error("Connect a Gmail account in Sources & Setup before sending.");
+  if (!Array.isArray(credential.granted_scopes) || !credential.granted_scopes.includes(GMAIL_SEND_SCOPE)) {
+    throw new Error("The saved Gmail connection lacks the send-only permission. Reconnect Gmail.");
+  }
+  if (env.GMAIL_USER && env.GMAIL_USER.trim().toLowerCase() !== credential.email.toLowerCase()) {
+    throw new Error("GMAIL_USER does not match the connected sender. Update it or reconnect Gmail.");
+  }
+  const refreshToken = decryptGmailRefreshToken(credential, env.DOC_ENCRYPTION_KEY);
+  const accessToken = await freshAccessToken({ refreshToken, env, fetchImpl });
+  return { accessToken, senderEmail: credential.email };
+}
+
 export async function sendGmailMessage({
   db,
   to,
@@ -279,6 +315,8 @@ export async function sendGmailMessage({
   body,
   attachments = [],
   messageId,
+  accessToken: suppliedAccessToken,
+  senderEmail: suppliedSenderEmail,
   env = process.env,
   fetchImpl = fetch,
 } = {}) {
@@ -302,21 +340,11 @@ export async function sendGmailMessage({
     if (!String(attachment.filename ?? "").toLowerCase().endsWith(".pdf")) throw new TypeError("Only reviewed PDF attachments are accepted.");
   }
   if (totalBytes > MAX_ATTACHMENT_BYTES) throw new TypeError("Combined application attachments exceed 5 MB.");
-  const { rows } = await db.query(
-    "SELECT email, encrypted_refresh_token, encryption_iv, encryption_tag, granted_scopes FROM public.jr_gmail_credentials WHERE id = 1",
-  );
-  const credential = rows[0];
-  if (!credential) throw new Error("Connect a Gmail account in Sources & Setup before sending.");
-  if (!Array.isArray(credential.granted_scopes) || !credential.granted_scopes.includes(GMAIL_SEND_SCOPE)) {
-    throw new Error("The saved Gmail connection lacks the send-only permission. Reconnect Gmail.");
-  }
-  if (env.GMAIL_USER && env.GMAIL_USER.trim().toLowerCase() !== credential.email.toLowerCase()) {
-    throw new Error("GMAIL_USER does not match the connected sender. Update it or reconnect Gmail.");
-  }
-  const refreshToken = decryptGmailRefreshToken(credential, env.DOC_ENCRYPTION_KEY);
-  const accessToken = await freshAccessToken({ refreshToken, env, fetchImpl });
+  const credentials = suppliedAccessToken && suppliedSenderEmail
+    ? { accessToken: suppliedAccessToken, senderEmail: suppliedSenderEmail }
+    : await getGmailSendAccessToken({ db, env, fetchImpl });
   const raw = base64Url(buildMime({
-    sender: credential.email,
+    sender: credentials.senderEmail,
     recipient: to.trim(),
     subject,
     body,
@@ -328,7 +356,7 @@ export async function sendGmailMessage({
     redirect: "error",
     signal: AbortSignal.timeout(15_000),
     headers: {
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${credentials.accessToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ raw }),
