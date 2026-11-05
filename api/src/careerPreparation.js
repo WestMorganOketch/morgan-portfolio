@@ -50,7 +50,7 @@ function profileFactTerms(profile) {
 function isSectionHeading(line) {
   const value = line.trim();
   if (!value || value.length > 72) return false;
-  if (/^(?:[A-Z][A-Z &/()\-]{2,}|(?:professional|technical|work|employment|education|certification|project|experience|skills|summary|profile|training)\s+(?:summary|experience|history|skills|details|and\s+certifications))$/i.test(value)) return true;
+  if (/^(?:[A-Z][A-Z &/()-]{2,}|(?:professional|technical|work|employment|education|certification|project|experience|skills|summary|profile|training)\s+(?:summary|experience|history|skills|details|and\s+certifications))$/i.test(value)) return true;
   return /^(?:\d+\.?\s+)?(?:professional summary|profile|work experience|employment history|technical skills|education|certifications?|projects|selected projects|volunteer experience|professional experience|core competencies|training|references)$/i.test(value);
 }
 
@@ -202,7 +202,6 @@ export function buildApplicationDraft({ job, profile, assessment = null, now = n
 }
 
 function winAnsiBytes(value) {
-  // eslint-disable-next-line no-control-regex
   const mapped = String(value)
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201C\u201D]/g, '"')
@@ -210,6 +209,7 @@ function winAnsiBytes(value) {
     .replace(/[\u2022]/g, "*")
     .replace(/[\u2026]/g, "...")
     .replace(/[\u00A0]/g, " ")
+    // eslint-disable-next-line no-control-regex
     .replace(/[^\x09\x0A\x0D\x20-\x7E\u00A0-\u00FF]/g, "?");
   return Buffer.from(mapped, "latin1");
 }
