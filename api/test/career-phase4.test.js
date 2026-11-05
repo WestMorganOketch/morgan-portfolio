@@ -12,9 +12,9 @@ const job = (id, fitScore, eligibility) => ({
   source_name: "Jobicy",
   attribution_text: "Jobicy",
   source_job_id: `${id}-source`,
-  url: null,
+  url: `https://careers.example.test/jobs/${id}`,
   title: `Security analyst ${id}`,
-  company: null,
+  company: "Example Security Ltd",
   location_text: "Kenya",
   remote_scope_text: "",
   description_text: "Listing text",
@@ -154,7 +154,8 @@ test("Phase 4 overview counts, shortlists to the cap, and does not pad", async (
     assert.equal(result.shortlist.length, 2);
     assert.equal(result.qualified.length, 0);
     assert.equal(result.maybe.length, 1);
-    assert.equal(result.shortlist[0].risk_assessment, "not yet assessed");
+    assert.equal(result.shortlist[0].risk_assessment.risk_level, "low");
+    assert.match(result.shortlist[0].risk_assessment.label, /not proof of legitimacy/i);
     const shortlistQuery = first.db.queries.find(({ statement }) => statement.startsWith("SELECT j.id, j.source_key, s.name AS source_name"));
     assert.deepEqual(shortlistQuery.values.slice(1), [65]);
     assert.match(shortlistQuery.statement, /a\.fit_score >= \$2/);
