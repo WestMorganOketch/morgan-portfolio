@@ -1005,6 +1005,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     setMessage("");
     setTab("Application drafts");
     setSelectedPreparationJobId(job.id);
+    setPreparationJobs((current) => current.some((entry) => entry.id === job.id) ? current : [job, ...current].slice(0, 50));
     setActivePacket(null);
     setDraftResumeText("");
     setDraftCoverLetterText("");
@@ -1190,6 +1191,19 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
       || draftCoverLetterText !== (activePacket.cover_letter_text ?? "")
       || draftRecipientEmail !== (activePacket.recipient_email ?? "")
     ));
+  const packetNeedsWarningAcknowledgement = Boolean(activePacket
+    && (activePacket.warnings.length > 0 || activePacket.missing_requirements.length > 0));
+  const packetNeedsEligibilityAcknowledgement = activePacket?.source_snapshot.eligibility === "unknown";
+  const packetIsIneligible = activePacket?.source_snapshot.eligibility === "ineligible";
+  const canSendPacket = Boolean(activePacket
+    && activePacket.status === "ready_for_review"
+    && !activePacketDirty
+    && draftRecipientEmail.trim()
+    && setup?.gmail?.connected
+    && setup.JR_SEND_MODE === "live"
+    && !packetIsIneligible
+    && (!packetNeedsWarningAcknowledgement || confirmSendWarnings)
+    && (!packetNeedsEligibilityAcknowledgement || confirmSendEligibility));
 
   const reviewJobs = reviewList === "Shortlist" ? overview?.shortlist ?? []
     : reviewList === "Maybe" ? overview?.maybe ?? []
@@ -1542,6 +1556,215 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                 })}
               </div>
             </section>
+          </div>
+        ) : null}
+
+        {tab === "Application drafts" ? (
+          <div className="career-stack">
+            <section className="career-subpanel">
+              <div className="career-review-heading">
+                <div>
+                  <h3>Prepare an application</h3>
+                  <p>Choose a job and a verified master CV. Job Radar prepares a draft; you review it before anything is sent.</p>
+                </div>
+              </div>
+              {setup?.preparationTables?.configured === false ? (
+                <p className="career-warning">
+                  Draft generation is locked until the server owner applies <code>api/migrations/008_career_preparation.sql</code> in Supabase. No production database changes are made by this screen.
+                </p>
+              ) : null}
+              <div className="career-two-columns career-preparation-choices">
+                <div className="career-form">
+                  <label htmlFor="career-prepare-job">Job advert</label>
+                  <select id="career-prepare-job" onChange={(event) => setSelectedPreparationJobId(event.target.value)} value={selectedPreparationJobId}>
+                    <option value="">Choose a reviewed job</option>
+                    {preparationJobs.map((job) => (
+                      <option key={job.id} value={job.id}>
+                        {job.title} — {job.company ?? "Company not listed"} · {job.assessment?.fit_score ?? "—"}/100
+                      </option>
+                    ))}
+                  </select>
+                  <label htmlFor="career-prepare-profile">Master CV profile</label>
+                  <select id="career-prepare-profile" onChange={(event) => setSelectedPreparationProfileId(event.target.value)} value={selectedPreparationProfileId}>
+                    <option value="">Choose a saved master CV</option>
+                    {profiles.filter((profile) => !profile.archived_at).map((profile) => (
+                      <option key={profile.id} value={profile.id}>{profile.name} — {profile.track}</option>
+                    ))}
+                  </select>
+                  {profiles.filter((profile) => !profile.archived_at).length === 0 ? (
+                    <p className="career-warning">You need a saved master CV first. Open Master CV to add your original CV and verified skills.</p>
+                  ) : (
+                    <p className="admin-help">Your master CV is not overwritten. The packet records which source profile was used and keeps the full original CV text intact.</p>
+                  )}
+                  <button
+                    className="button button-primary"
+                    disabled={busy || !selectedPreparationJobId || !selectedPreparationProfileId || setup?.preparationTables?.configured === false}
+                    onClick={() => void prepareSelectedJob()}
+                    type="button"
+                  >Generate CV + cover letter draft</button>
+                </div>
+                <div className="career-subpanel career-preparation-explainer">
+                  <h3>What happens next?</h3>
+                  <ol>
+                    <li>Job Radar reassesses the advert against the selected master CV.</li>
+                    <li>It picks relevant lines from the original CV and records where each line came from.</li>
+                    <li>It drafts a role-specific cover letter from the verified profile and match evidence.</li>
+                    <li>You edit, save a new version, download PDFs, then explicitly approve any email send.</li>
+                  </ol>
+                  <p className="admin-help">No external AI receives your CV in this workflow. It uses local matching and a reviewable template so unsupported claims are not silently invented.</p>
+                </div>
+              </div>
+            </section>
+
+            <section className="career-subpanel">
+              <div className="career-review-heading">
+                <div><h3>Saved application packets</h3><p>{applicationPackets.length} latest versions · previous versions remain in the private audit trail</p></div>
+                <button className="text-link" disabled={busy} onClick={() => void runAction(async () => { await Promise.all([loadApplicationPackets(), loadPreparationOptions()]); }, "Application drafts refreshed.")} type="button">Refresh drafts</button>
+              </div>
+              {applicationPackets.length ? (
+                <div className="career-packet-list">
+                  {applicationPackets.map((packet) => (
+                    <article className="career-packet-row" key={packet.id}>
+                      <div>
+                        <strong>{packet.title}</strong>
+                        <p>{packet.company ?? "Company not listed"} · {packet.location_text} · {packet.profile_name}</p>
+                        <small>Version {packet.version} · Updated {readableDate(packet.updated_at)} · {packet.status.replaceAll("_", " ")}</small>
+                      </div>
+                      <div className="career-packet-actions">
+                        {typeof packet.source_snapshot.assessmentScore === "number" ? <span className="career-packet-score">{packet.source_snapshot.assessmentScore}/100</span> : null}
+                        <button className="button button-quiet" disabled={busy} onClick={() => void openPacket(packet.id)} type="button">Open draft</button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : <p className="admin-help">No application packets yet. Open Find & review and choose Prepare application on a suitable advert.</p>}
+            </section>
+
+            {activePacket ? (
+              <section className="career-subpanel career-packet-editor" aria-labelledby="career-packet-title">
+                <div className="career-review-heading career-packet-editor-heading">
+                  <div>
+                    <p className="eyebrow">PRIVATE APPLICATION PACKET · VERSION {activePacket.version}</p>
+                    <h3 id="career-packet-title">{activePacket.title}</h3>
+                    <p>{activePacket.company ?? "Company not listed"} · {activePacket.location_text} · Master CV: {activePacket.profile_name}</p>
+                  </div>
+                  <span className={"career-packet-status status-" + activePacket.status}>{activePacket.status.replaceAll("_", " ")}</span>
+                </div>
+                <div className="career-packet-facts">
+                  <div><span>FIT SCORE</span><strong>{typeof activePacket.source_snapshot.assessmentScore === "number" ? activePacket.source_snapshot.assessmentScore + "/100" : "Not scored"}</strong></div>
+                  <div><span>ELIGIBILITY</span><strong>{String(activePacket.source_snapshot.eligibility ?? "unknown")}</strong></div>
+                  <div><span>MASTER CV CHECK</span><strong>{activePacket.master_resume_sha256.slice(0, 12)}…</strong></div>
+                </div>
+                <p className="career-form-guide">
+                  The original master CV must remain exactly intact in the full-CV section. You can edit the added role-aligned highlights and the cover letter; the server rejects a CV draft that removes or changes the complete original CV text.
+                </p>
+                {activePacket.warnings.length || activePacket.missing_requirements.length ? (
+                  <div className="career-packet-warnings" role="status">
+                    <h4>Review before applying</h4>
+                    {activePacket.warnings.length ? <ul>{activePacket.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
+                    {activePacket.missing_requirements.length ? (
+                      <>
+                        <p><strong>Possible missing requirements — verify these; do not claim them unless true:</strong></p>
+                        <ul>{activePacket.missing_requirements.map((item) => <li key={item}>{item}</li>)}</ul>
+                      </>
+                    ) : null}
+                  </div>
+                ) : <p className="career-packet-success">No missing requirements were flagged by the current assessment. Still review the advert and every claim manually.</p>}
+
+                {activePacket.highlights.length ? (
+                  <details className="career-packet-evidence" open>
+                    <summary>Where the tailored highlights came from ({activePacket.highlights.length} source lines)</summary>
+                    <ol>
+                      {activePacket.highlights.map((highlight, index) => (
+                        <li key={highlight.sourceLine ?? index}>
+                          <q>{highlight.text}</q>
+                          <small>Master CV line {highlight.sourceLine ?? "—"} · matched: {(highlight.evidenceTerms ?? []).join(", ") || "No explicit keyword recorded"}</small>
+                        </li>
+                      ))}
+                    </ol>
+                  </details>
+                ) : null}
+
+                <div className="career-actions career-packet-actions">
+                  <a className="button button-quiet" href={"/api/admin/career/application-packets/" + activePacket.id + "/resume.pdf"}>Download CV PDF</a>
+                  <a className="button button-quiet" href={"/api/admin/career/application-packets/" + activePacket.id + "/cover-letter.pdf"}>Download cover letter PDF</a>
+                  {safeHttpUrl(activePacket.application_url) ? (
+                    <a className="button button-quiet" href={safeHttpUrl(activePacket.application_url) ?? undefined} rel="noopener noreferrer" target="_blank">Open official advert</a>
+                  ) : null}
+                </div>
+                {activePacket.status === "needs_manual_attention" ? (
+                  <p className="career-warning" role="alert">The previous email outcome is uncertain. Check Gmail Sent and the application timeline before doing anything else. Job Radar has blocked another send to avoid a duplicate.</p>
+                ) : null}
+                {activePacket.status === "sent" ? (
+                  <p className="career-packet-success" role="status">Gmail confirmed this packet was sent on {readableDate(activePacket.sent_at)}. This version is locked.</p>
+                ) : null}
+
+                <form className="career-form career-packet-form" onSubmit={(event) => { event.preventDefault(); void savePacketDraft(); }}>
+                  <label htmlFor="career-packet-resume">CV draft <span>Keep the complete master CV below the role-aligned highlights · max 65,000 characters</span></label>
+                  <textarea
+                    id="career-packet-resume"
+                    disabled={!["draft", "ready_for_review"].includes(activePacket.status)}
+                    maxLength={65000}
+                    onChange={(event) => { setDraftResumeText(event.target.value); setConfirmSendWarnings(false); setConfirmSendEligibility(false); }}
+                    rows={16}
+                    value={draftResumeText}
+                  />
+                  <label htmlFor="career-packet-cover-letter">Cover letter <span>Review and personalize the greeting, role, evidence and closing · max 12,000 characters</span></label>
+                  <textarea
+                    id="career-packet-cover-letter"
+                    disabled={!["draft", "ready_for_review"].includes(activePacket.status)}
+                    maxLength={12000}
+                    onChange={(event) => { setDraftCoverLetterText(event.target.value); setConfirmSendWarnings(false); setConfirmSendEligibility(false); }}
+                    rows={10}
+                    value={draftCoverLetterText}
+                  />
+                  <label htmlFor="career-packet-recipient">Recruiter email <span>Enter only an email address confirmed on the employer’s official advert; Job Radar never guesses it.</span></label>
+                  <input
+                    id="career-packet-recipient"
+                    disabled={!["draft", "ready_for_review"].includes(activePacket.status)}
+                    maxLength={254}
+                    onChange={(event) => { setDraftRecipientEmail(event.target.value); setConfirmSendWarnings(false); setConfirmSendEligibility(false); }}
+                    type="email"
+                    value={draftRecipientEmail}
+                  />
+                  {activePacket.status === "draft" || activePacket.status === "ready_for_review" ? (
+                    <div className="career-actions">
+                      <button className="button button-primary" disabled={busy} type="submit">
+                        {activePacket.status === "ready_for_review" ? "Save new version for review" : "Save and mark ready for review"}
+                      </button>
+                      <span className="admin-help">{activePacketDirty ? "Unsaved changes — save a new version before sending." : "Only the saved version shown above can be sent."}</span>
+                    </div>
+                  ) : null}
+                </form>
+
+                {packetNeedsWarningAcknowledgement && ["draft", "ready_for_review"].includes(activePacket.status) ? (
+                  <label className="career-acknowledgement">
+                    <input checked={confirmSendWarnings} onChange={(event) => setConfirmSendWarnings(event.target.checked)} type="checkbox" />
+                    I reviewed every warning and possible missing requirement, and I will not claim anything that I cannot verify.
+                  </label>
+                ) : null}
+                {packetNeedsEligibilityAcknowledgement && ["draft", "ready_for_review"].includes(activePacket.status) ? (
+                  <label className="career-acknowledgement">
+                    <input checked={confirmSendEligibility} onChange={(event) => setConfirmSendEligibility(event.target.checked)} type="checkbox" />
+                    I manually checked the employer's location and work-authorization requirements.
+                  </label>
+                ) : null}
+                {packetIsIneligible ? (
+                  <p className="career-warning">Automatic email sending is blocked because the current advert failed the eligibility rules. Review the original advert manually.</p>
+                ) : null}
+                {!setup?.gmail?.connected ? (
+                  <p className="admin-help">Gmail is not connected. Open Sources & automation to configure and connect the send-only Gmail account.</p>
+                ) : null}
+                {setup?.gmail?.connected && setup.JR_SEND_MODE !== "live" ? (
+                  <p className="career-warning">Gmail is connected, but the API is in safe draft mode. Sending remains disabled until the server owner deliberately enables JR_SEND_MODE=live.</p>
+                ) : null}
+                {activePacket.status === "ready_for_review" && setup?.gmail?.connected && setup.JR_SEND_MODE === "live" ? (
+                  <button className="button button-primary career-send-final" disabled={busy || !canSendPacket} onClick={() => void sendApplicationPacket()} type="button">
+                    {busy ? "Sending…" : "Review complete — send email"}
+                  </button>
+                ) : null}
+              </section>
+            ) : null}
           </div>
         ) : null}
 
