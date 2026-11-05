@@ -101,3 +101,12 @@ test("anti-scam disclaimers are not mistaken for requests to pay or share sensit
   assert.equal(result.risk_level, "low");
   assert.equal(result.risk_findings.some((finding) => finding.severity === "high"), false);
 });
+
+test("a genuine later payment demand is still detected after an anti-scam disclaimer", () => {
+  const result = assessCareerRisk({
+    ...baseJob,
+    description_text: "We never ask applicants to pay an application fee. Candidates must pay a registration fee to continue.",
+  });
+  assert.equal(result.risk_level, "high");
+  assert.ok(result.risk_findings.some((finding) => finding.code === "candidate_payment_requested"));
+});
