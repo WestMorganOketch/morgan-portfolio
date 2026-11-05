@@ -2301,6 +2301,45 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                   ) : null}
                 </form>
 
+                <section className="career-subpanel career-document-release" aria-labelledby="career-document-release-title">
+                  <h4 id="career-document-release-title">Optional private PDF attachment</h4>
+                  <p className="admin-help">The generated CV and cover letter are always attached. You may select one additional PDF from the encrypted vault only when its per-file email consent is active. Nothing is released by choosing it; the final send requires a second confirmation below and in the send dialog.</p>
+                  <label htmlFor="career-send-private-document">Private vault document</label>
+                  <select
+                    id="career-send-private-document"
+                    disabled={!["draft", "ready_for_review"].includes(activePacket.status) || busy}
+                    onChange={(event) => {
+                      setSelectedSendDocumentId(event.target.value);
+                      setConfirmSendDocumentRelease(false);
+                    }}
+                    value={selectedSendDocumentId}
+                  >
+                    <option value="">Do not attach an extra private document</option>
+                    {careerDocuments.filter((item) =>
+                      item.application_email_consent === true
+                      && item.content_type === "application/pdf"
+                      && item.byte_size <= 5 * 1024 * 1024).map((item) => (
+                        <option key={item.id} value={item.id}>{item.title} — {item.original_filename} · {(item.byte_size / (1024 * 1024)).toFixed(2)} MB</option>
+                      ))}
+                  </select>
+                  {selectedSendDocumentId ? (
+                    <label className="career-acknowledgement">
+                      <input
+                        checked={confirmSendDocumentRelease}
+                        onChange={(event) => setConfirmSendDocumentRelease(event.target.checked)}
+                        type="checkbox"
+                      />
+                      I authorize the selected private PDF to be attached to this exact application email after reviewing the recipient and content.
+                    </label>
+                  ) : null}
+                  {careerDocuments.length === 0 ? (
+                    <p className="admin-help">The vault is empty. Add a document in the Private documents tab first.</p>
+                  ) : null}
+                  {careerDocuments.some((item) => item.application_email_consent === true && item.content_type === "application/pdf" && item.byte_size <= 5 * 1024 * 1024) === false ? (
+                    <p className="career-warning">There are no eligible PDFs with active email consent. Open Private documents to grant consent to a PDF that you intend to share.</p>
+                  ) : null}
+                </section>
+
                 {packetNeedsWarningAcknowledgement && ["draft", "ready_for_review"].includes(activePacket.status) ? (
                   <label className="career-acknowledgement">
                     <input checked={confirmSendWarnings} onChange={(event) => setConfirmSendWarnings(event.target.checked)} type="checkbox" />
