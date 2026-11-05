@@ -1204,6 +1204,8 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     setDraftRecipientEmail("");
     setConfirmSendWarnings(false);
     setConfirmSendEligibility(false);
+    setSelectedSendDocumentId("");
+    setConfirmSendDocumentRelease(false);
     try {
       const availableProfiles = await loadProfiles();
       const suggested = suggestedProfileForJob(job, availableProfiles);
@@ -1225,6 +1227,8 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     setDraftRecipientEmail(packet.recipient_email ?? "");
     setConfirmSendWarnings(false);
     setConfirmSendEligibility(false);
+    setSelectedSendDocumentId("");
+    setConfirmSendDocumentRelease(false);
   }
 
   async function openPacket(packetId: string) {
@@ -1482,7 +1486,26 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
       setError("This advert failed the eligibility rules. Job Radar will not send it.");
       return;
     }
-    if (!window.confirm(`Send application version ${activePacket.version} to ${draftRecipientEmail.trim()} from ${setup.gmail.email}? This sends an email with the saved CV and cover-letter PDFs. It cannot be recalled here.`)) return;
+    const selectedDocument = careerDocuments.find((item) => item.id === selectedSendDocumentId);
+    if (selectedSendDocumentId) {
+      if (!selectedDocument || selectedDocument.application_email_consent !== true) {
+        setError("The selected private document no longer has active application-email consent. Refresh the vault and review it again.");
+        return;
+      }
+      if (selectedDocument.content_type !== "application/pdf" || selectedDocument.byte_size > 5 * 1024 * 1024) {
+        setError("Only a consented PDF up to 5 MB can be attached from the private vault.");
+        return;
+      }
+      if (!confirmSendDocumentRelease) {
+        setError("Confirm that you authorize the selected private document to be included in this exact email.");
+        return;
+      }
+    } else if (confirmSendDocumentRelease) {
+      setError("Select the private document before confirming its release.");
+      return;
+    }
+    const attachmentSummary = selectedDocument ? " It also includes the private PDF “" + selectedDocument.title + "”." : "";
+    if (!window.confirm(`Send application version ${activePacket.version} to ${draftRecipientEmail.trim()} from ${setup.gmail.email}? This sends the saved CV and cover-letter PDFs.${attachmentSummary} This action cannot be recalled here.`)) return;
     setBusy(true);
     setError("");
     setMessage("");
@@ -1495,6 +1518,8 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
           confirm_send: true,
           confirm_warnings: confirmSendWarnings,
           confirm_eligibility: confirmSendEligibility,
+          document_id: selectedSendDocumentId || null,
+          confirm_document_release: Boolean(selectedSendDocumentId && confirmSendDocumentRelease),
         }),
       });
       if (!isApplicationPacket(value)) throw new Error("Gmail returned an unexpected application state. Check the packet and Gmail Sent before any retry.");
@@ -1533,7 +1558,14 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     && setup.JR_SEND_MODE === "live"
     && !packetIsIneligible
     && (!packetNeedsWarningAcknowledgement || confirmSendWarnings)
-    && (!packetNeedsEligibilityAcknowledgement || confirmSendEligibility));
+    && (!packetNeedsEligibilityAcknowledgement || confirmSendEligibility)
+    && (!selectedSendDocumentId || (
+      careerDocuments.some((item) => item.id === selectedSendDocumentId
+        && item.application_email_consent === true
+        && item.content_type === "application/pdf"
+        && item.byte_size <= 5 * 1024 * 1024)
+      && confirmSendDocumentRelease
+    )));
 
   const reviewJobs = reviewList === "Shortlist" ? overview?.shortlist ?? []
     : reviewList === "Maybe" ? overview?.maybe ?? []
