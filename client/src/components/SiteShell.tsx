@@ -259,6 +259,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
             <Link href="/about" aria-current={pathname === "/about" ? "page" : undefined}>About</Link>
             <Link href="/skills" aria-current={pathname === "/skills" ? "page" : undefined}>Skills</Link>
             <Link href="/projects" aria-current={pathname === "/projects" ? "page" : undefined}>Projects</Link>
+            <Link href="/resume" aria-current={pathname === "/resume" ? "page" : undefined}>Résumé</Link>
             <Link className="nav-contact" href="/contact" aria-current={pathname === "/contact" ? "page" : undefined}>Contact <span aria-hidden="true">↗</span></Link>
             <div className={`nav-explore ${exploreOpen ? "nav-explore-open" : ""}`} ref={exploreRef}>
               <button
