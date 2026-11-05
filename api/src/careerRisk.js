@@ -38,6 +38,17 @@ function isNegatedRequest(value, matchIndex) {
   return /\b(?:never|no|not|don't|do not|doesn't|does not|won't|will not|must not|should not)\b[^.!?\n]{0,60}$/i.test(prefix);
 }
 
+function firstNonNegatedMatch(value, pattern) {
+  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+  const expression = new RegExp(pattern.source, flags);
+  let match;
+  while ((match = expression.exec(value)) !== null) {
+    if (!isNegatedRequest(value, match.index)) return match;
+    if (match[0].length === 0) expression.lastIndex += 1;
+  }
+  return null;
+}
+
 function checkUrl(raw) {
   const value = text(raw, 2000);
   if (!value) return { ok: false, blocked: false, hostname: null, https_ok: false, error: "No original listing URL was supplied." };
@@ -77,12 +88,12 @@ export function assessCareerRisk(job, { now = () => new Date() } = {}) {
     findings.push({ code, severity, confidence, evidence: text(evidence, 180) });
   };
   for (const [code, pattern] of HIGH_RISK_PATTERNS) {
-    const match = pattern.exec(advert);
-    if (match && !isNegatedRequest(advert, match.index)) add(code, "high", 0.96, match[0]);
+    const match = firstNonNegatedMatch(advert, pattern);
+    if (match) add(code, "high", 0.96, match[0]);
   }
   for (const [code, pattern] of REVIEW_PATTERNS) {
-    const match = pattern.exec(advert);
-    if (match && !isNegatedRequest(advert, match.index)) add(code, "medium", 0.78, match[0]);
+    const match = firstNonNegatedMatch(advert, pattern);
+    if (match) add(code, "medium", 0.78, match[0]);
   }
   const company = text(job?.company, 200);
   if (!company || /^(?:confidential|undisclosed|unknown|not provided)$/i.test(company)) {
