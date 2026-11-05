@@ -575,6 +575,8 @@ test("career migration runner is explicit, ordered, and absent from API startup"
     "006_career_assessments.sql",
     "007_career_applications.sql",
     "008_career_preparation.sql",
+    "009_career_documents.sql",
+    "010_career_public_snapshots.sql",
   ];
   assert.equal(packageJson.scripts["db:migrate-career"], "node scripts/migrate-career.js");
   const positions = migrationFiles.map((filename) => runner.indexOf(`"${filename}"`));
@@ -583,4 +585,31 @@ test("career migration runner is explicit, ordered, and absent from API startup"
   assert.ok(runner.includes("await pool.query(sql)"));
   assert.ok(runner.includes("await pool.end()"));
   assert.equal(appSource.includes("migrate-career"), false);
+});
+
+
+test("Phase 5 and Phase 7 migrations are additive, private, and synchronized with SQL-editor copies", () => {
+  const phase5 = readFileSync(new URL("../../docs/career-automation/sql/phase-5.sql", import.meta.url), "utf8");
+  const migration5 = readFileSync(new URL("../migrations/009_career_documents.sql", import.meta.url), "utf8");
+  const phase7 = readFileSync(new URL("../../docs/career-automation/sql/phase-7.sql", import.meta.url), "utf8");
+  const migration7 = readFileSync(new URL("../migrations/010_career_public_snapshots.sql", import.meta.url), "utf8");
+  assert.equal(phase5, migration5);
+  assert.equal(phase7, migration7);
+  for (const sql of [phase5, phase7]) {
+    assert.match(sql, /^\\s*BEGIN;/);
+    assert.match(sql, /COMMIT;\\s*$/);
+    assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
+    assert.match(sql, /REVOKE ALL PRIVILEGES ON TABLE public\\.jr_/);
+    assert.doesNotMatch(sql, /CREATE\\s+POLICY/i);
+  }
+  assert.match(phase5, /application_email/);
+  assert.match(phase5, /encryption/i);
+  assert.match(phase7, /jr_public_snapshots/);
+  assert.match(phase7, /immutable/i);
+  const verify5 = readFileSync(new URL("../../docs/career-automation/sql/phase-5.verify.sql", import.meta.url), "utf8");
+  const verify7 = readFileSync(new URL("../../docs/career-automation/sql/phase-7.verify.sql", import.meta.url), "utf8");
+  for (const verify of [verify5, verify7]) {
+    assert.match(verify, /has_table_privilege\\('anon'/);
+    assert.match(verify, /has_table_privilege\\('authenticated'/);
+  }
 });
