@@ -1269,6 +1269,12 @@ export function registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin,
         if (!["draft", "ready_for_review"].includes(packet.status)) {
           return res.status(409).json({ error: "This packet has already been sent, is already sending, or requires manual review. Do not resend automatically." });
         }
+        if (!packet.recipient_email
+          || parsed.data.recipient_email.trim().toLowerCase() !== packet.recipient_email.trim().toLowerCase()) {
+          return res.status(409).json({
+            error: "The recipient differs from the saved packet version. Save the recipient as a new version, review it, and confirm the exact destination before sending.",
+          });
+        }
         const snapshot = packet.source_snapshot && typeof packet.source_snapshot === "object" ? packet.source_snapshot : {};
         const eligibility = snapshot.eligibility ?? "unknown";
         if (eligibility === "ineligible") {
