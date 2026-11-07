@@ -28,9 +28,9 @@ jobs:
         shell: bash
         run: |
           if [[ -z "$CAREER_API_BASE_URL" || -z "$JOB_CRON_SECRET" ]]; then
-            echo "::notice::Career Radar schedule is installed but not active. Add Actions secrets CAREER_API_BASE_URL (HTTPS API origin) and JOB_CRON_SECRET (must match the API environment)."
+            echo "::error::Career Radar scheduled scan is NOT configured. Add Actions secrets CAREER_API_BASE_URL (HTTPS API origin) and JOB_CRON_SECRET (must match the API environment). This run will fail visibly rather than report a false success."
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            exit 1
           fi
           node <<'NODE'
           const { isIP } = require("node:net");
