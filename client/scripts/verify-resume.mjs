@@ -88,7 +88,7 @@ async function fetchPageAndPdf() {
   const visibleHtml = stripScriptAndStyleBlocks(html);
   const headings = [...visibleHtml.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/gi)];
   assert.equal(headings.length, 1, "The page must contain exactly one h1.");
-  assert.match(headings[0][1].replace(/<[^>]*>/g, ""), /Morgan West Oketch/);
+  assert.match(headings[0][1].replace(/[<>]/g, ""), /Morgan West Oketch/);
   assert.match(visibleHtml, /<link[^>]+rel="canonical"[^>]+href="[^"]*\/resume"/i, "Missing canonical metadata.");
   for (const heading of ["Professional Summary", "Skills", "Experience", "Projects", "Education", "Certifications", "References"]) {
     assert.ok(visibleHtml.includes(heading), `Missing résumé section heading: ${heading}`);
