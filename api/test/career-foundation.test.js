@@ -49,6 +49,7 @@ class FakeCareerDatabase {
     if (statement.startsWith("SELECT table_name FROM information_schema.tables")) {
       return { rows: values[0].filter((name) => this.tables.has(name)).map((table_name) => ({ table_name })) };
     }
+    if (statement.startsWith("SELECT role_tracks FROM public.jr_settings")) return { rows: [{ role_tracks: this.settings.role_tracks }] };
     if (statement.startsWith("SELECT role_tracks, countries")) return { rows: [{ ...this.settings }] };
     if (statement.startsWith("UPDATE public.jr_settings")) {
       this.settings = {
@@ -316,8 +317,8 @@ test("assessment filters and rerun route stay admin-protected and reruns profile
 
 test("setup reports only secret configuration booleans and safe metadata", async () => {
   const secretNames = [
-    "JOB_CRON_SECRET", "DOC_ENCRYPTION_KEY", "GMAIL_USER", "GMAIL_APP_PASSWORD",
-    "GEMINI_API_KEY", "JOOBLE_API_KEY", "CAREERJET_API_KEY", "RELIEFWEB_APPNAME",
+    "JOB_CRON_SECRET", "DOC_ENCRYPTION_KEY", "GMAIL_OAUTH_CLIENT_ID",
+    "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REDIRECT_URI",
   ];
   const previous = new Map(secretNames.map((name) => [name, process.env[name]]));
   const previousSendMode = process.env.JR_SEND_MODE;
@@ -561,4 +562,54 @@ test("phase 3A SQL is additive, repeatable, and protects its new table", () => {
   assert.match(verify, /has_table_privilege\('anon'/);
   assert.match(verify, /has_table_privilege\('authenticated'/);
   assert.match(verify.trim(), /ORDER BY c\.relname;$/);
+});
+
+
+test("career migration runner is explicit, ordered, and absent from API startup", () => {
+  const runner = readFileSync(new URL("../scripts/migrate-career.js", import.meta.url), "utf8");
+  const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const appSource = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
+  const migrationFiles = [
+    "004_career_foundation.sql",
+    "005_career_intake.sql",
+    "006_career_assessments.sql",
+    "007_career_applications.sql",
+    "008_career_preparation.sql",
+    "009_career_documents.sql",
+    "010_career_public_snapshots.sql",
+  ];
+  assert.equal(packageJson.scripts["db:migrate-career"], "node scripts/migrate-career.js");
+  const positions = migrationFiles.map((filename) => runner.indexOf(`"${filename}"`));
+  assert.ok(positions.every((position) => position >= 0), "every implemented Career Radar migration is included");
+  assert.deepEqual(positions, [...positions].sort((left, right) => left - right), "migrations run in dependency order");
+  assert.ok(runner.includes("await pool.query(sql)"));
+  assert.ok(runner.includes("await pool.end()"));
+  assert.equal(appSource.includes("migrate-career"), false);
+});
+
+
+test("Phase 5 and Phase 7 migrations are additive, private, and synchronized with SQL-editor copies", () => {
+  const phase5 = readFileSync(new URL("../../docs/career-automation/sql/phase-5.sql", import.meta.url), "utf8");
+  const migration5 = readFileSync(new URL("../migrations/009_career_documents.sql", import.meta.url), "utf8");
+  const phase7 = readFileSync(new URL("../../docs/career-automation/sql/phase-7.sql", import.meta.url), "utf8");
+  const migration7 = readFileSync(new URL("../migrations/010_career_public_snapshots.sql", import.meta.url), "utf8");
+  assert.equal(phase5, migration5);
+  assert.equal(phase7, migration7);
+  for (const sql of [phase5, phase7]) {
+    assert.match(sql, /^\s*BEGIN;/);
+    assert.match(sql, /COMMIT;\s*$/);
+    assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
+    assert.match(sql, /REVOKE ALL PRIVILEGES ON TABLE public\.jr_/);
+    assert.doesNotMatch(sql, /CREATE\s+POLICY/i);
+  }
+  assert.match(phase5, /application_email/);
+  assert.match(phase5, /encryption/i);
+  assert.match(phase7, /jr_public_snapshots/);
+  assert.match(phase7, /immutable/i);
+  const verify5 = readFileSync(new URL("../../docs/career-automation/sql/phase-5.verify.sql", import.meta.url), "utf8");
+  const verify7 = readFileSync(new URL("../../docs/career-automation/sql/phase-7.verify.sql", import.meta.url), "utf8");
+  for (const verify of [verify5, verify7]) {
+    assert.match(verify, /has_table_privilege\('anon'/);
+    assert.match(verify, /has_table_privilege\('authenticated'/);
+  }
 });

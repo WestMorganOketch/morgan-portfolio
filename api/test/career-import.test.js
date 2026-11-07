@@ -20,6 +20,9 @@ class FakeJobDatabase {
     if (statement.startsWith("SELECT table_name FROM information_schema.tables")) {
       return { rows: values[0].filter((name) => this.tables.has(name)).map((table_name) => ({ table_name })) };
     }
+    if (statement.startsWith("SELECT role_tracks FROM public.jr_settings")) {
+      return { rows: [{ role_tracks: ["Security Analyst/SOC", "Computer Skills/ICT Trainer"] }] };
+    }
     if (statement.startsWith("SELECT id, source_key, canonical_key FROM public.jr_jobs")) {
       const row = [...this.jobs.values()].find((job) => job.source_key === values[0] && job.source_job_id === values[1]);
       return { rows: row ? [{ id: row.id, source_key: row.source_key, canonical_key: row.canonical_key }] : [] };
@@ -88,6 +91,7 @@ async function createFixture() {
     : res.status(403).json({ error: "Request verification failed." });
   registerCareerRoutes(app, db, { requireAdmin, requireSameOrigin, requireCsrfToken }, {
     runService: { start: async () => ({ id: randomUUID(), status: "running" }) },
+    assessmentService: { assessJob: async () => ({ assessed: true }) },
   });
   app.use((error, _req, res, _next) => res.status(500).json({ error: error.message }));
   const server = app.listen(0, "127.0.0.1");

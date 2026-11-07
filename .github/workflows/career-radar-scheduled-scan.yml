@@ -1,0 +1,68 @@
+name: Career Radar scheduled scan
+
+on:
+  schedule:
+    # Four runs a day, spaced six hours apart to respect provider request caps.
+    # UTC 03:15, 09:15, 15:15, 21:15 = 06:15, 12:15, 18:15, 00:15 in Kenya.
+    - cron: "15 3,9,15,21 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: career-radar-scheduled-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    name: Request a private scheduled scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      CAREER_API_BASE_URL: ${{ secrets.CAREER_API_BASE_URL }}
+      JOB_CRON_SECRET: ${{ secrets.JOB_CRON_SECRET }}
+    steps:
+      - name: Check required secret configuration
+        id: config
+        shell: bash
+        run: |
+          if [[ -z "$CAREER_API_BASE_URL" || -z "$JOB_CRON_SECRET" ]]; then
+            echo "::notice::Career Radar schedule is installed but not active. Add Actions secrets CAREER_API_BASE_URL (HTTPS API origin) and JOB_CRON_SECRET (must match the API environment)."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          node <<'NODE'
+          const { isIP } = require("node:net");
+          let url;
+          try {
+            url = new URL(process.env.CAREER_API_BASE_URL);
+          } catch {
+            console.error("::error::CAREER_API_BASE_URL is not a valid URL.");
+            process.exit(1);
+          }
+          const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+          const localHost = host === "localhost" || host.endsWith(".localhost")
+            || host.endsWith(".local") || host.endsWith(".internal");
+          if (url.protocol !== "https:" || !host || url.username || url.password
+              || url.pathname !== "/" || url.search || url.hash || isIP(host) || localHost) {
+            console.error("::error::CAREER_API_BASE_URL must be a public HTTPS origin only, without credentials, path, query, or fragment.");
+            process.exit(1);
+          }
+          NODE
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Request scheduled scan
+        if: steps.config.outputs.configured == 'true'
+        shell: bash
+        run: |
+          response="$(curl --fail --silent --show-error --max-time 90 \
+            --request POST "${CAREER_API_BASE_URL%/}/api/internal/jobs/run" \
+            --header "Content-Type: application/json" \
+            --header "x-cron-secret: $JOB_CRON_SECRET" \
+            --data '{}')"
+          if ! printf '%s' "$response" | jq -e '(.status == "already_running") or (.status and .id)' >/dev/null; then
+            echo "::error::Career Radar returned an unexpected scan response."
+            exit 1
+          fi
+          printf '%s' "$response" | jq -r '"Career Radar scan response: status=\(.status), run=\(.id // "not-created")"'

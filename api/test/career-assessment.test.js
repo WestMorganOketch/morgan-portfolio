@@ -129,7 +129,7 @@ test("profile changes trigger reassessment using the latest active track profile
       if (statement.startsWith("SELECT id, title, company")) {
         return { rows: [{ id: "job-1", ...baseJob }] };
       }
-      if (statement.startsWith("SELECT score_threshold")) return { rows: [settings] };
+      if (statement.startsWith("SELECT role_tracks, score_threshold")) return { rows: [{ ...settings, role_tracks: ["Security Analyst/SOC", "Computer Skills/ICT Trainer"] }] };
       if (statement.startsWith("SELECT id, track, verified_facts")) return { rows: profiles };
       if (statement.startsWith("INSERT INTO public.jr_assessments")) {
         writes.push({ statement, values });
@@ -151,4 +151,31 @@ test("profile changes trigger reassessment using the latest active track profile
   const result = await service.reassessAll();
   assert.deepEqual(result, { assessed: 1, failed: 0 });
   assert.equal(writes[1].values[1], "profile-1");
+});
+
+
+test("custom saved role tracks are assessed and matched to their own master profile", () => {
+  const customSettings = {
+    ...settings,
+    role_tracks: ["Cloud Security Engineer"],
+  };
+  const profile = {
+    track: "Cloud Security Engineer",
+    verified_facts: {
+      required_skills: ["cloud security", "incident response"],
+      preferred_skills: ["Terraform"],
+    },
+  };
+  const result = assessJob({
+    ...baseJob,
+    title: "Cloud Security Engineer",
+    description_text: "Cloud security and incident response with Terraform.",
+  }, profile, customSettings, { now: new Date("2026-11-02T10:00:00.000Z") });
+  assert.equal(result.track, "Cloud Security Engineer");
+  assert.equal(result.fit_breakdown.title_role_family.points, 25);
+  assert.deepEqual(
+    result.matched.filter((item) => item.type === "verified_skill_or_task").map((item) => item.value),
+    ["cloud security", "incident response"],
+  );
+  assert.deepEqual(result.missing, []);
 });

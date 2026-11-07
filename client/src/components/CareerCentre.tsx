@@ -5,6 +5,9 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type Keyboard
 type JsonRecord = Record<string, unknown>;
 type Eligibility = "eligible" | "unknown" | "ineligible";
 type Assessment = {
+  track?: string | null;
+  profile_id?: string | null;
+  assessed_at?: string;
   eligibility: Eligibility;
   eligibility_evidence: { phrase?: string; rule?: string }[];
   fit_score: number;
@@ -13,6 +16,16 @@ type Assessment = {
   missing: { type?: string; value?: string }[];
   reason_codes: string[];
   uncertainty: string[];
+};
+type RiskFinding = { code: string; severity: string; confidence: number; evidence: string };
+type RiskAssessment = {
+  risk_level: "low" | "medium" | "high" | string;
+  label: string;
+  risk_findings: RiskFinding[];
+  risk_confidence: number;
+  unknowns: string[];
+  url_checks: { hostname?: string | null; error?: string; https_ok?: boolean };
+  risk_assessed_at?: string | null;
 };
 type CareerJob = {
   id: string;
@@ -29,7 +42,7 @@ type CareerJob = {
   first_seen_at: string;
   status: string;
   assessment: Assessment | null;
-  risk_assessment?: string;
+  risk_assessment?: string | RiskAssessment;
 };
 type SourceHealth = {
   key: string;
@@ -48,6 +61,8 @@ type SourceHealth = {
 };
 type Overview = {
   last_success_at: string | null;
+  preparation_tables_configured?: boolean;
+  preparation_tables_missing?: string[];
   stale: boolean;
   new_jobs_count: number;
   shortlist_count: number;
@@ -96,13 +111,97 @@ type Settings = {
 type SetupStatus = {
   configuration: Record<string, { configured: boolean }>;
   JR_SEND_MODE: "draft" | "live";
+  preparationTables?: { configured: boolean; missing: string[] };
+  gmail?: { connected: boolean; email: string | null; scopes: string[]; connected_at: string | null };
+};
+type ApplicationPacket = {
+  id: string;
+  application_id: string;
+  job_id: string;
+  source_profile_id: string;
+  version: number;
+  status: string;
+  resume_text?: string;
+  cover_letter_text?: string;
+  recipient_email: string;
+  highlights: { text?: string; evidenceTerms?: string[]; sourceLine?: number }[];
+  missing_requirements: string[];
+  warnings: string[];
+  source_snapshot: JsonRecord;
+  master_resume_sha256: string;
+  gmail_message_id: string | null;
+  sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+  title: string;
+  company: string | null;
+  location_text: string;
+  application_url: string | null;
+  source_name: string | null;
+  profile_name: string;
+  profile_track: string;
+  application_state: string;
+  has_resume?: boolean;
+  has_cover_letter?: boolean;
+};
+type CareerRun = {
+  id: string;
+  trigger: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  summary: JsonRecord;
 };
 type WatchlistEntry = { id: string; provider: "greenhouse" | "lever"; token: string; label: string; enabled: boolean };
 type SearchLink = { name: string; url: string };
+type CareerDocument = {
+  id: string;
+  title: string;
+  kind: "master_resume" | "certificate" | "supporting_document" | "employment_record";
+  original_filename: string;
+  content_type: "application/pdf" | "image/png" | "image/jpeg";
+  byte_size: number;
+  plaintext_sha256: string;
+  created_at: string;
+  application_email_consent: boolean;
+  public_profile_consent?: boolean;
+};
+type PublicSnapshotJob = {
+  title: string;
+  location: string;
+  remote_scope: string;
+  source: string;
+  attribution: string;
+  url: string;
+  posted_at: string | null;
+  first_seen_at: string | null;
+  company?: string;
+};
+type PublicSnapshotPreview = {
+  snapshot_sha256: string;
+  job_count: number;
+  snapshot: { schema_version: number; generated_at: string; verification_notice: string; jobs: PublicSnapshotJob[] };
+};
+type PublicSnapshotStatus = {
+  public_publishing_enabled: boolean;
+  latest: { id: string; snapshot_sha256: string; job_count: number; published_by: string; created_at: string } | null;
+};
 
 const careerTabs = [
-  "Overview", "Review", "Import", "Resume profiles", "Preferences", "Sources and Setup", "Tracker",
+  "Overview", "Review", "Import", "Resume profiles", "Preferences", "Sources and Setup",
+  "Private documents", "Application drafts", "Tracker",
 ] as const;
+const careerTabLabels: Record<CareerTab, string> = {
+  Overview: "Dashboard",
+  Review: "Find & review",
+  Import: "Add a job",
+  "Resume profiles": "Master CV",
+  Preferences: "Search preferences",
+  "Sources and Setup": "Sources & automation",
+  "Private documents": "Private documents",
+  "Application drafts": "Application drafts",
+  Tracker: "Applications",
+};
 type CareerTab = (typeof careerTabs)[number];
 const reviewLists = ["Shortlist", "Maybe", "Qualified", "Passed", "Dismissed"] as const;
 type ReviewList = (typeof reviewLists)[number];
@@ -114,8 +213,8 @@ const applicationStates = [
 const tracks = ["Security Analyst/SOC", "Computer Skills/ICT Trainer"];
 const countries = ["Kenya", "Tanzania", "Uganda"];
 const secretNames = [
-  "JOB_CRON_SECRET", "DOC_ENCRYPTION_KEY", "GMAIL_USER", "GMAIL_APP_PASSWORD",
-  "GEMINI_API_KEY", "JOOBLE_API_KEY", "CAREERJET_API_KEY", "RELIEFWEB_APPNAME",
+  "JOB_CRON_SECRET", "DOC_ENCRYPTION_KEY",
+  "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REDIRECT_URI",
 ];
 const emptySettings: Settings = {
   role_tracks: [...tracks],
@@ -217,6 +316,127 @@ function isApplication(value: unknown): value is Application {
     && string(value.source_name);
 }
 
+function isApplicationPacket(value: unknown): value is ApplicationPacket {
+  return isRecord(value)
+    && string(value.id)
+    && string(value.application_id)
+    && string(value.job_id)
+    && string(value.source_profile_id)
+    && typeof value.version === "number"
+    && string(value.status)
+    && (value.resume_text === undefined || string(value.resume_text))
+    && (value.cover_letter_text === undefined || string(value.cover_letter_text))
+    && string(value.recipient_email)
+    && Array.isArray(value.highlights)
+    && Array.isArray(value.missing_requirements)
+    && value.missing_requirements.every(string)
+    && Array.isArray(value.warnings)
+    && value.warnings.every(string)
+    && isRecord(value.source_snapshot)
+    && string(value.master_resume_sha256)
+    && (value.gmail_message_id === null || string(value.gmail_message_id))
+    && (value.sent_at === null || string(value.sent_at))
+    && string(value.created_at)
+    && string(value.updated_at)
+    && string(value.title)
+    && (value.company === null || string(value.company))
+    && string(value.location_text)
+    && (value.application_url === null || string(value.application_url))
+    && (value.source_name === null || string(value.source_name))
+    && string(value.profile_name)
+    && string(value.profile_track)
+    && string(value.application_state);
+}
+
+function isCareerDocument(value: unknown): value is CareerDocument {
+  return isRecord(value)
+    && string(value.id)
+    && string(value.title)
+    && ["master_resume", "certificate", "supporting_document", "employment_record"].includes(String(value.kind))
+    && string(value.original_filename)
+    && ["application/pdf", "image/png", "image/jpeg"].includes(String(value.content_type))
+    && typeof value.byte_size === "number"
+    && string(value.plaintext_sha256)
+    && string(value.created_at)
+    && typeof value.application_email_consent === "boolean";
+}
+
+function isPublicSnapshotJob(value: unknown): value is PublicSnapshotJob {
+  return isRecord(value)
+    && string(value.title)
+    && string(value.location)
+    && string(value.remote_scope)
+    && string(value.source)
+    && string(value.attribution)
+    && string(value.url)
+    && (value.posted_at === null || string(value.posted_at))
+    && (value.first_seen_at === null || string(value.first_seen_at))
+    && (value.company === undefined || string(value.company));
+}
+
+function isPublicSnapshotPreview(value: unknown): value is PublicSnapshotPreview {
+  return isRecord(value)
+    && string(value.snapshot_sha256)
+    && typeof value.job_count === "number"
+    && isRecord(value.snapshot)
+    && typeof value.snapshot.schema_version === "number"
+    && string(value.snapshot.generated_at)
+    && string(value.snapshot.verification_notice)
+    && Array.isArray(value.snapshot.jobs)
+    && value.snapshot.jobs.every(isPublicSnapshotJob)
+    && value.job_count === value.snapshot.jobs.length;
+}
+
+function isPublicSnapshotStatus(value: unknown): value is PublicSnapshotStatus {
+  return isRecord(value)
+    && typeof value.public_publishing_enabled === "boolean"
+    && (value.latest === null || (
+      isRecord(value.latest)
+      && string(value.latest.id)
+      && string(value.latest.snapshot_sha256)
+      && typeof value.latest.job_count === "number"
+      && string(value.latest.published_by)
+      && string(value.latest.created_at)
+    ));
+}
+
+function isCareerRun(value: unknown): value is CareerRun {
+  return isRecord(value)
+    && string(value.id)
+    && string(value.trigger)
+    && string(value.status)
+    && string(value.started_at)
+    && (value.finished_at === null || string(value.finished_at))
+    && isRecord(value.summary);
+}
+
+function parseSetupStatus(value: unknown): SetupStatus | null {
+  if (!isRecord(value) || !isRecord(value.configuration)) return null;
+  const preparationTables = isRecord(value.preparationTables)
+    ? {
+        configured: value.preparationTables.configured === true,
+        missing: Array.isArray(value.preparationTables.missing) ? value.preparationTables.missing.filter(string) : [],
+      }
+    : undefined;
+  const rawGmail = isRecord(value.gmail) ? value.gmail : null;
+  const gmail = rawGmail
+    ? {
+        connected: rawGmail.connected === true,
+        email: string(rawGmail.email) ? rawGmail.email : null,
+        scopes: Array.isArray(rawGmail.scopes) ? rawGmail.scopes.filter(string) : [],
+        connected_at: string(rawGmail.connected_at) ? rawGmail.connected_at : null,
+      }
+    : undefined;
+  return {
+    configuration: Object.fromEntries(
+      Object.entries(value.configuration).map(([name, entry]) => [name, { configured: isRecord(entry) && entry.configured === true }]),
+    ),
+    JR_SEND_MODE: value.JR_SEND_MODE === "live" ? "live" : "draft",
+    ...(preparationTables ? { preparationTables } : {}),
+    ...(gmail ? { gmail } : {}),
+  };
+}
+
 function isSource(value: unknown): value is SourceHealth {
   return isRecord(value)
     && string(value.key)
@@ -262,6 +482,33 @@ async function request(path: string, csrfToken: string, init?: RequestInit): Pro
   return data;
 }
 
+ 
+async function requestMultipart(path: string, csrfToken: string, body: FormData): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "X-CSRF-Token": csrfToken },
+      body,
+    });
+  } catch {
+    throw new Error("Could not reach the career service. Check your connection and try again.");
+  }
+  const responseText = await response.text();
+  let data: unknown = null;
+  if (responseText) {
+    try { data = JSON.parse(responseText); } catch {
+      throw new Error("The career service returned an unreadable response.");
+    }
+  }
+  if (!response.ok) {
+    throw new Error(isRecord(data) && string(data.error) ? data.error : `The request failed (${response.status}).`);
+  }
+  return data;
+}
+
 function safeHttpUrl(value: string | null): string | null {
   if (!value) return null;
   try {
@@ -280,6 +527,29 @@ function readableDate(value: string | null | undefined): string {
 
 function valuesFromFacts(value: unknown): string[] {
   return Array.isArray(value) ? value.filter(string) : [];
+}
+
+function normalizedRole(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function suggestedProfileForJob(job: CareerJob, profiles: Profile[]): Profile | null {
+  const active = profiles.filter((profile) => !profile.archived_at);
+  const target = normalizedRole(job.assessment?.track ?? job.title);
+  const exact = active.find((profile) => normalizedRole(profile.track) === target);
+  if (exact) return exact;
+  if (/security|cyber|soc/.test(target)) {
+    return active.find((profile) => /(security|cyber|soc)/.test(normalizedRole(profile.track))) ?? active[0] ?? null;
+  }
+  if (/trainer|training|computer|ict|digital skills/.test(target)) {
+    return active.find((profile) => /(trainer|training|computer|ict|digital skills)/.test(normalizedRole(profile.track))) ?? active[0] ?? null;
+  }
+  return active[0] ?? null;
 }
 
 function CareerListEditor({
@@ -363,6 +633,29 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
   const [searchLinks, setSearchLinks] = useState<SearchLink[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [applicationFilter, setApplicationFilter] = useState("all");
+  const [runHistory, setRunHistory] = useState<CareerRun[]>([]);
+  const [applicationPackets, setApplicationPackets] = useState<ApplicationPacket[]>([]);
+  const [careerDocuments, setCareerDocuments] = useState<CareerDocument[]>([]);
+  const [documentTitle, setDocumentTitle] = useState("");
+  const [documentKind, setDocumentKind] = useState<CareerDocument["kind"]>("master_resume");
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [documentVaultError, setDocumentVaultError] = useState("");
+  const [selectedSendDocumentId, setSelectedSendDocumentId] = useState("");
+  const [confirmSendDocumentRelease, setConfirmSendDocumentRelease] = useState(false);
+  const [snapshotPreview, setSnapshotPreview] = useState<PublicSnapshotPreview | null>(null);
+  const [snapshotStatus, setSnapshotStatus] = useState<PublicSnapshotStatus | null>(null);
+  const [snapshotError, setSnapshotError] = useState("");
+  const [confirmSnapshotPublication, setConfirmSnapshotPublication] = useState(false);
+  const [activePacket, setActivePacket] = useState<ApplicationPacket | null>(null);
+  const [preparationJobs, setPreparationJobs] = useState<CareerJob[]>([]);
+  const [selectedPreparationJobId, setSelectedPreparationJobId] = useState("");
+  const [selectedPreparationProfileId, setSelectedPreparationProfileId] = useState("");
+  const [draftResumeText, setDraftResumeText] = useState("");
+  const [draftCoverLetterText, setDraftCoverLetterText] = useState("");
+  const [draftRecipientEmail, setDraftRecipientEmail] = useState("");
+  const [confirmSendWarnings, setConfirmSendWarnings] = useState(false);
+  const [confirmSendEligibility, setConfirmSendEligibility] = useState(false);
+  const [gmailActionBusy, setGmailActionBusy] = useState(false);
   const [applicationEvents, setApplicationEvents] = useState<ApplicationEvent[]>([]);
   const [activeApplication, setActiveApplication] = useState("");
   const [activeProfile, setActiveProfile] = useState("");
@@ -403,6 +696,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
         const value = await request("/api/admin/career/runs", csrfToken);
         if (!Array.isArray(value)) throw new Error("The scan status response was not valid.");
         const rows = value.filter(isRecord);
+        setRunHistory(rows.filter(isCareerRun));
         const current = (scanRunId ? rows.find((row) => row.id === scanRunId) : null) ?? rows[0];
         if (!current || !string(current.status) || !active) return;
         if (current.status === "running") return;
@@ -449,7 +743,44 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     const value = await request("/api/admin/career/resume-profiles", csrfToken);
     if (!Array.isArray(value) || !value.every(isProfile)) throw new Error("The career service returned unexpected profile data.");
     setProfiles(value);
+    return value;
   }, [csrfToken]);
+
+  const loadRunHistory = useCallback(async () => {
+    const value = await request("/api/admin/career/runs", csrfToken);
+    if (!Array.isArray(value)) throw new Error("The scan history response was not valid.");
+    const rows = value.filter(isCareerRun);
+    setRunHistory(rows);
+    return rows;
+  }, [csrfToken]);
+
+  const loadApplicationPackets = useCallback(async () => {
+    const value = await request("/api/admin/career/application-packets", csrfToken);
+    if (!Array.isArray(value) || !value.every(isApplicationPacket)) {
+      throw new Error("The application draft service returned unexpected data. Check that the Phase 6 database migration is installed.");
+    }
+    setApplicationPackets(value);
+    return value;
+  }, [csrfToken]);
+
+  const loadPreparationOptions = useCallback(async () => {
+    const [jobData, profileData, setupData] = await Promise.all([
+      request("/api/admin/career/jobs?limit=50", csrfToken),
+      loadProfiles(),
+      request("/api/admin/career/setup", csrfToken),
+    ]);
+    if (!isRecord(jobData) || !Array.isArray(jobData.jobs) || !jobData.jobs.every(isCareerJob)) {
+      throw new Error("The career service returned invalid job options.");
+    }
+    const foundJobs = jobData.jobs;
+    setPreparationJobs(foundJobs);
+    const parsedSetup = parseSetupStatus(setupData);
+    if (!parsedSetup) throw new Error("The setup status response was not valid.");
+    setSetup(parsedSetup);
+    setSelectedPreparationJobId((current) => current || foundJobs[0]?.id || "");
+    setSelectedPreparationProfileId((current) => current || profileData.find((profile) => !profile.archived_at)?.id || "");
+    return { jobs: foundJobs, profiles: profileData, setup: parsedSetup };
+  }, [csrfToken, loadProfiles]);
 
   const loadSources = useCallback(async () => {
     const [sourceData, setupData, watchData, linkData] = await Promise.all([
@@ -462,15 +793,9 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     if (!isRecord(setupData) || !isRecord(setupData.configuration)) throw new Error("The setup status could not be read.");
     if (!Array.isArray(watchData) || !Array.isArray(linkData)) throw new Error("The source tools returned unexpected data.");
     setSources(sourceData);
-    setSetup({
-      configuration: Object.fromEntries(
-        Object.entries(setupData.configuration).map(([name, value]) => [
-          name,
-          { configured: isRecord(value) && value.configured === true },
-        ]),
-      ),
-      JR_SEND_MODE: setupData.JR_SEND_MODE === "live" ? "live" : "draft",
-    });
+    const parsedSetup = parseSetupStatus(setupData);
+    if (!parsedSetup) throw new Error("The setup status response was not valid.");
+    setSetup(parsedSetup);
     setWatchlist(watchData.filter((row): row is WatchlistEntry =>
       isRecord(row) && string(row.id) && string(row.token) && string(row.label)
       && (row.provider === "greenhouse" || row.provider === "lever") && typeof row.enabled === "boolean"));
@@ -484,6 +809,45 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     setApplications(value);
   }, [csrfToken]);
 
+  const loadCareerDocuments = useCallback(async () => {
+    const value = await request("/api/admin/career/documents", csrfToken);
+    if (!Array.isArray(value) || !value.every(isCareerDocument)) {
+      throw new Error("The private document vault returned unexpected data.");
+    }
+    setCareerDocuments(value);
+    setDocumentVaultError("");
+    return value;
+  }, [csrfToken]);
+
+  const loadPublicSnapshotStatus = useCallback(async () => {
+    const value = await request("/api/admin/career/public-snapshot/latest", csrfToken);
+    if (!isPublicSnapshotStatus(value)) throw new Error("Public snapshot status returned unexpected data.");
+    setSnapshotStatus(value);
+    setSnapshotError("");
+    return value;
+  }, [csrfToken]);
+
+  // This one-time effect consumes the Gmail OAuth return marker. Its state updates
+  // intentionally route the user to setup and show the result of that external redirect.
+  /* eslint-disable react-hooks/set-state-in-effect -- navigation callback state is consumed once, then removed from the URL */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const gmailStatus = params.get("gmail");
+    if (gmailStatus) {
+      setTab("Sources and Setup");
+      setMessage(gmailStatus === "connected"
+        ? "Gmail connected. Email sending remains off until the server is deliberately switched to live mode."
+        : gmailStatus === "denied"
+          ? "Gmail connection was cancelled. No sending permission was saved."
+          : "Gmail could not be connected. Check the server setup checklist and retry.");
+      params.delete("gmail");
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.delete("gmail");
+      window.history.replaceState({}, "", nextUrl.toString());
+    }
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   useEffect(() => {
     let active = true;
     const timer = window.setTimeout(() => {
@@ -493,6 +857,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
           try {
             const runData = await request("/api/admin/career/runs", csrfToken);
             if (active && Array.isArray(runData)) {
+              setRunHistory(runData.filter(isCareerRun));
               const latestRunning = runData.filter(isRecord).find((row) => row.status === "running");
               if (latestRunning) {
                 setScanRunId(string(latestRunning.id) ? latestRunning.id : null);
@@ -542,14 +907,28 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
           });
         }).catch((cause: unknown) => reportError(cause, "Preferences could not be loaded."));
       }
-      if (tab === "Sources and Setup") void loadSources().catch((cause: unknown) => reportError(cause, "Source settings could not be loaded."));
+      if (tab === "Sources and Setup") {
+        void loadSources().catch((cause: unknown) => reportError(cause, "Source settings could not be loaded."));
+        void loadPublicSnapshotStatus().catch((cause: unknown) => {
+          if (active) setSnapshotError(cause instanceof Error ? cause.message : "Snapshot status could not be loaded.");
+        });
+      }
+      if (tab === "Private documents" || tab === "Application drafts") {
+        void loadCareerDocuments().catch((cause: unknown) => {
+          if (active) setDocumentVaultError(cause instanceof Error ? cause.message : "Private documents could not be loaded.");
+        });
+      }
       if (tab === "Tracker") void loadApplications().catch((cause: unknown) => reportError(cause, "Applications could not be loaded."));
+      if (tab === "Application drafts") {
+        void Promise.all([loadApplicationPackets(), loadPreparationOptions()]).catch((cause: unknown) =>
+          reportError(cause, cause instanceof Error ? cause.message : "Application preparation could not be loaded."));
+      }
     }, 0);
     return () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [csrfToken, loadApplications, loadProfiles, loadReview, loadSources, tab]);
+  }, [csrfToken, loadApplicationPackets, loadApplications, loadCareerDocuments, loadPreparationOptions, loadProfiles, loadPublicSnapshotStatus, loadReview, loadSources, tab]);
 
   async function runAction(action: () => Promise<void>, success?: string) {
     setBusy(true);
@@ -813,6 +1192,384 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
     }, "Job added to the application tracker.");
   }
 
+  async function openPreparation(job: CareerJob) {
+    setError("");
+    setMessage("");
+    setTab("Application drafts");
+    setSelectedPreparationJobId(job.id);
+    setPreparationJobs((current) => current.some((entry) => entry.id === job.id) ? current : [job, ...current].slice(0, 50));
+    setActivePacket(null);
+    setDraftResumeText("");
+    setDraftCoverLetterText("");
+    setDraftRecipientEmail("");
+    setConfirmSendWarnings(false);
+    setConfirmSendEligibility(false);
+    setSelectedSendDocumentId("");
+    setConfirmSendDocumentRelease(false);
+    try {
+      const availableProfiles = await loadProfiles();
+      const suggested = suggestedProfileForJob(job, availableProfiles);
+      if (suggested) setSelectedPreparationProfileId(suggested.id);
+      else setSelectedPreparationProfileId("");
+      void loadApplicationPackets().catch((cause: unknown) =>
+        setError(cause instanceof Error ? cause.message : "Application drafts could not be loaded."));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The master CV profiles could not be loaded.");
+    }
+  }
+
+  function applyPacketToEditor(packet: ApplicationPacket) {
+    setActivePacket(packet);
+    setSelectedPreparationJobId(packet.job_id);
+    setSelectedPreparationProfileId(packet.source_profile_id);
+    setDraftResumeText(packet.resume_text ?? "");
+    setDraftCoverLetterText(packet.cover_letter_text ?? "");
+    setDraftRecipientEmail(packet.recipient_email ?? "");
+    setConfirmSendWarnings(false);
+    setConfirmSendEligibility(false);
+    setSelectedSendDocumentId("");
+    setConfirmSendDocumentRelease(false);
+  }
+
+  async function openPacket(packetId: string) {
+    setError("");
+    setMessage("");
+    try {
+      const value = await request(`/api/admin/career/application-packets/${packetId}`, csrfToken);
+      if (!isApplicationPacket(value) || !string(value.resume_text) || !string(value.cover_letter_text)) {
+        throw new Error("The application packet returned unexpected data. Refresh the list and try again.");
+      }
+      applyPacketToEditor(value);
+      setTab("Application drafts");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The application draft could not be opened.");
+    }
+  }
+
+  async function prepareSelectedJob() {
+    if (!selectedPreparationJobId || !selectedPreparationProfileId) {
+      setError("Choose a job and a master CV profile first.");
+      return;
+    }
+    await runAction(async () => {
+      const value = await request(`/api/admin/career/jobs/${selectedPreparationJobId}/prepare`, csrfToken, {
+        method: "POST",
+        body: JSON.stringify({ profile_id: selectedPreparationProfileId }),
+      });
+      if (!isApplicationPacket(value) || !string(value.resume_text) || !string(value.cover_letter_text)) {
+        throw new Error("The application preparation service returned an invalid packet.");
+      }
+      applyPacketToEditor(value);
+      await Promise.all([loadApplicationPackets(), loadApplications(), loadOverview()]);
+    }, "Application draft generated from the selected master CV. Review every line before sending.");
+  }
+
+  async function savePacketDraft() {
+    if (!activePacket) return;
+    await runAction(async () => {
+      const value = await request(`/api/admin/career/application-packets/${activePacket.id}`, csrfToken, {
+        method: "PATCH",
+        body: JSON.stringify({
+          resume_text: draftResumeText,
+          cover_letter_text: draftCoverLetterText,
+          recipient_email: draftRecipientEmail,
+        }),
+      });
+      if (!isApplicationPacket(value) || !string(value.resume_text) || !string(value.cover_letter_text)) {
+        throw new Error("The saved application packet could not be reloaded.");
+      }
+      applyPacketToEditor(value);
+      await loadApplicationPackets();
+      await loadApplications();
+      await loadOverview();
+    }, "Saved a new reviewable version. Review the version number and warnings again before sending.");
+  }
+
+  async function uploadPrivateDocument(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!documentFile) {
+      setDocumentVaultError("Choose a PDF, PNG, or JPG file before uploading.");
+      return;
+    }
+    const form = event.currentTarget;
+    setDocumentVaultError("");
+    await runAction(async () => {
+      const body = new FormData();
+      body.append("title", documentTitle);
+      body.append("kind", documentKind);
+      body.append("file", documentFile);
+      const value = await requestMultipart("/api/admin/career/documents", csrfToken, body);
+      if (!isCareerDocument(value)) throw new Error("The private document service returned an invalid record.");
+      await loadCareerDocuments();
+      setDocumentTitle("");
+      setDocumentFile(null);
+      form.reset();
+    }, "Document encrypted and stored in the private vault. No release permission was granted.");
+  }
+
+  async function downloadPrivateDocument(item: CareerDocument) {
+    try {
+      const response = await fetch("/api/admin/career/documents/" + item.id + "/download", {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        let detail = "";
+        try {
+          const body = await response.json();
+          if (isRecord(body) && string(body.error)) detail = body.error;
+        } catch { /* use generic HTTP failure below */ }
+        throw new Error(detail || "The private document could not be downloaded.");
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = item.original_filename || item.title + ".pdf";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (cause) {
+      setDocumentVaultError(cause instanceof Error ? cause.message : "The private document could not be downloaded.");
+    }
+  }
+
+  async function updatePrivateDocumentConsent(item: CareerDocument, action: "granted" | "revoked") {
+    const verb = action === "granted" ? "allow this PDF to be attached to a future application email" : "revoke this PDF's application-email attachment permission";
+    if (!window.confirm("Confirm you want to " + verb + " for “" + item.title + "”? This action does not send an email. A final send also requires selecting the file and confirming release.")) return;
+    await runAction(async () => {
+      await request("/api/admin/career/documents/" + item.id + "/consents", csrfToken, {
+        method: "POST",
+        body: JSON.stringify({
+          purpose: "application_email",
+          action,
+          confirmed: true,
+          acknowledgement: action === "granted"
+            ? "I explicitly authorize this document for an application email attachment."
+            : "I revoke my previously granted application email attachment permission.",
+        }),
+      });
+      await loadCareerDocuments();
+      setConfirmSendDocumentRelease(false);
+      if (action === "revoked") {
+        setSelectedSendDocumentId((current) => current === item.id ? "" : current);
+      }
+    }, action === "granted" ? "Per-file application-email consent recorded." : "Per-file application-email consent revoked.");
+  }
+
+  async function archivePrivateDocument(item: CareerDocument) {
+    if (!window.confirm("Archive “" + item.title + "”? It will disappear from the active vault and cannot be attached. This does not erase retained encrypted storage objects.")) return;
+    await runAction(async () => {
+      await request("/api/admin/career/documents/" + item.id + "/archive", csrfToken, {
+        method: "POST",
+        body: JSON.stringify({ confirmed: true }),
+      });
+      await loadCareerDocuments();
+      if (selectedSendDocumentId === item.id) {
+        setSelectedSendDocumentId("");
+        setConfirmSendDocumentRelease(false);
+      }
+    }, "Private document archived.");
+  }
+
+  async function previewPublicSnapshot() {
+    setSnapshotError("");
+    await runAction(async () => {
+      const value = await request("/api/admin/career/public-snapshot/preview", csrfToken, {
+        method: "POST",
+        body: "{}",
+      });
+      if (!isPublicSnapshotPreview(value)) throw new Error("The public snapshot preview returned unexpected data.");
+      setSnapshotPreview(value);
+      setConfirmSnapshotPublication(false);
+      await loadPublicSnapshotStatus();
+    }, "Preview generated. Review every listing before publishing.");
+  }
+
+  async function publishPublicSnapshot() {
+    if (!snapshotPreview || !confirmSnapshotPublication) {
+      setSnapshotError("Review the preview and explicitly confirm publication first.");
+      return;
+    }
+    if (snapshotPreview.job_count === 0) {
+      setSnapshotError("The preview contains no eligible listings. Nothing can be published.");
+      return;
+    }
+    if (!window.confirm("Publish the exact preview shown below to the public read-only Career Radar endpoint? Company names appear only if explicitly enabled and permitted by the source. Private CVs, notes, salary details, fit scores, and application records are not included.")) return;
+    setSnapshotError("");
+    await runAction(async () => {
+      const value = await request("/api/admin/career/public-snapshot/publish", csrfToken, {
+        method: "POST",
+        body: JSON.stringify({ confirmed: true, snapshot_sha256: snapshotPreview.snapshot_sha256 }),
+      });
+      if (!isRecord(value) || value.published !== true || !isRecord(value.latest)) {
+        throw new Error("The snapshot publish endpoint returned unexpected data.");
+      }
+      const latest = value.latest;
+      if (!string(latest.id) || !string(latest.snapshot_sha256) || typeof latest.job_count !== "number"
+          || !string(latest.published_by) || !string(latest.created_at)) {
+        throw new Error("The published snapshot status could not be verified.");
+      }
+      setSnapshotStatus({
+        public_publishing_enabled: true,
+        latest: {
+          id: latest.id,
+          snapshot_sha256: latest.snapshot_sha256,
+          job_count: latest.job_count,
+          published_by: latest.published_by,
+          created_at: latest.created_at,
+        },
+      });
+      setSnapshotPreview(null);
+      setConfirmSnapshotPublication(false);
+    }, "The reviewed Career Radar snapshot was published. The public endpoint now serves this immutable version.");
+  }
+
+  async function connectGmail() {
+    setGmailActionBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const value = await request("/api/admin/career/gmail/oauth/start", csrfToken, {
+        method: "POST",
+        body: "{}",
+      });
+      if (!isRecord(value) || !string(value.authorization_url)) {
+        throw new Error("The Gmail connection service returned an invalid authorization link.");
+      }
+      const target = new URL(value.authorization_url);
+      if (target.origin !== "https://accounts.google.com" || target.pathname !== "/o/oauth2/v2/auth") {
+        throw new Error("The Gmail authorization link failed the destination check.");
+      }
+      window.location.assign(target.toString());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Gmail could not be connected.");
+      setGmailActionBusy(false);
+    }
+  }
+
+  async function disconnectGmailAccount() {
+    if (!window.confirm("Disconnect Gmail and revoke this app's saved send permission? This will stop email sending until you connect again.")) return;
+    await runAction(async () => {
+      await request("/api/admin/career/gmail/disconnect", csrfToken, { method: "POST", body: "{}" });
+      const setupData = await request("/api/admin/career/setup", csrfToken);
+      const parsedSetup = parseSetupStatus(setupData);
+      if (parsedSetup) setSetup(parsedSetup);
+    }, "Gmail disconnected and its grant revoked.");
+  }
+
+  async function sendApplicationPacket() {
+    if (!activePacket) return;
+    if (activePacketDirty) {
+      setError("Save your latest CV, cover letter, and recipient first. The send action only uses a saved packet version.");
+      return;
+    }
+    if (activePacket.status !== "ready_for_review") {
+      setError("Save the packet to create a reviewable version before sending.");
+      return;
+    }
+    if (!setup?.gmail?.connected || setup.JR_SEND_MODE !== "live") {
+      setError("Gmail sending is not ready. Connect Gmail and have the server owner enable live sending after reviewing the setup checklist.");
+      return;
+    }
+    if (!draftRecipientEmail.trim()) {
+      setError("Enter the recipient email address exactly as shown on the employer's official advert.");
+      return;
+    }
+    if ((activePacket.warnings.length > 0 || activePacket.missing_requirements.length > 0) && !confirmSendWarnings) {
+      setError("Review the packet warnings and possible missing requirements, then explicitly acknowledge them before sending.");
+      return;
+    }
+    if (activePacket.source_snapshot.eligibility === "unknown" && !confirmSendEligibility) {
+      setError("Confirm you manually checked location and work-authorization eligibility before sending.");
+      return;
+    }
+    if (activePacket.source_snapshot.eligibility === "ineligible") {
+      setError("This advert failed the eligibility rules. Job Radar will not send it.");
+      return;
+    }
+    const selectedDocument = careerDocuments.find((item) => item.id === selectedSendDocumentId);
+    if (selectedSendDocumentId) {
+      if (!selectedDocument || selectedDocument.application_email_consent !== true) {
+        setError("The selected private document no longer has active application-email consent. Refresh the vault and review it again.");
+        return;
+      }
+      if (selectedDocument.content_type !== "application/pdf" || selectedDocument.byte_size > 5 * 1024 * 1024) {
+        setError("Only a consented PDF up to 5 MB can be attached from the private vault.");
+        return;
+      }
+      if (!confirmSendDocumentRelease) {
+        setError("Confirm that you authorize the selected private document to be included in this exact email.");
+        return;
+      }
+    } else if (confirmSendDocumentRelease) {
+      setError("Select the private document before confirming its release.");
+      return;
+    }
+    const attachmentSummary = selectedDocument ? " It also includes the private PDF “" + selectedDocument.title + "”." : "";
+    if (!window.confirm(`Send application version ${activePacket.version} to ${draftRecipientEmail.trim()} from ${setup.gmail.email}? This sends the saved CV and cover-letter PDFs.${attachmentSummary} This action cannot be recalled here.`)) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const value = await request(`/api/admin/career/application-packets/${activePacket.id}/send`, csrfToken, {
+        method: "POST",
+        body: JSON.stringify({
+          reviewed_version: activePacket.version,
+          recipient_email: draftRecipientEmail.trim(),
+          confirm_send: true,
+          confirm_warnings: confirmSendWarnings,
+          confirm_eligibility: confirmSendEligibility,
+          document_id: selectedSendDocumentId || null,
+          confirm_document_release: Boolean(selectedSendDocumentId && confirmSendDocumentRelease),
+        }),
+      });
+      if (!isApplicationPacket(value)) throw new Error("Gmail returned an unexpected application state. Check the packet and Gmail Sent before any retry.");
+      applyPacketToEditor(value);
+      setMessage("Gmail confirmed the application email was sent. The packet is locked to prevent a duplicate send.");
+      await Promise.all([loadApplicationPackets(), loadApplications(), loadOverview(), loadRunHistory()]);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The email outcome could not be confirmed. Check Gmail Sent before retrying.");
+      try {
+        const latest = await request(`/api/admin/career/application-packets/${activePacket.id}`, csrfToken);
+        if (isApplicationPacket(latest) && string(latest.resume_text) && string(latest.cover_letter_text)) applyPacketToEditor(latest);
+        await loadApplicationPackets();
+      } catch {
+        // Keep the original send error visible if the refresh also fails.
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const activePacketDirty = Boolean(activePacket
+    && (
+      draftResumeText !== (activePacket.resume_text ?? "")
+      || draftCoverLetterText !== (activePacket.cover_letter_text ?? "")
+      || draftRecipientEmail !== (activePacket.recipient_email ?? "")
+    ));
+  const packetNeedsWarningAcknowledgement = Boolean(activePacket
+    && (activePacket.warnings.length > 0 || activePacket.missing_requirements.length > 0));
+  const packetNeedsEligibilityAcknowledgement = activePacket?.source_snapshot.eligibility === "unknown";
+  const packetIsIneligible = activePacket?.source_snapshot.eligibility === "ineligible";
+  const canSendPacket = Boolean(activePacket
+    && activePacket.status === "ready_for_review"
+    && !activePacketDirty
+    && draftRecipientEmail.trim()
+    && setup?.gmail?.connected
+    && setup.JR_SEND_MODE === "live"
+    && !packetIsIneligible
+    && (!packetNeedsWarningAcknowledgement || confirmSendWarnings)
+    && (!packetNeedsEligibilityAcknowledgement || confirmSendEligibility)
+    && (!selectedSendDocumentId || (
+      careerDocuments.some((item) => item.id === selectedSendDocumentId
+        && item.application_email_consent === true
+        && item.content_type === "application/pdf"
+        && item.byte_size <= 5 * 1024 * 1024)
+      && confirmSendDocumentRelease
+    )));
+
   const reviewJobs = reviewList === "Shortlist" ? overview?.shortlist ?? []
     : reviewList === "Maybe" ? overview?.maybe ?? []
       : reviewList === "Qualified" ? overview?.qualified ?? []
@@ -845,7 +1602,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
             tabIndex={tab === name ? 0 : -1}
             type="button"
           >
-            {name}
+            {careerTabLabels[name]}
             {name === "Overview" && overview?.review_count ? <span className="career-tab-count">{overview.review_count}</span> : null}
           </button>
         ))}
@@ -887,6 +1644,43 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
             {["failed", "interrupted", "skipped"].includes(scanStatus) ? (
               <p className="career-scan-result career-scan-warning" role="status">Latest scan: {scanStatus}. Check source health and run history for details.</p>
             ) : null}
+            {overview?.preparation_tables_configured === false ? (
+              <p className="career-warning" role="status">
+                Application drafts are not ready yet. Install the private preparation schema from <code>api/migrations/008_career_preparation.sql</code> in Supabase before generating CVs or cover letters.
+              </p>
+            ) : null}
+            <section className="career-subpanel">
+              <div className="career-review-heading">
+                <div><h3>Recent scan activity</h3><p>{runHistory.length} recent runs · latest run first</p></div>
+                <button className="text-link" disabled={busy} onClick={() => void runAction(async () => { await loadRunHistory(); }, "Scan history refreshed.")} type="button">Refresh history</button>
+              </div>
+              <p className="career-schedule-note">
+                Automatic scans run every six hours only after the repository Actions secrets <code>CAREER_API_BASE_URL</code> and <code>JOB_CRON_SECRET</code> are configured, with the same <code>JOB_CRON_SECRET</code> on the API service. Use <strong>Scan now</strong> to start an immediate scan.
+              </p>
+              {runHistory.length ? (
+                <ol className="career-run-list">
+                  {runHistory.slice(0, 6).map((run) => {
+                    const details = Object.entries(run.summary).filter(([, value]) => isRecord(value)).slice(0, 6);
+                    return (
+                      <li key={run.id}>
+                        <div className="career-run-heading">
+                          <strong>{run.trigger === "cron" ? "Scheduled scan" : "Manual scan"}</strong>
+                          <span className={`career-run-state state-${run.status}`}>{run.status.replaceAll("_", " ")}</span>
+                        </div>
+                        <small>{readableDate(run.finished_at ?? run.started_at)}</small>
+                        {details.length ? <p>{details.map(([source, detail]) => {
+                          const result = detail as JsonRecord;
+                          const info = string(result.error) ? "error"
+                            : string(result.skipped_reason) ? `skipped: ${result.skipped_reason}`
+                              : `${typeof result.new === "number" ? result.new : 0} new · ${typeof result.fetched === "number" ? result.fetched : 0} fetched`;
+                          return `${source}: ${info}`;
+                        }).join(" · ")}</p> : <p>No source-level diagnostics were recorded for this run.</p>}
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : <p className="admin-help">No scan runs have been recorded yet. Select Scan now to test your enabled sources.</p>}
+            </section>
             <div className="career-two-columns">
               <section className="career-subpanel">
                 <h3>Source health</h3>
@@ -903,7 +1697,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
             </div>
             <section className="career-subpanel">
               <div className="career-review-heading">
-                <div><h3>Jobs needing review</h3><p>{overview?.shortlist_count ?? 0} daily shortlist items · risk is not yet assessed</p></div>
+                <div><h3>Jobs needing review</h3><p>{overview?.shortlist_count ?? 0} daily shortlist items · low-risk rule screening only; employer legitimacy is not verified</p></div>
                 <button className="text-link" onClick={() => changeTab("Review")} type="button">Open review queue</button>
               </div>
               {overview?.shortlist.length ? (
@@ -911,7 +1705,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                   {overview.shortlist.map((job) => {
                     const href = safeHttpUrl(job.url);
                     return <li key={job.id}>
-                      <div><strong>{job.title}</strong><span>{job.location_text || job.remote_scope_text || "Location not specified"} · {job.assessment?.fit_score ?? "—"}/100 · risk: not yet assessed</span></div>
+                      <div><strong>{job.title}</strong><span>{job.location_text || job.remote_scope_text || "Location not specified"} · {job.assessment?.fit_score ?? "—"}/100 · risk: {isRecord(job.risk_assessment) ? string(job.risk_assessment.label) || "review required" : typeof job.risk_assessment === "string" ? job.risk_assessment : "not yet assessed"}</span></div>
                       {href ? <a href={href} rel="noopener noreferrer" target="_blank">{job.attribution_text}</a> : <span>{job.attribution_text}</span>}
                     </li>;
                   })}
@@ -946,6 +1740,7 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                     key={job.id}
                     onApplication={() => void createApplication(job)}
                     onNotes={() => void openNotes(job)}
+                    onPrepare={() => void openPreparation(job)}
                     onStatus={(status) => void updateJobStatus(job, status)}
                   />
                 ))}
@@ -1079,8 +1874,19 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
               <div><label htmlFor="career-packet-cap">Daily shortlist cap</label><input id="career-packet-cap" max={5} min={1} onChange={(event) => setSettings({ ...settings, max_packets_per_day: Number(event.target.value) })} type="number" value={settings.max_packets_per_day} /></div>
               <div><label htmlFor="career-send-cap">Daily send cap <span>reserved for later phase</span></label><input id="career-send-cap" max={5} min={1} onChange={(event) => setSettings({ ...settings, max_sends_per_day: Number(event.target.value) })} type="number" value={settings.max_sends_per_day} /></div>
             </div>
-            <label className="career-check"><input checked={settings.show_company_name} onChange={(event) => setSettings({ ...settings, show_company_name: event.target.checked })} type="checkbox" />Show company name in any future public view (off by default)</label>
-            <p className="career-warning">Timezone is fixed to Africa/Nairobi. Public publishing remains disabled in this phase.</p>
+            <fieldset>
+              <legend>Optional public Career Radar snapshot</legend>
+              <label className="career-check">
+                <input checked={settings.public_publishing} onChange={(event) => setSettings({ ...settings, public_publishing: event.target.checked })} type="checkbox" />
+                Allow the separate public snapshot feature after preview and explicit publish confirmation (off by default)
+              </label>
+              <label className="career-check">
+                <input checked={settings.show_company_name} onChange={(event) => setSettings({ ...settings, show_company_name: event.target.checked })} type="checkbox" />
+                Allow eligible employer names in that snapshot (off by default and still subject to each source's redisplay permission)
+              </label>
+              <p className="career-warning">Turning this on does not publish anything by itself. You must generate a preview, check every listing, and explicitly publish it in Sources & automation. The public snapshot excludes CVs, contact details, salary, fit scores, private notes, application status and private documents. Source redistribution permissions still apply.</p>
+            </fieldset>
+            <p className="career-warning">Timezone is fixed to Africa/Nairobi. Enabling public snapshots is a separate, optional opt-in and must not be used to publish material that the source does not allow to be redistributed.</p>
             <button className="button button-primary" disabled={busy} type="submit">Save preferences</button>
           </form>
         ) : null}
@@ -1094,6 +1900,68 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                 {secretNames.map((name) => <li key={name}><span>{name}</span><strong>{setup?.configuration[name]?.configured ? "Configured" : "Not configured"}</strong></li>)}
                 <li><span>JR_SEND_MODE</span><strong>{setup?.JR_SEND_MODE ?? "draft"}</strong></li>
               </ul>
+            </section>
+            <section className="career-subpanel career-setup-connect">
+              <h3>Application documents and email</h3>
+              <p className="admin-help">This is private setup. The original master CV stays in your database. The sender permission is limited to Gmail sending.</p>
+              <div className="career-setup-status-list">
+                <div>
+                  <span>Application draft database</span>
+                  <strong className={setup?.preparationTables?.configured ? "setup-ready" : "setup-missing"}>
+                    {setup?.preparationTables?.configured ? "Ready" : "Needs migration"}
+                  </strong>
+                </div>
+                <div>
+                  <span>Gmail sender</span>
+                  <strong className={setup?.gmail?.connected ? "setup-ready" : "setup-missing"}>
+                    {setup?.gmail?.connected ? "Connected" : "Not connected"}
+                  </strong>
+                </div>
+                <div>
+                  <span>Email sending mode</span>
+                  <strong>{setup?.JR_SEND_MODE === "live" ? "Live" : "Safe draft mode"}</strong>
+                </div>
+              </div>
+              {setup?.preparationTables?.configured === false ? (
+                <p className="career-warning">First apply <code>api/migrations/008_career_preparation.sql</code> in Supabase SQL Editor. It creates only the new private application-packet and Gmail connection tables; it does not modify your master CV or admin account.</p>
+              ) : null}
+              {setup?.gmail?.connected ? (
+                <>
+                  <p className="career-gmail-connected">Connected sender: <strong>{setup.gmail.email}</strong> · permission: send email only.</p>
+                  <button className="button button-quiet" disabled={busy || gmailActionBusy} onClick={() => void disconnectGmailAccount()} type="button">Disconnect and revoke Gmail</button>
+                </>
+              ) : (
+                <button
+                  className="button button-primary"
+                  disabled={busy || gmailActionBusy
+                    || setup?.preparationTables?.configured !== true
+                    || !setup?.configuration.GMAIL_OAUTH_CLIENT_ID?.configured
+                    || !setup?.configuration.GMAIL_OAUTH_CLIENT_SECRET?.configured
+                    || !setup?.configuration.GMAIL_OAUTH_REDIRECT_URI?.configured
+                    || !setup?.configuration.DOC_ENCRYPTION_KEY?.configured}
+                  onClick={() => void connectGmail()}
+                  type="button"
+                >{gmailActionBusy ? "Opening Google…" : "Connect Gmail securely"}</button>
+              )}
+              {setup?.gmail?.connected && setup.JR_SEND_MODE !== "live" ? (
+                <p className="career-warning">Gmail is connected, but sending is intentionally disabled. The server owner must set <code>JR_SEND_MODE=live</code> after the sender, quota, and test settings are verified.</p>
+              ) : null}
+              {setup?.preparationTables?.configured !== true ? (
+                <p className="admin-help">After the migration is applied, return here and refresh this section. The new draft editor will become available automatically.</p>
+              ) : null}
+            </section>
+            <section className="career-subpanel career-schedule-setup">
+              <h3>Automatic scanning</h3>
+              <p>GitHub Actions requests a scan four times per day: approximately 06:15, 12:15, 18:15 and 00:15 East Africa Time. Source-specific request caps may skip a source until its next allowed window.</p>
+              <p className="career-warning">The schedule only runs when both GitHub Actions repository secrets are set and <code>JOB_CRON_SECRET</code> on the API service matches the Actions secret. The app cannot read GitHub’s secret values, so it cannot truthfully report that automation is active from this screen alone.</p>
+              <ul>
+                <li><code>CAREER_API_BASE_URL</code> — HTTPS origin of your deployed API service.</li>
+                <li><code>JOB_CRON_SECRET</code> — the same random secret in GitHub Actions and the API service environment.</li>
+              </ul>
+              <div className="career-actions">
+                <a className="button button-quiet" href="https://github.com/WestMorganOketch/morgan-portfolio/actions/workflows/career-radar-scheduled-scan.yml" rel="noopener noreferrer" target="_blank">Open scheduled scan workflow</a>
+                <button className="button button-quiet" disabled={busy || scanStatus === "running"} onClick={() => void startScan()} type="button">Run scan now</button>
+              </div>
             </section>
             <section className="career-subpanel">
               <h3>Sources</h3>
@@ -1126,12 +1994,389 @@ export default function CareerCentre({ csrfToken }: { csrfToken: string }) {
                 })}
               </div>
             </section>
+            <section className="career-subpanel">
+              <div className="career-review-heading">
+                <div>
+                  <h3>Optional public Career Radar snapshot</h3>
+                  <p>Public output is off by default. Only a reviewed snapshot is served, never the live private queue.</p>
+                </div>
+                <button className="button button-quiet" disabled={busy} onClick={() => void loadPublicSnapshotStatus().catch((cause: unknown) => setSnapshotError(cause instanceof Error ? cause.message : "Snapshot status could not be refreshed."))} type="button">Refresh status</button>
+              </div>
+              {snapshotStatus?.latest ? (
+                <p className="career-packet-success" role="status">
+                  Latest snapshot: {snapshotStatus.latest.job_count} listings · published {readableDate(snapshotStatus.latest.created_at)} by {snapshotStatus.latest.published_by} · fingerprint {snapshotStatus.latest.snapshot_sha256.slice(0, 12)}…
+                </p>
+              ) : (
+                <p className="admin-help">No snapshot has been published. The public endpoint returns an empty, safe response until you explicitly publish a reviewed preview.</p>
+              )}
+              <p className="career-warning">
+                The snapshot excludes CVs, documents, private notes, emails, applications, salary, fit scores, and application statuses. Company names remain hidden unless you separately opt in and the source allows public redistribution. Public listings are not verified endorsements; each original employer page must be checked.
+              </p>
+              {snapshotStatus?.public_publishing_enabled ? (
+                <p className="admin-help">Public snapshots are enabled in your saved preferences. This permission does not publish anything by itself.</p>
+              ) : (
+                <p className="career-warning">Publishing is currently disabled in saved preferences. Enable the optional setting in Search preferences and save it before generating a public preview.</p>
+              )}
+              <div className="career-actions">
+                <button className="button button-primary" disabled={busy || !snapshotStatus?.public_publishing_enabled} onClick={() => void previewPublicSnapshot()} type="button">Generate current preview</button>
+                <a className="button button-quiet" href="/api/public/radar" rel="noopener noreferrer" target="_blank">View public snapshot endpoint</a>
+              </div>
+              {snapshotError ? <p className="admin-message admin-error" role="alert">{snapshotError}</p> : null}
+              {snapshotPreview ? (
+                <div className="career-snapshot-preview">
+                  <div className="career-review-heading">
+                    <div>
+                      <h4>Preview · {snapshotPreview.job_count} listings</h4>
+                      <small>Generated {readableDate(snapshotPreview.snapshot.generated_at)} · fingerprint {snapshotPreview.snapshot_sha256}</small>
+                    </div>
+                  </div>
+                  <p className="career-warning">{snapshotPreview.snapshot.verification_notice}</p>
+                  {snapshotPreview.snapshot.jobs.length ? (
+                    <div className="career-job-list">
+                      {snapshotPreview.snapshot.jobs.map((job, index) => (
+                        <article className="career-job-card" key={job.url + "-" + index}>
+                          <div className="career-job-head">
+                            <div>
+                              <h4>{job.title}</h4>
+                              <p>{job.location}{job.remote_scope ? " · " + job.remote_scope : ""}</p>
+                              {job.company ? <p><strong>Employer:</strong> {job.company}</p> : null}
+                              <small>Source: {job.source} · attribution: {job.attribution}</small>
+                            </div>
+                            <a href={safeHttpUrl(job.url) ?? undefined} rel="noopener noreferrer" target="_blank">Verify original listing</a>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : <p className="career-warning">No eligible listings passed source-permission, HTTPS and low-risk checks. Nothing can be published from this preview.</p>}
+                  <label className="career-acknowledgement">
+                    <input checked={confirmSnapshotPublication} onChange={(event) => setConfirmSnapshotPublication(event.target.checked)} type="checkbox" />
+                    I reviewed the exact preview above and explicitly approve publishing these fields as a public snapshot.
+                  </label>
+                  <div className="career-actions">
+                    <button className="button button-primary" disabled={busy || !confirmSnapshotPublication || snapshotPreview.job_count < 1} onClick={() => void publishPublicSnapshot()} type="button">Publish reviewed snapshot</button>
+                    <button className="button button-quiet" disabled={busy} onClick={() => { setSnapshotPreview(null); setConfirmSnapshotPublication(false); setSnapshotError(""); }} type="button">Discard preview</button>
+                  </div>
+                </div>
+              ) : null}
+            </section>
+          </div>
+        ) : null}
+
+        {tab === "Private documents" ? (
+          <div className="career-stack">
+            <section className="career-subpanel">
+              <div className="career-review-heading">
+                <div>
+                  <h3>Encrypted private document vault</h3>
+                  <p>Uploaded files are encrypted by the API before they enter the private storage bucket. The vault starts with no sharing permissions.</p>
+                </div>
+                <button className="button button-quiet" disabled={busy} onClick={() => void loadCareerDocuments().catch((cause: unknown) => setDocumentVaultError(cause instanceof Error ? cause.message : "Private documents could not be refreshed."))} type="button">Refresh vault</button>
+              </div>
+              <p className="career-warning">Uploads are capped at 10 MB and accepted only when the server detects a genuine PDF, PNG or JPG. Uploading never grants permission to attach a file to an email. Use a separate per-document consent action, then approve its release again on the exact email.</p>
+              {documentVaultError ? <p className="admin-message admin-error" role="alert">{documentVaultError}</p> : null}
+              <form className="career-form" onSubmit={(event) => void uploadPrivateDocument(event)}>
+                <label htmlFor="career-document-title">Document title</label>
+                <input id="career-document-title" maxLength={120} minLength={2} required onChange={(event) => setDocumentTitle(event.target.value)} value={documentTitle} />
+                <label htmlFor="career-document-kind">Document category</label>
+                <select id="career-document-kind" onChange={(event) => setDocumentKind(event.target.value as CareerDocument["kind"])} value={documentKind}>
+                  <option value="master_resume">Master CV</option>
+                  <option value="certificate">Certificate</option>
+                  <option value="supporting_document">Supporting document</option>
+                  <option value="employment_record">Employment record</option>
+                </select>
+                <label htmlFor="career-document-file">Choose file <span>PDF, PNG or JPG · maximum 10 MB</span></label>
+                <input id="career-document-file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(event) => setDocumentFile(event.target.files?.[0] ?? null)} required type="file" />
+                {documentFile ? <p className="admin-help">Selected: {documentFile.name} · {(documentFile.size / (1024 * 1024)).toFixed(2)} MB</p> : null}
+                <button className="button button-primary" disabled={busy || !documentTitle.trim() || !documentFile} type="submit">Encrypt and store privately</button>
+              </form>
+            </section>
+            <section className="career-subpanel">
+              <div className="career-review-heading">
+                <div><h3>Saved private documents</h3><p>{careerDocuments.length} active files · list reads metadata only</p></div>
+              </div>
+              {careerDocuments.length ? careerDocuments.map((item) => (
+                <article className="career-profile-row" key={item.id}>
+                  <div>
+                    <strong>{item.title}</strong>
+                    <p>{item.kind.replaceAll("_", " ")} · {item.original_filename}</p>
+                    <small>{(item.byte_size / (1024 * 1024)).toFixed(2)} MB · added {readableDate(item.created_at)} · integrity fingerprint {item.plaintext_sha256.slice(0, 12)}…</small>
+                    {item.application_email_consent ? (
+                      <p className="career-packet-success">Application-email release consent is currently granted. The send flow still requires selecting this PDF and confirming its release for that exact email.</p>
+                    ) : (
+                      <p className="admin-help">No active application-email release consent.</p>
+                    )}
+                    {item.content_type !== "application/pdf" || item.byte_size > 5 * 1024 * 1024 ? (
+                      <p className="career-warning">This file cannot be attached to application email; only PDFs up to 5 MB are supported for attachments.</p>
+                    ) : null}
+                  </div>
+                  <div className="career-actions">
+                    <button className="button button-quiet" disabled={busy} onClick={() => void downloadPrivateDocument(item)} type="button">Download original</button>
+                    {item.content_type === "application/pdf" && item.byte_size <= 5 * 1024 * 1024 ? (
+                      item.application_email_consent ? (
+                        <button className="button button-quiet delete-action" disabled={busy} onClick={() => void updatePrivateDocumentConsent(item, "revoked")} type="button">Revoke email consent</button>
+                      ) : (
+                        <button className="button button-quiet" disabled={busy} onClick={() => void updatePrivateDocumentConsent(item, "granted")} type="button">Grant email consent</button>
+                      )
+                    ) : null}
+                    <button className="button button-quiet delete-action" disabled={busy} onClick={() => void archivePrivateDocument(item)} type="button">Archive</button>
+                  </div>
+                </article>
+              )) : <p className="admin-help">No active private documents yet. Start with your master CV or a certificate you may need later.</p>}
+            </section>
+          </div>
+        ) : null}
+
+        {tab === "Application drafts" ? (
+          <div className="career-stack">
+            <section className="career-subpanel">
+              <div className="career-review-heading">
+                <div>
+                  <h3>Prepare an application</h3>
+                  <p>Choose a job and a verified master CV. Job Radar prepares a draft; you review it before anything is sent.</p>
+                </div>
+              </div>
+              {setup?.preparationTables?.configured === false ? (
+                <p className="career-warning">
+                  Draft generation is locked until the server owner applies <code>api/migrations/008_career_preparation.sql</code> in Supabase. No production database changes are made by this screen.
+                </p>
+              ) : null}
+              <div className="career-two-columns career-preparation-choices">
+                <div className="career-form">
+                  <label htmlFor="career-prepare-job">Job advert</label>
+                  <select id="career-prepare-job" onChange={(event) => setSelectedPreparationJobId(event.target.value)} value={selectedPreparationJobId}>
+                    <option value="">Choose a reviewed job</option>
+                    {preparationJobs.map((job) => (
+                      <option key={job.id} value={job.id}>
+                        {job.title} — {job.company ?? "Company not listed"} · {job.assessment?.fit_score ?? "—"}/100
+                      </option>
+                    ))}
+                  </select>
+                  <label htmlFor="career-prepare-profile">Master CV profile</label>
+                  <select id="career-prepare-profile" onChange={(event) => setSelectedPreparationProfileId(event.target.value)} value={selectedPreparationProfileId}>
+                    <option value="">Choose a saved master CV</option>
+                    {profiles.filter((profile) => !profile.archived_at).map((profile) => (
+                      <option key={profile.id} value={profile.id}>{profile.name} — {profile.track}</option>
+                    ))}
+                  </select>
+                  {profiles.filter((profile) => !profile.archived_at).length === 0 ? (
+                    <p className="career-warning">You need a saved master CV first. Open Master CV to add your original CV and verified skills.</p>
+                  ) : (
+                    <p className="admin-help">Your master CV is not overwritten. The packet records which source profile was used and keeps the full original CV text intact.</p>
+                  )}
+                  <button
+                    className="button button-primary"
+                    disabled={busy || !selectedPreparationJobId || !selectedPreparationProfileId || setup?.preparationTables?.configured === false}
+                    onClick={() => void prepareSelectedJob()}
+                    type="button"
+                  >Generate CV + cover letter draft</button>
+                </div>
+                <div className="career-subpanel career-preparation-explainer">
+                  <h3>What happens next?</h3>
+                  <ol>
+                    <li>Job Radar reassesses the advert against the selected master CV.</li>
+                    <li>It picks relevant lines from the original CV and records where each line came from.</li>
+                    <li>It drafts a role-specific cover letter from the verified profile and match evidence.</li>
+                    <li>You edit, save a new version, download PDFs, then explicitly approve any email send.</li>
+                  </ol>
+                  <p className="admin-help">No external AI receives your CV in this workflow. It uses local matching and a reviewable template so unsupported claims are not silently invented.</p>
+                </div>
+              </div>
+            </section>
+
+            <section className="career-subpanel">
+              <div className="career-review-heading">
+                <div><h3>Saved application packets</h3><p>{applicationPackets.length} latest versions · previous versions remain in the private audit trail</p></div>
+                <button className="text-link" disabled={busy} onClick={() => void runAction(async () => { await Promise.all([loadApplicationPackets(), loadPreparationOptions()]); }, "Application drafts refreshed.")} type="button">Refresh drafts</button>
+              </div>
+              {applicationPackets.length ? (
+                <div className="career-packet-list">
+                  {applicationPackets.map((packet) => (
+                    <article className="career-packet-row" key={packet.id}>
+                      <div>
+                        <strong>{packet.title}</strong>
+                        <p>{packet.company ?? "Company not listed"} · {packet.location_text} · {packet.profile_name}</p>
+                        <small>Version {packet.version} · Updated {readableDate(packet.updated_at)} · {packet.status.replaceAll("_", " ")}</small>
+                      </div>
+                      <div className="career-packet-actions">
+                        {typeof packet.source_snapshot.assessmentScore === "number" ? <span className="career-packet-score">{packet.source_snapshot.assessmentScore}/100</span> : null}
+                        <button className="button button-quiet" disabled={busy} onClick={() => void openPacket(packet.id)} type="button">Open draft</button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : <p className="admin-help">No application packets yet. Open Find & review and choose Prepare application on a suitable advert.</p>}
+            </section>
+
+            {activePacket ? (
+              <section className="career-subpanel career-packet-editor" aria-labelledby="career-packet-title">
+                <div className="career-review-heading career-packet-editor-heading">
+                  <div>
+                    <p className="eyebrow">PRIVATE APPLICATION PACKET · VERSION {activePacket.version}</p>
+                    <h3 id="career-packet-title">{activePacket.title}</h3>
+                    <p>{activePacket.company ?? "Company not listed"} · {activePacket.location_text} · Master CV: {activePacket.profile_name}</p>
+                  </div>
+                  <span className={"career-packet-status status-" + activePacket.status}>{activePacket.status.replaceAll("_", " ")}</span>
+                </div>
+                <div className="career-packet-facts">
+                  <div><span>FIT SCORE</span><strong>{typeof activePacket.source_snapshot.assessmentScore === "number" ? activePacket.source_snapshot.assessmentScore + "/100" : "Not scored"}</strong></div>
+                  <div><span>ELIGIBILITY</span><strong>{String(activePacket.source_snapshot.eligibility ?? "unknown")}</strong></div>
+                  <div><span>MASTER CV CHECK</span><strong>{activePacket.master_resume_sha256.slice(0, 12)}…</strong></div>
+                </div>
+                <p className="career-form-guide">
+                  The original master CV must remain exactly intact in the full-CV section. You can edit the added role-aligned highlights and the cover letter; the server rejects a CV draft that removes or changes the complete original CV text.
+                </p>
+                {activePacket.warnings.length || activePacket.missing_requirements.length ? (
+                  <div className="career-packet-warnings" role="status">
+                    <h4>Review before applying</h4>
+                    {activePacket.warnings.length ? <ul>{activePacket.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
+                    {activePacket.missing_requirements.length ? (
+                      <>
+                        <p><strong>Possible missing requirements — verify these; do not claim them unless true:</strong></p>
+                        <ul>{activePacket.missing_requirements.map((item) => <li key={item}>{item}</li>)}</ul>
+                      </>
+                    ) : null}
+                  </div>
+                ) : <p className="career-packet-success">No missing requirements were flagged by the current assessment. Still review the advert and every claim manually.</p>}
+
+                {activePacket.highlights.length ? (
+                  <details className="career-packet-evidence" open>
+                    <summary>Where the tailored highlights came from ({activePacket.highlights.length} source lines)</summary>
+                    <ol>
+                      {activePacket.highlights.map((highlight, index) => (
+                        <li key={highlight.sourceLine ?? index}>
+                          <q>{highlight.text}</q>
+                          <small>Master CV line {highlight.sourceLine ?? "—"} · matched: {(highlight.evidenceTerms ?? []).join(", ") || "No explicit keyword recorded"}</small>
+                        </li>
+                      ))}
+                    </ol>
+                  </details>
+                ) : null}
+
+                <div className="career-actions career-packet-actions">
+                  <a className="button button-quiet" href={"/api/admin/career/application-packets/" + activePacket.id + "/resume.pdf"}>Download CV PDF</a>
+                  <a className="button button-quiet" href={"/api/admin/career/application-packets/" + activePacket.id + "/cover-letter.pdf"}>Download cover letter PDF</a>
+                  {safeHttpUrl(activePacket.application_url) ? (
+                    <a className="button button-quiet" href={safeHttpUrl(activePacket.application_url) ?? undefined} rel="noopener noreferrer" target="_blank">Open official advert</a>
+                  ) : null}
+                </div>
+                {activePacket.status === "needs_manual_attention" ? (
+                  <p className="career-warning" role="alert">The previous email outcome is uncertain. Check Gmail Sent and the application timeline before doing anything else. Job Radar has blocked another send to avoid a duplicate.</p>
+                ) : null}
+                {activePacket.status === "sent" ? (
+                  <p className="career-packet-success" role="status">Gmail confirmed this packet was sent on {readableDate(activePacket.sent_at)}. This version is locked.</p>
+                ) : null}
+
+                <form className="career-form career-packet-form" onSubmit={(event) => { event.preventDefault(); void savePacketDraft(); }}>
+                  <label htmlFor="career-packet-resume">CV draft <span>Keep the complete master CV below the role-aligned highlights · max 65,000 characters</span></label>
+                  <textarea
+                    id="career-packet-resume"
+                    disabled={!["draft", "ready_for_review"].includes(activePacket.status)}
+                    maxLength={65000}
+                    onChange={(event) => { setDraftResumeText(event.target.value); setConfirmSendWarnings(false); setConfirmSendEligibility(false); }}
+                    rows={16}
+                    value={draftResumeText}
+                  />
+                  <label htmlFor="career-packet-cover-letter">Cover letter <span>Review and personalize the greeting, role, evidence and closing · max 12,000 characters</span></label>
+                  <textarea
+                    id="career-packet-cover-letter"
+                    disabled={!["draft", "ready_for_review"].includes(activePacket.status)}
+                    maxLength={12000}
+                    onChange={(event) => { setDraftCoverLetterText(event.target.value); setConfirmSendWarnings(false); setConfirmSendEligibility(false); }}
+                    rows={10}
+                    value={draftCoverLetterText}
+                  />
+                  <label htmlFor="career-packet-recipient">Recruiter email <span>Enter only an email address confirmed on the employer’s official advert; Job Radar never guesses it.</span></label>
+                  <input
+                    id="career-packet-recipient"
+                    disabled={!["draft", "ready_for_review"].includes(activePacket.status)}
+                    maxLength={254}
+                    onChange={(event) => { setDraftRecipientEmail(event.target.value); setConfirmSendWarnings(false); setConfirmSendEligibility(false); }}
+                    type="email"
+                    value={draftRecipientEmail}
+                  />
+                  {activePacket.status === "draft" || activePacket.status === "ready_for_review" ? (
+                    <div className="career-actions">
+                      <button className="button button-primary" disabled={busy} type="submit">
+                        {activePacket.status === "ready_for_review" ? "Save new version for review" : "Save and mark ready for review"}
+                      </button>
+                      <span className="admin-help">{activePacketDirty ? "Unsaved changes — save a new version before sending." : "Only the saved version shown above can be sent."}</span>
+                    </div>
+                  ) : null}
+                </form>
+
+                <section className="career-subpanel career-document-release" aria-labelledby="career-document-release-title">
+                  <h4 id="career-document-release-title">Optional private PDF attachment</h4>
+                  <p className="admin-help">The generated CV and cover letter are always attached. You may select one additional PDF from the encrypted vault only when its per-file email consent is active. Nothing is released by choosing it; the final send requires a second confirmation below and in the send dialog.</p>
+                  <label htmlFor="career-send-private-document">Private vault document</label>
+                  <select
+                    id="career-send-private-document"
+                    disabled={!["draft", "ready_for_review"].includes(activePacket.status) || busy}
+                    onChange={(event) => {
+                      setSelectedSendDocumentId(event.target.value);
+                      setConfirmSendDocumentRelease(false);
+                    }}
+                    value={selectedSendDocumentId}
+                  >
+                    <option value="">Do not attach an extra private document</option>
+                    {careerDocuments.filter((item) =>
+                      item.application_email_consent === true
+                      && item.content_type === "application/pdf"
+                      && item.byte_size <= 5 * 1024 * 1024).map((item) => (
+                        <option key={item.id} value={item.id}>{item.title} — {item.original_filename} · {(item.byte_size / (1024 * 1024)).toFixed(2)} MB</option>
+                      ))}
+                  </select>
+                  {selectedSendDocumentId ? (
+                    <label className="career-acknowledgement">
+                      <input
+                        checked={confirmSendDocumentRelease}
+                        onChange={(event) => setConfirmSendDocumentRelease(event.target.checked)}
+                        type="checkbox"
+                      />
+                      I authorize the selected private PDF to be attached to this exact application email after reviewing the recipient and content.
+                    </label>
+                  ) : null}
+                  {careerDocuments.length === 0 ? (
+                    <p className="admin-help">The vault is empty. Add a document in the Private documents tab first.</p>
+                  ) : null}
+                  {careerDocuments.some((item) => item.application_email_consent === true && item.content_type === "application/pdf" && item.byte_size <= 5 * 1024 * 1024) === false ? (
+                    <p className="career-warning">There are no eligible PDFs with active email consent. Open Private documents to grant consent to a PDF that you intend to share.</p>
+                  ) : null}
+                </section>
+
+                {packetNeedsWarningAcknowledgement && ["draft", "ready_for_review"].includes(activePacket.status) ? (
+                  <label className="career-acknowledgement">
+                    <input checked={confirmSendWarnings} onChange={(event) => setConfirmSendWarnings(event.target.checked)} type="checkbox" />
+                    I reviewed every warning and possible missing requirement, and I will not claim anything that I cannot verify.
+                  </label>
+                ) : null}
+                {packetNeedsEligibilityAcknowledgement && ["draft", "ready_for_review"].includes(activePacket.status) ? (
+                  <label className="career-acknowledgement">
+                    <input checked={confirmSendEligibility} onChange={(event) => setConfirmSendEligibility(event.target.checked)} type="checkbox" />
+                    I manually checked the employer's location and work-authorization requirements.
+                  </label>
+                ) : null}
+                {packetIsIneligible ? (
+                  <p className="career-warning">Automatic email sending is blocked because the current advert failed the eligibility rules. Review the original advert manually.</p>
+                ) : null}
+                {!setup?.gmail?.connected ? (
+                  <p className="admin-help">Gmail is not connected. Open Sources & automation to configure and connect the send-only Gmail account.</p>
+                ) : null}
+                {setup?.gmail?.connected && setup.JR_SEND_MODE !== "live" ? (
+                  <p className="career-warning">Gmail is connected, but the API is in safe draft mode. Sending remains disabled until the server owner deliberately enables JR_SEND_MODE=live.</p>
+                ) : null}
+                {activePacket.status === "ready_for_review" && setup?.gmail?.connected && setup.JR_SEND_MODE === "live" ? (
+                  <button className="button button-primary career-send-final" disabled={busy || !canSendPacket} onClick={() => void sendApplicationPacket()} type="button">
+                    {busy ? "Sending…" : "Review complete — send email"}
+                  </button>
+                ) : null}
+              </section>
+            ) : null}
           </div>
         ) : null}
 
         {tab === "Tracker" ? (
           <div className="career-stack">
-            <p className="admin-help">Private application tracker. No documents are attached or sent in this phase.</p>
+            <p className="admin-help">Track each reviewed job, keep private notes, record follow-up dates, and inspect the event timeline. Application packets and confirmed email sends are managed in Application drafts.</p>
             <label className="career-filter-label" htmlFor="career-application-filter">Filter by application state
               <select id="career-application-filter" onChange={(event) => setApplicationFilter(event.target.value)} value={applicationFilter}>
                 <option value="all">All states</option>
@@ -1214,16 +2459,19 @@ function CareerJobCard({
   onStatus,
   onNotes,
   onApplication,
+  onPrepare,
 }: {
   job: CareerJob;
   busy: boolean;
   onStatus: (status: string) => void;
   onNotes: () => void;
   onApplication: () => void;
+  onPrepare: () => void;
 }) {
   const assessment = job.assessment;
   const externalUrl = safeHttpUrl(job.url);
   const breakdown = assessment?.fit_breakdown ?? {};
+  const risk = isRecord(job.risk_assessment) ? job.risk_assessment as unknown as RiskAssessment : null;
   const breakdownItems = Object.entries(breakdown).flatMap(([label, value]) =>
     isRecord(value) && typeof value.weight === "number" && typeof value.points === "number"
       ? [{ label, points: value.points, weight: value.weight }]
@@ -1247,7 +2495,9 @@ function CareerJobCard({
         <div className="career-assessment-details">
           <p><strong>Eligibility:</strong> {assessment.eligibility}</p>
           <p><strong>Eligibility evidence:</strong> {assessment.eligibility_evidence.map((item) => item.phrase ?? item.rule ?? "").filter(Boolean).join("; ") || "No explicit phrase recorded."}</p>
-          <p><strong>Risk:</strong> {job.risk_assessment ?? "not yet assessed"} — no safety conclusion is implied.</p>
+          <p><strong>Risk:</strong> {risk?.label ?? (typeof job.risk_assessment === "string" ? job.risk_assessment : "not yet assessed")}</p>
+          {risk?.risk_findings.length ? <ul className="career-risk-findings" aria-label="Advert risk indicators">{risk.risk_findings.map((finding) => <li key={finding.code}><strong>{finding.severity}:</strong> {finding.evidence}</li>)}</ul> : null}
+          {risk?.unknowns.length ? <p><strong>Still to verify:</strong> {risk.unknowns.join(" ")}</p> : null}
           <p><strong>Matched:</strong> {assessment.matched.map((item) => item.value ?? item.phrase ?? "").filter(Boolean).join(", ") || "None recorded"}</p>
           <p><strong>Missing:</strong> {assessment.missing.map((item) => item.value ?? "").filter(Boolean).join(", ") || "None recorded"}</p>
           <p><strong>Reason codes:</strong> {assessment.reason_codes.join(", ") || "None"}</p>
@@ -1263,6 +2513,7 @@ function CareerJobCard({
         <button className="button button-quiet" disabled={busy} onClick={() => onStatus("shortlisted")} type="button">Shortlist</button>
         <button className="button button-quiet" disabled={busy} onClick={() => onStatus("not_a_fit")} type="button">Not a fit</button>
         <button className="button button-quiet" disabled={busy} onClick={() => onStatus("duplicate")} type="button">Mark duplicate</button>
+        <button className="button button-primary" disabled={busy || risk?.risk_level === "high"} onClick={onPrepare} type="button">Prepare application</button>
         <button className="button button-quiet" disabled={busy} onClick={onNotes} type="button">Add notes</button>
         <button className="button button-quiet" disabled={busy} onClick={onApplication} type="button">Add to tracker</button>
       </div>
