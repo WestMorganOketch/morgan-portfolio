@@ -1,13 +1,13 @@
 # Career Radar release checklist
 
-**Status:** production steps are not complete. This feature branch is not the live site. Do not apply migrations until the historical database credential identified in the implementation plan has been rotated/revoked, the replacement credential is configured in the intended API environment, and a verified backup exists.
+**Status (7 November 2026):** Career Radar implementation PR [#16](https://github.com/WestMorganOketch/morgan-portfolio/pull/16) is merged into `main`, and the latest `main` quality checks passed. This does **not** prove the production site or database is updated. Production release remains blocked until the historical database credential is rotated/revoked, the replacement credential is configured in the verified API environment, and a usable backup exists. Treat deployment, migrations, scheduled scans, Gmail OAuth, and live end-to-end behavior as unverified until each is checked directly.
 
 ## Before touching the database
 
 1. Rotate/revoke the historical Supabase database credential outside this repository. Check access logs and review other credential-like historical values. Do not paste secrets into chat, issues, or source control.
 2. Confirm the database target by checking the Supabase project name/ID in the Dashboard and confirming that the API environment's `DATABASE_URL` points to that same project. Never guess the target from a connection string alone.
 3. Take a backup or export using the provider's supported procedure and confirm that it is usable. Keep the backup private and record when it was taken.
-4. Make sure the feature branch's API lint/tests, client lint/type-check/production build, and CodeQL checks are green for the exact commit intended for release.
+4. Confirm the latest `main` commit intended for release has passing API lint/tests, client lint/type-check/production build, and CodeQL checks. A green CI run validates code checks only; it does not validate production configuration or data.
 5. Do not enable live Gmail sending while testing schema changes. Keep `JR_SEND_MODE=draft`.
 
 ## Migration order
@@ -81,9 +81,9 @@ Expected output is six rows. This query does not expose secret values.
 ## After the migrations
 
 1. Configure and verify the API's server-side `DOC_ENCRYPTION_KEY` (32 bytes encoded as 64 hexadecimal characters or canonical base64) and `CAREER_DOCUMENT_BUCKET=career-private-documents`, plus the existing Supabase URL/service-role configuration. Keep the career bucket private; the API must refuse a public bucket.
-2. Merge and deploy only after the owner reviews the completed PR and passes the explicit security-release gate. Until merge/deployment, the production admin site remains unchanged.
+2. PR #16 is already merged to `main`. Confirm the hosting provider actually deployed the intended commit to the correct client and API services; do not assume that a GitHub merge triggered or completed both deployments.
 3. Configure GitHub Actions secrets `CAREER_API_BASE_URL` (HTTPS API origin) and `JOB_CRON_SECRET` (same random value as the API service) only after the API deploy is confirmed; then run the workflow manually and inspect the private scan ledger.
 4. Keep Gmail in draft mode until OAuth settings are configured server-side, the intended account is connected, generated CV/cover-letter PDFs are reviewed, and a test send is deliberately authorized. No test email should be sent during the migration step.
 5. Leave public publishing off unless you explicitly choose to enable it. Review the generated snapshot and original employer links before using the separate publish confirmation.
 
-**Stop condition:** Do not merge or treat the release as live merely because the SQL succeeds. Confirm the rotated credential, verified migrations and RLS, deployed API/client version, scheduled trigger, and any optional integrations separately.
+**Stop condition:** Do not treat the release as live merely because the PR merged, CI passed, or SQL succeeded. Confirm credential rotation, verified migrations and RLS, deployed client/API versions, a successful authenticated scheduled scan visible in the private ledger, and each optional integration separately.
