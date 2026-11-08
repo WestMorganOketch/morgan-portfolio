@@ -5,7 +5,7 @@ import Link from "next/link";
 import { m, useReducedMotion } from "framer-motion";
 import {
   ArrowRight, ArrowUpRight, Award, BookOpen, BriefcaseBusiness, Check, Code2,
-  Database, Github, GraduationCap, Linkedin, Mail, Network, Server, Shield, Sparkles, Users,
+  Database, GraduationCap, Mail, Network, Server, Shield, Sparkles, Users,
 } from "lucide-react";
 import { profile } from "@/data/profile";
 import { details, skillGroups, timeline } from "@/data/site";
@@ -101,8 +101,8 @@ function AboutContent() {
 
             <div className="about-story-footer">
               <div className="about-social-links" aria-label="Morgan's contact and professional links">
-                <a href={profile.github} target="_blank" rel="noreferrer" aria-label="GitHub profile"><Github size={17} aria-hidden="true" /><span className="sr-only">GitHub (opens in a new tab)</span></a>
-                <a href={profile.linkedin} target="_blank" rel="noreferrer" aria-label="LinkedIn profile"><Linkedin size={17} aria-hidden="true" /><span className="sr-only">LinkedIn (opens in a new tab)</span></a>
+                <a href={profile.github} target="_blank" rel="noreferrer" aria-label="GitHub profile"><span className="about-social-monogram" aria-hidden="true">GH</span><span className="sr-only">GitHub (opens in a new tab)</span></a>
+                <a href={profile.linkedin} target="_blank" rel="noreferrer" aria-label="LinkedIn profile"><span className="about-social-monogram about-social-linkedin" aria-hidden="true">in</span><span className="sr-only">LinkedIn (opens in a new tab)</span></a>
                 <a href={`mailto:${profile.email}`} aria-label="Send Morgan an email"><Mail size={17} aria-hidden="true" /><span className="sr-only">Email Morgan</span></a>
               </div>
               <Link className="about-connect-link" href="/contact">Let’s connect <ArrowUpRight size={15} aria-hidden="true" /></Link>
