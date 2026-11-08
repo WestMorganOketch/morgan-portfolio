@@ -5,7 +5,7 @@ import Link from "next/link";
 import { m, useReducedMotion } from "framer-motion";
 import {
   ArrowRight, ArrowUpRight, Award, BookOpen, BriefcaseBusiness, Check, Code2,
-  Database, GraduationCap, Network, Server, Shield, Sparkles, Users,
+  Database, Github, GraduationCap, Linkedin, Mail, Network, Server, Shield, Sparkles, UserRound, Users,
 } from "lucide-react";
 import { profile } from "@/data/profile";
 import { details, skillGroups, timeline } from "@/data/site";
@@ -49,14 +49,71 @@ function PageIntro({ slug }: { slug: string }) {
 
 function AboutContent() {
   return (
-    <div className="content-grid about-detail-grid">
-      <Reveal><article className="content-card about-statement"><span className="card-index">01 / PROFILE</span><p className="display-copy">{profile.summary}</p></article></Reveal>
-      <Reveal delay={0.08}><div className="detail-stack">
-        <article className="content-card"><GraduationCap size={19} /><span className="card-index">EDUCATION</span><h2>{profile.education.qualification}</h2><p>{profile.education.institution} · {profile.education.status}</p></article>
-        <article className="content-card"><Shield size={19} /><span className="card-index">FOCUS</span><h2>Security, systems &amp; people</h2><p>Practical cybersecurity, IT support, networking, data, and secure web development.</p></article>
-        <article className="content-card"><Sparkles size={19} /><span className="card-index">APPROACH</span><h2>Evidence before assumptions</h2><p>Curiosity, clear communication, responsible practice, and continuous learning.</p></article>
-      </div></Reveal>
-    </div>
+    <section className="about-editorial" aria-labelledby="about-editorial-title">
+      <div className="about-editorial-kicker">
+        <span aria-hidden="true">//</span>
+        <span>ABOUT</span>
+        <span className="about-kicker-divider" aria-hidden="true" />
+        <span className="about-kicker-detail">THE PERSON BEHIND THE PRACTICE</span>
+      </div>
+      <h1 className="about-editorial-title" id="about-editorial-title">
+        The story behind <em>the work.</em>
+      </h1>
+
+      <div className="about-story-grid">
+        <Reveal>
+          <figure className="about-portrait-column">
+            <div className="about-portrait-frame" role="img" aria-label="Portrait space reserved for Morgan West Oketch's professional photograph">
+              <div className="about-portrait-placeholder">
+                <span className="about-portrait-orbit about-orbit-one" aria-hidden="true" />
+                <span className="about-portrait-orbit about-orbit-two" aria-hidden="true" />
+                <span className="about-portrait-monogram">MW</span>
+                <span className="about-portrait-label">PERSONAL PORTRAIT</span>
+                <span className="about-portrait-prompt"><UserRound size={13} aria-hidden="true" /> PHOTO TO BE ADDED</span>
+              </div>
+              <span className="about-portrait-index" aria-hidden="true">01</span>
+            </div>
+            <figcaption className="about-portrait-caption">
+              <span>MORGAN WEST OKETCH</span>
+              <span>{profile.location.toUpperCase()}</span>
+            </figcaption>
+          </figure>
+        </Reveal>
+
+        <Reveal delay={0.08}>
+          <div className="about-story-copy">
+            <blockquote>
+              “I believe good technology should make systems more secure, more reliable, and more useful to the people who depend on them.”
+            </blockquote>
+            <div className="about-story-prose">
+              <p>
+                I’m a final-year Mathematics and Computer Science student at Tom Mboya University, building practical experience across cybersecurity, IT infrastructure, and data analytics. I’m interested in how secure, well-managed systems can solve everyday problems for the people and organisations that rely on them.
+              </p>
+              <p>
+                As an ICT Tutor and Data Systems Manager at Profia Institute of Professionals College, I support an IT learning environment used by more than 50 people. My work spans lab systems, networking, user support, data handling, and practical learning in areas such as firewall configuration, secure APIs, and database fundamentals.
+              </p>
+              <p>
+                Alongside this work, I develop projects in Python, SQL, and Power BI, and build web applications with modern JavaScript tools. I’m continuing to deepen my skills in security operations, network defence, and cloud technologies through hands-on practice and continuous learning.
+              </p>
+            </div>
+
+            <div className="about-story-footer">
+              <div className="about-social-links" aria-label="Morgan's contact and professional links">
+                <a href={profile.github} target="_blank" rel="noreferrer" aria-label="GitHub profile"><Github size={17} aria-hidden="true" /><span className="sr-only">GitHub (opens in a new tab)</span></a>
+                <a href={profile.linkedin} target="_blank" rel="noreferrer" aria-label="LinkedIn profile"><Linkedin size={17} aria-hidden="true" /><span className="sr-only">LinkedIn (opens in a new tab)</span></a>
+                <a href={`mailto:${profile.email}`} aria-label="Send Morgan an email"><Mail size={17} aria-hidden="true" /><span className="sr-only">Email Morgan</span></a>
+              </div>
+              <Link className="about-connect-link" href="/contact">Let’s connect <ArrowUpRight size={15} aria-hidden="true" /></Link>
+            </div>
+
+            <div className="about-story-meta">
+              <span><strong>STUDYING</strong> {profile.education.qualification}</span>
+              <span><strong>FOCUS</strong> Cybersecurity · IT · Data</span>
+            </div>
+          </div>
+        </Reveal>
+      </div>
+    </section>
   );
 }
 
@@ -491,13 +548,14 @@ export default function PortfolioPage({ slug }: { slug: string }) {
     default: content = <PlaceholderContent slug={slug} />;
   }
 
+  const isAbout = slug === "about";
   return (
-    <div className="inner-page">
-      <PageIntro slug={slug} />
-      <div className="page-container page-content">{content}{managedCategories[slug] ? <ManagedContent key={slug} slug={slug} /> : null}</div>
+    <div className={`inner-page ${isAbout ? "inner-page-about" : ""}`}>
+      {isAbout ? null : <PageIntro slug={slug} />}
+      <div className={`page-container page-content ${isAbout ? "about-page-content" : ""}`}>{content}{managedCategories[slug] ? <ManagedContent key={slug} slug={slug} /> : null}</div>
       <div className="page-bottom-cta page-container">
-        <p>Curious about my work?</p>
-        <Link href={slug === "projects" ? "/contact" : "/projects"}>{slug === "projects" ? "Start a conversation" : "Explore selected projects"} <ArrowRight size={15} aria-hidden="true" /></Link>
+        <p>{isAbout ? "Have a role, project, or idea in mind?" : "Curious about my work?"}</p>
+        <Link href={isAbout || slug === "projects" ? "/contact" : "/projects"}>{isAbout ? "Let’s connect" : slug === "projects" ? "Start a conversation" : "Explore selected projects"} <ArrowRight size={15} aria-hidden="true" /></Link>
       </div>
     </div>
   );
