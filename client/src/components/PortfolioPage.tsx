@@ -5,7 +5,7 @@ import Link from "next/link";
 import { m, useReducedMotion } from "framer-motion";
 import {
   ArrowRight, ArrowUpRight, Award, BookOpen, BriefcaseBusiness, Check, Code2,
-  Database, Github, GraduationCap, Linkedin, Mail, Network, Server, Shield, Sparkles, UserRound, Users,
+  Database, Github, GraduationCap, Linkedin, Mail, Network, Server, Shield, Sparkles, Users,
 } from "lucide-react";
 import { profile } from "@/data/profile";
 import { details, skillGroups, timeline } from "@/data/site";
