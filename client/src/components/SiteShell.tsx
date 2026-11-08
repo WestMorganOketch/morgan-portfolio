@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { ArrowUp, Command, Menu, Search, SunMoon, X } from "lucide-react";
+import { ArrowUp, ArrowUpRight, Command, Menu, Search, SunMoon, X } from "lucide-react";
 import { publicPages } from "@/data/site";
 import { profile } from "@/data/profile";
 
@@ -251,16 +251,15 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
       {!isAdmin && (
         <header className={`site-nav ${compact ? "site-nav-compact" : ""}`}>
           <Link className="brand" href="/" aria-label="Morgan West Oketch, home">
-            <span className="brand-mark" aria-hidden="true">M<span>W</span></span>
-            <span className="brand-name">MORGAN OKETCH<small>CYBERSECURITY · SYSTEMS · DATA</small></span>
+            <span className="brand-mark brand-avatar" aria-hidden="true">MW</span>
+            <span className="brand-name">MORGAN WEST OKETCH<small>CYBERSECURITY · SYSTEMS · DATA</small></span>
           </Link>
           <nav className="primary-nav" aria-label="Primary navigation">
             <Link href="/" aria-current={pathname === "/" ? "page" : undefined}>Home</Link>
             <Link href="/about" aria-current={pathname === "/about" ? "page" : undefined}>About</Link>
-            <Link href="/skills" aria-current={pathname === "/skills" ? "page" : undefined}>Skills</Link>
-            <Link href="/projects" aria-current={pathname === "/projects" ? "page" : undefined}>Projects</Link>
+            <Link href="/projects" aria-current={pathname === "/projects" ? "page" : undefined}>Work</Link>
+            <Link href="/blog" aria-current={pathname === "/blog" ? "page" : undefined}>Writing</Link>
             <Link href="/resume" aria-current={pathname === "/resume" ? "page" : undefined}>Résumé</Link>
-            <Link className="nav-contact" href="/contact" aria-current={pathname === "/contact" ? "page" : undefined}>Contact <span aria-hidden="true">↗</span></Link>
             <div className={`nav-explore ${exploreOpen ? "nav-explore-open" : ""}`} ref={exploreRef}>
               <button
                 ref={exploreButtonRef}
@@ -331,6 +330,9 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
               <Command size={15} aria-hidden="true" /><span>Search</span><kbd>Ctrl K</kbd>
             </button>
             <ThemeToggle />
+            <Link className="nav-book-call" href="/contact" aria-current={pathname === "/contact" ? "page" : undefined}>
+              Book a call <ArrowUpRight size={15} aria-hidden="true" />
+            </Link>
           </div>
         </header>
       )}
