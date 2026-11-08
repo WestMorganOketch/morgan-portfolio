@@ -321,8 +321,9 @@ html[data-theme="light"] .visual-face-skills {
 .hero-visual:focus-within .floating-chip { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) {
   .floating-chip, .service-line-caret { animation: none !important;   }
+}
 
-  .resume-page {
+.resume-page {
     --resume-paper: #ffffff;
     --resume-ink: #172019;
     --resume-muted: #46534a;
@@ -473,6 +474,7 @@ html[data-theme="light"] .visual-face-skills {
     .resume-certifications { gap: 1px !important; }
     .resume-documents-link { margin-top: 8px !important; padding-top: 4px !important; break-before: avoid; }
   }
+@media (prefers-reduced-motion: reduce) {
   .visual-glint { display: none; }
   .visual-tab-fill { animation: none !important; transform: none !important; }
 }
