@@ -66,7 +66,7 @@ function AboutContent() {
             <div className="about-portrait-frame">
               <img
                 className="about-portrait-image"
-                src="/images/morgan-west-oketch-about.webp"
+                src="/images/morgan-west-oketch-graduation.webp"
                 alt="Morgan West Oketch at a Cyber Shujaa graduation event, wearing a patterned beige sweater and a white Cyber Shujaa Graduate stole"
                 width={1453}
                 height={968}
