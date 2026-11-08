@@ -19,8 +19,14 @@ export default function ResumePage() {
         <ResumeToolbar />
         <article className="resume-paper" aria-labelledby="resume-name">
           <header className="resume-header">
-            <h1 id="resume-name">{resume.name}</h1>
-            <p className="resume-headline">{resume.headline}</p>
+            <p className="resume-eyebrow"><span aria-hidden="true" /> Professional résumé</p>
+            <div className="resume-identity">
+              <div className="resume-identity-copy">
+                <h1 id="resume-name">{resume.name}</h1>
+                <p className="resume-headline">{resume.headline}</p>
+              </div>
+              <div className="resume-monogram" aria-hidden="true">MW</div>
+            </div>
             <p className="resume-contact">
               <span>{resume.location}</span>
               <span aria-hidden="true">•</span>
