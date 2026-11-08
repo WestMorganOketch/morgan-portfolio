@@ -2121,6 +2121,13 @@ details[open] > .accordion-content { grid-template-rows: 1fr; opacity: 1; }
   transition: border-color var(--motion-fast) var(--motion-ease-move), color var(--motion-fast) var(--motion-ease-move), transform var(--motion-fast) var(--motion-ease-move);
 }
 .about-social-links a:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); color: var(--accent); transform: translateY(-2px); }
+.about-social-monogram {
+  color: currentColor;
+  font: 750 10px/1 var(--body-font);
+  letter-spacing: -.04em;
+}
+.about-social-linkedin { font-size: 13px; letter-spacing: -.08em; }
+
 .about-connect-link {
   display: inline-flex;
   align-items: center;
