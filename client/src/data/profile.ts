@@ -31,14 +31,18 @@ export function isPortfolioProjectList(value: unknown): value is PortfolioProjec
 
 export const profile = {
   name: "Morgan West Oketch",
-  title: "Cybersecurity Analyst | IT Support Specialist | Data & Systems Professional",
+  title: "Technology Specialist | Web Application Development | Systems Security | Prompt Engineering",
   location: "Nairobi, Kenya",
   email: "westmorgan777@gmail.com",
   github: "https://github.com/WestMorganOketch",
   linkedin: "https://www.linkedin.com/in/morgan-west-415445319/",
   summary:
-    "I’m a final-year Mathematics and Computer Science student with hands-on experience in cybersecurity, IT infrastructure, and data analytics. I enjoy securing systems, supporting people who use them, and turning technical learning into practical work. I’m continuing to grow my skills in security operations, networking, and cloud technologies.",
+    "Technology specialist focused on web application development, systems security, prompt engineering, and AI-assisted development. Holds a Bachelor of Science in Mathematics and Computer Science from Tom Mboya University, combining analytical problem-solving with practical experience building web applications, supporting IT infrastructure, and strengthening system and application security. Experienced in secure API integration, network controls, data systems, and supporting more than 50 users. Uses AI tools to accelerate prototyping while reviewing, testing, and refining generated code for quality, reliability, and security.",
   skills: [
+    "Web application development (React, Next.js, Node.js, TypeScript)",
+    "Systems security and secure API integration",
+    "Prompt engineering and LLM integration",
+    "AI-assisted development (vibe coding)",
     "Threat analysis",
     "SIEM fundamentals",
     "Network security",
@@ -85,10 +89,10 @@ export const profile = {
     },
   ] satisfies PortfolioProject[],
   education: {
-    qualification: "BSc Mathematics & Computer Science",
+    qualification: "Bachelor of Science in Mathematics & Computer Science",
     institution: "Tom Mboya University",
     location: "Homa Bay, Kenya",
-    status: "Awaiting graduation · Nov 2026",
+    status: "Graduate",
   },
   certifications: [
     {
