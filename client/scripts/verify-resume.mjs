@@ -75,8 +75,8 @@ function stripScriptAndStyleBlocks(input) {
   do {
     previous = current;
     current = current
-      .replace(/<script\b[\s\S]*?<\/script\b[^>]*>/gi, "")
-      .replace(/<style\b[\s\S]*?<\/style\b[^>]*>/gi, "");
+      .replace(/<(?=\s*script\b)/gi, "&lt;")
+      .replace(/<(?=\s*style\b)/gi, "&lt;");
   } while (current !== previous);
   return current;
 }
