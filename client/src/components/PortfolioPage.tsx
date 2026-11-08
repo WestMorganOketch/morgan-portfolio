@@ -63,14 +63,16 @@ function AboutContent() {
       <div className="about-story-grid">
         <Reveal>
           <figure className="about-portrait-column">
-            <div className="about-portrait-frame" role="img" aria-label="Portrait space reserved for Morgan West Oketch's professional photograph">
-              <div className="about-portrait-placeholder">
-                <span className="about-portrait-orbit about-orbit-one" aria-hidden="true" />
-                <span className="about-portrait-orbit about-orbit-two" aria-hidden="true" />
-                <span className="about-portrait-monogram">MW</span>
-                <span className="about-portrait-label">PERSONAL PORTRAIT</span>
-                <span className="about-portrait-prompt"><UserRound size={13} aria-hidden="true" /> PHOTO TO BE ADDED</span>
-              </div>
+            <div className="about-portrait-frame">
+              <img
+                className="about-portrait-image"
+                src="/images/morgan-west-oketch-about.webp"
+                alt="Morgan West Oketch standing in a bright indoor setting, wearing a burgundy Profia shirt and blue jeans"
+                width={360}
+                height={480}
+                loading="eager"
+                decoding="async"
+              />
               <span className="about-portrait-index" aria-hidden="true">01</span>
             </div>
             <figcaption className="about-portrait-caption">
