@@ -23,7 +23,7 @@ export type ResumeProject = {
 
 export const resume = {
   name: profile.name,
-  headline: "Data Analyst | Business Intelligence Specialist | Cybersecurity Analyst",
+  headline: "Technology Specialist | Web Application Developer | Systems Security | Prompt Engineering",
   location: profile.location,
   email: profile.email,
   links: [
@@ -31,7 +31,7 @@ export const resume = {
     { label: "GitHub", href: profile.github },
   ],
   showPhone: false,
-  summary: "Detail-oriented final-year Mathematics and Computer Science student at Tom Mboya University with hands-on experience across cybersecurity, IT infrastructure, and data analytics. Certified Security Analyst (Cyber Shujaa / USIU-Africa) with proven expertise in threat analysis, network security, system administration, and end-to-end Business Intelligence reporting — from data cleaning and statistical modelling to interactive dashboarding. Experienced in managing IT and data environments for 50+ users, automating reporting pipelines, and translating complex technical findings into clear, actionable insight for diverse stakeholders. Driven to deepen expertise in cybersecurity, networking, and AI-augmented data systems within research, development, or technology driven organisations.",
+  summary: "Technology specialist and Bachelor of Science graduate in Mathematics and Computer Science, focused on web application development, systems security, prompt engineering, and AI-assisted development. Hands-on experience building web applications and secure APIs, maintaining IT infrastructure, managing data systems, and supporting more than 50 users. Certified Security Analyst (Cyber Shujaa / USIU-Africa), with practical skills across threat analysis, network security, system administration, Python, SQL, Power BI, and cloud-supported web delivery. Uses prompt engineering and AI-assisted (vibe-coding) workflows to accelerate prototyping and implementation, with emphasis on code review, testing, maintainability, and security.",
   skills: [
     { heading: "Core Skills & Expertise", label: "Cybersecurity Analysis", items: "Threat detection, incident response, SIEM fundamentals, vulnerability assessment" },
     { heading: "Core Skills & Expertise", label: "Network Security", items: "VPN configuration, firewall setup, Wireshark traffic analysis, access control" },
@@ -116,10 +116,10 @@ export const resume = {
     },
   ] satisfies ResumeProject[],
   education: {
-    qualification: "BSc. Mathematics & Computer Science",
+    qualification: "Bachelor of Science in Mathematics & Computer Science",
     institution: "Tom Mboya University",
     location: "Homa Bay, Kenya",
-    period: "Awaiting Graduation: November 2026",
+    period: "2026",
     coursework: "Statistical Methods, Data Structures & Algorithms, Database Systems, Linear Algebra, Probability Theory, Numerical Analysis, Discrete Mathematics, Regression Analysis",
   },
   certifications: [
