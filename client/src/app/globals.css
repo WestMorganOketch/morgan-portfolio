@@ -1094,9 +1094,15 @@ details[open] > .accordion-content { grid-template-rows: 1fr; opacity: 1; }
   .contact-layout { gap: 25px; }
 }
 @media (max-width: 420px) {
+  .site-nav { gap: 5px; padding-left: 7px; padding-right: 6px; }
+  .brand { gap: 5px; }
+  .brand-mark { width: 29px; height: 29px; flex-basis: 29px; }
   .brand-name small { display: none; }
-  .brand-name { font-size: 7.7px; }
-  .nav-book-call { padding-inline: 9px; font-size: 8.5px; }
+  .brand-name { font-size: 7.3px; letter-spacing: .065em; }
+  .nav-explore-trigger { min-width: 32px; }
+  .nav-actions { gap: 3px; }
+  .nav-actions > .theme-toggle { min-width: 29px; min-height: 29px; }
+  .nav-book-call { min-height: 32px; gap: 3px; padding-inline: 7px; font-size: 8px; }
 }
 @media (max-width: 620px) {
   .page-container { width: min(100% - 38px, 1200px); }
@@ -1117,7 +1123,8 @@ details[open] > .accordion-content { grid-template-rows: 1fr; opacity: 1; }
   .brand-name { font-size: 7.2px; letter-spacing: .08em; }
   .brand-name small { font-size: 5.7px; letter-spacing: 0.05em; }
   .nav-explore-trigger { min-width: 36px; min-height: 36px; justify-content: center; padding-inline: 5px; font-size: 10px; }
-  .nav-actions .search-trigger, .nav-actions > .theme-toggle { display: none; }
+  .nav-actions .search-trigger { display: none; }
+  .nav-actions > .theme-toggle { min-width: 32px; min-height: 32px; padding-inline: 5px; }
   .nav-book-call { min-height: 35px; gap: 4px; padding-inline: 10px; font-size: 9px; box-shadow: none; }
   .nav-explore .nav-hamburger { display: block; }
   .nav-explore .nav-explore-label { display: none; }
