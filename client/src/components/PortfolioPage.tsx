@@ -66,10 +66,10 @@ function AboutContent() {
             <div className="about-portrait-frame">
               <img
                 className="about-portrait-image"
-                src="/images/morgan-west-oketch-about.webp"
-                alt="Morgan West Oketch standing in a bright indoor setting, wearing a burgundy Profia shirt and blue jeans"
-                width={360}
-                height={480}
+                src="/images/morgan-west-oketch-graduation.webp"
+                alt="Morgan West Oketch at a Cyber Shujaa graduation event, wearing a patterned beige sweater and a white Cyber Shujaa Graduate stole"
+                width={1453}
+                height={968}
                 loading="eager"
                 decoding="async"
               />
@@ -85,17 +85,17 @@ function AboutContent() {
         <Reveal delay={0.08}>
           <div className="about-story-copy">
             <blockquote>
-              “I believe good technology should make systems more secure, more reliable, and more useful to the people who depend on them.”
+              “Build quickly, verify carefully, and make technology worthy of the trust people place in it.”
             </blockquote>
             <div className="about-story-prose">
               <p>
-                I’m a final-year Mathematics and Computer Science student at Tom Mboya University, building practical experience across cybersecurity, IT infrastructure, and data analytics. I’m interested in how secure, well-managed systems can solve everyday problems for the people and organisations that rely on them.
+                I’m a technology specialist and Bachelor of Science graduate in Mathematics and Computer Science from Tom Mboya University. My work focuses on developing practical web applications and strengthening the security, reliability, and usability of the systems behind them.
               </p>
               <p>
-                As an ICT Tutor and Data Systems Manager at Profia Institute of Professionals College, I support an IT learning environment used by more than 50 people. My work spans lab systems, networking, user support, data handling, and practical learning in areas such as firewall configuration, secure APIs, and database fundamentals.
+                My experience spans web application development, systems security, IT infrastructure, and data systems. As an ICT Tutor and Data Systems Manager at Profia Institute of Professionals College, I support an IT environment used by more than 50 people. I work with lab systems, networking, user support, data handling, secure API integration, and practical security learning.
               </p>
               <p>
-                Alongside this work, I develop projects in Python, SQL, and Power BI, and build web applications with modern JavaScript tools. I’m continuing to deepen my skills in security operations, network defence, and cloud technologies through hands-on practice and continuous learning.
+                I also apply prompt engineering and AI-assisted development—often called “vibe coding”—to move from ideas to working prototypes efficiently. I guide AI tools with clear requirements, then inspect, refine, and test the generated code rather than accepting it blindly. My priority is to deliver useful software while keeping security, maintainability, and user needs in view.
               </p>
             </div>
 
@@ -109,8 +109,8 @@ function AboutContent() {
             </div>
 
             <div className="about-story-meta">
-              <span><strong>STUDYING</strong> {profile.education.qualification}</span>
-              <span><strong>FOCUS</strong> Cybersecurity · IT · Data</span>
+              <span><strong>DEGREE</strong> {profile.education.qualification}</span>
+              <span><strong>FOCUS</strong> Web Apps · Systems Security · AI</span>
             </div>
           </div>
         </Reveal>
