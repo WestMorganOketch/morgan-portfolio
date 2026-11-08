@@ -1993,22 +1993,33 @@ details[open] > .accordion-content { grid-template-rows: 1fr; opacity: 1; }
 .about-portrait-column { min-width: 0; margin: 0; }
 .about-portrait-frame {
   position: relative;
-  min-height: 420px;
-  aspect-ratio: 3 / 4;
+  width: 100%;
+  min-height: 0;
+  aspect-ratio: 1453 / 968;
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 28px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+  border-radius: 26px;
+  outline: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  outline-offset: 5px;
   background: var(--surface-raised);
   box-shadow: 0 22px 58px rgba(0, 0, 0, .15);
   isolation: isolate;
+}
+.about-portrait-frame::after {
+  position: absolute;
+  inset: 9px;
+  border: 1px solid rgba(255, 255, 255, .42);
+  border-radius: 19px;
+  content: "";
+  pointer-events: none;
 }
 .about-portrait-image {
   display: block;
   width: 100%;
   height: 100%;
-  min-height: 420px;
+  min-height: 0;
   object-fit: cover;
-  object-position: center 38%;
+  object-position: center;
 }
 
 .about-portrait-placeholder {
@@ -2152,7 +2163,8 @@ details[open] > .accordion-content { grid-template-rows: 1fr; opacity: 1; }
 .about-story-meta strong { margin-right: 7px; color: var(--accent); font-weight: 600; letter-spacing: .1em; }
 @media (max-width: 900px) {
   .about-story-grid { grid-template-columns: minmax(240px, .82fr) minmax(0, 1.18fr); gap: 30px; }
-  .about-portrait-frame { min-height: 360px; border-radius: 22px; }
+  .about-portrait-frame { min-height: 0; border-radius: 22px; outline-offset: 4px; }
+  .about-portrait-frame::after { inset: 7px; border-radius: 16px; }
   .about-editorial-title { margin-bottom: 58px; }
 }
 @media (max-width: 700px) {
@@ -2160,7 +2172,8 @@ details[open] > .accordion-content { grid-template-rows: 1fr; opacity: 1; }
   .about-editorial-kicker { margin-bottom: 15px; font-size: 8px; gap: 8px; }
   .about-editorial-title { margin-bottom: 38px; font-size: clamp(47px, 11vw, 70px); line-height: 1; }
   .about-story-grid { grid-template-columns: 1fr; gap: 30px; }
-  .about-portrait-frame { width: min(100%, 460px); min-height: 0; aspect-ratio: 4 / 4.5; border-radius: 22px; }
+  .about-portrait-frame { width: min(100%, 560px); min-height: 0; aspect-ratio: 1453 / 968; border-radius: 22px; outline-offset: 4px; }
+  .about-portrait-frame::after { inset: 7px; border-radius: 16px; }
   .about-portrait-column { width: min(100%, 460px); }
   .about-story-copy blockquote { margin-top: 0; font-size: clamp(23px, 6vw, 29px); }
   .about-story-prose { gap: 14px; }
