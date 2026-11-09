@@ -251,7 +251,16 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
       {!isAdmin && (
         <header className={`site-nav ${compact ? "site-nav-compact" : ""}`}>
           <Link className="brand" href="/" aria-label="Morgan West Oketch, home">
-            <span className="brand-mark brand-avatar" aria-hidden="true">MW</span>
+            <span className="brand-mark brand-avatar" aria-hidden="true">
+              <img
+                src="/images/morgan-west-oketch-graduation.avif"
+                alt=""
+                width={560}
+                height={373}
+                loading="eager"
+                decoding="async"
+              />
+            </span>
             <span className="brand-name">MORGAN WEST OKETCH<small>CYBERSECURITY · SYSTEMS · DATA</small></span>
           </Link>
           <nav className="primary-nav" aria-label="Primary navigation">
