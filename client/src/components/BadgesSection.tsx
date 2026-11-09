@@ -21,6 +21,33 @@ const BADGE_TILT_DEGREES = 6;
 const BADGE_MEANING_MAX_LENGTH = 110;
 const BADGE_REVEAL_THRESHOLD = 0.18;
 
+type TechnologyLogo = {
+  name: string;
+  logo: string;
+  category: string;
+};
+
+const TECHNOLOGY_LOGOS: TechnologyLogo[] = [
+  { name: "JavaScript", logo: "javascript/javascript-original.svg", category: "Language" },
+  { name: "TypeScript", logo: "typescript/typescript-original.svg", category: "Language" },
+  { name: "Python", logo: "python/python-original.svg", category: "Language" },
+  { name: "React", logo: "react/react-original.svg", category: "Frontend" },
+  { name: "Node.js", logo: "nodejs/nodejs-original.svg", category: "Backend" },
+  { name: "Next.js", logo: "nextjs/nextjs-original.svg", category: "Frontend" },
+  { name: "HTML5", logo: "html5/html5-original.svg", category: "Web" },
+  { name: "CSS3", logo: "css3/css3-original.svg", category: "Web" },
+  { name: "Tailwind CSS", logo: "tailwindcss/tailwindcss-original.svg", category: "Frontend" },
+  { name: "PostgreSQL", logo: "postgresql/postgresql-original.svg", category: "Database" },
+  { name: "Supabase", logo: "supabase/supabase-original.svg", category: "Database" },
+  { name: "Linux", logo: "linux/linux-original.svg", category: "Systems" },
+  { name: "Git", logo: "git/git-original.svg", category: "Tools" },
+  { name: "GitHub", logo: "github/github-original.svg", category: "Tools" },
+  { name: "AWS", logo: "amazonwebservices/amazonwebservices-original.svg", category: "Cloud" },
+  { name: "Vercel", logo: "vercel/vercel-original.svg", category: "Deployment" },
+];
+
+const DEVICON_BASE = "https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/";
+
 const BADGE_FILTERS = [
   { id: "all", label: "All" },
   { id: "specialization", label: "Specializations" },
@@ -274,6 +301,33 @@ export default function BadgesSection() {
           </div>
           <p>Specializations, frameworks I study, and any published credentials.</p>
         </header>
+        <section className="technology-logo-section" aria-labelledby="technology-logo-title">
+          <div className="technology-logo-heading">
+            <div>
+              <p className="eyebrow">TECHNOLOGY STACK</p>
+              <h3 id="technology-logo-title">Tools behind the work.</h3>
+            </div>
+            <p>Recognisable technology logos, with names for quick scanning.</p>
+          </div>
+          <div className="technology-logo-grid">
+            {TECHNOLOGY_LOGOS.map((technology) => (
+              <div className="technology-logo-card" key={technology.name} title={technology.category}>
+                <span className="technology-logo-image">
+                  <img
+                    src={`${DEVICON_BASE}${technology.logo}`}
+                    alt=""
+                    width={40}
+                    height={40}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </span>
+                <span className="technology-logo-name">{technology.name}</span>
+                <span className="technology-logo-category">{technology.category}</span>
+              </div>
+            ))}
+          </div>
+        </section>
         <div className="badge-tabs" role="tablist" aria-label="Filter badges">
           {tabs.map((tab, index) => (
             <button
