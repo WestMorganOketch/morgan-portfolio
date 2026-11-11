@@ -71,7 +71,7 @@ const STAR_TONES = [
   "rgba(255, 218, 166, 0.92)",
 ];
 
-const GALAXY_ROTATION_RATE = 0.000009;
+const GALAXY_ROTATION_RATE = 0.000014;
 const POINTER_EASE = 0.035;
 
 export default function GalaxyBackdrop() {
@@ -101,7 +101,7 @@ export default function GalaxyBackdrop() {
     let smoothPointerY = 0;
 
     const updatePointerTarget = (event: PointerEvent) => {
-      if (reducedMotion || (event.pointerType !== "mouse" && event.pointerType !== "pen")) return;
+      if (event.pointerType !== "mouse" && event.pointerType !== "pen") return;
       const bounds = canvas.getBoundingClientRect();
       const inside = event.clientX >= bounds.left && event.clientX <= bounds.right
         && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
@@ -130,10 +130,10 @@ export default function GalaxyBackdrop() {
         const isMiddle = layer.classList.contains("home-galaxy-ring-middle");
         const isInner = layer.classList.contains("home-galaxy-ring-inner");
         const depth = isHalo ? 0.5 : isInner ? 1.15 : isMiddle ? 0.9 : 0.65;
-        layer.style.setProperty("--galaxy-shift-x", `${smoothPointerX * 24 * depth}px`);
-        layer.style.setProperty("--galaxy-shift-y", `${smoothPointerY * 16 * depth}px`);
-        layer.style.setProperty("--galaxy-rotate", `${smoothPointerX * 5 * depth}deg`);
-        layer.style.setProperty("--galaxy-tilt", `${-smoothPointerY * 4 * depth}deg`);
+        layer.style.setProperty("--galaxy-shift-x", `${smoothPointerX * 36 * depth}px`);
+        layer.style.setProperty("--galaxy-shift-y", `${smoothPointerY * 25 * depth}px`);
+        layer.style.setProperty("--galaxy-rotate", `${smoothPointerX * 8 * depth}deg`);
+        layer.style.setProperty("--galaxy-tilt", `${-smoothPointerY * 6 * depth}deg`);
       });
     };
 
@@ -142,11 +142,12 @@ export default function GalaxyBackdrop() {
       context.clearRect(0, 0, width, height);
 
       const isCompact = width < 720;
-      const centerX = width * (isCompact ? 0.64 : 0.72) - smoothPointerX * 24;
-      const centerY = height * (isCompact ? 0.66 : 0.5) - smoothPointerY * 15;
+      const centerX = width * (isCompact ? 0.64 : 0.72) - smoothPointerX * 36;
+      const centerY = height * (isCompact ? 0.66 : 0.5) - smoothPointerY * 24;
       const outerRadius = Math.min(width * (isCompact ? 0.48 : 0.45), height * 0.49);
       // Roughly 11.6 minutes per full rotation, with smooth cursor-driven yaw.
-      const rotation = (reducedMotion ? 0 : time * GALAXY_ROTATION_RATE) + smoothPointerX * 0.09;
+      const motionScale = reducedMotion ? 0.62 : 1;
+      const rotation = time * GALAXY_ROTATION_RATE * motionScale + smoothPointerX * (reducedMotion ? 0.10 : 0.15);
 
       const nebula = context.createRadialGradient(
         centerX, centerY, 0, centerX, centerY, outerRadius * 1.28,
@@ -164,12 +165,13 @@ export default function GalaxyBackdrop() {
       );
 
       for (const star of stars) {
-        const drift = reducedMotion ? 0 : time * star.twinkleSpeed * star.depth;
-        const x = (star.x * width + drift + smoothPointerX * (4 + star.depth * 12) + width) % width;
-        const y = star.y * height + smoothPointerY * (3 + star.depth * 8);
+        const drift = time * star.twinkleSpeed * star.depth * motionScale;
+        const x = (star.x * width + drift + smoothPointerX * (6 + star.depth * 18) + width) % width;
+        const y = star.y * height + smoothPointerY * (5 + star.depth * 12);
+        const twinklePhase = Math.sin(time * star.twinkleSpeed * motionScale + star.phase);
         const twinkle = reducedMotion
-          ? 0.72
-          : 0.45 + ((Math.sin(time * star.twinkleSpeed + star.phase) + 1) / 2) * 0.48;
+          ? 0.48 + ((twinklePhase + 1) / 2) * 0.18
+          : 0.45 + ((twinklePhase + 1) / 2) * 0.48;
         context.globalAlpha = twinkle * (0.35 + star.depth * 0.55);
         context.fillStyle = star.depth > 0.76
           ? "rgba(241, 250, 255, 0.96)"
@@ -234,19 +236,12 @@ export default function GalaxyBackdrop() {
       smoothPointerY += (targetPointerY - smoothPointerY) * POINTER_EASE;
       applyLayerParallax();
       paint(time);
-      if (!reducedMotion) frame = window.requestAnimationFrame(animate);
+      frame = window.requestAnimationFrame(animate);
     };
 
     const start = () => {
       window.cancelAnimationFrame(frame);
-      if (reducedMotion) {
-        smoothPointerX = 0;
-        smoothPointerY = 0;
-        applyLayerParallax();
-        paint(0);
-      } else if (isVisible) {
-        frame = window.requestAnimationFrame(animate);
-      }
+      if (isVisible) frame = window.requestAnimationFrame(animate);
     };
 
     const resize = () => {
@@ -268,7 +263,6 @@ export default function GalaxyBackdrop() {
 
     const onReducedMotionChange = () => {
       reducedMotion = reducedMotionQuery.matches;
-      if (reducedMotion) resetPointerTarget();
       start();
     };
 
