@@ -335,6 +335,8 @@ html[data-theme="light"] .home-galaxy-ring {
   border-color: rgba(43, 121, 95, .19);
   box-shadow: 0 0 24px rgba(53, 129, 103, .035);
 }
+.home-galaxy-backdrop.motion-paused .home-galaxy-ring-middle,
+.home-galaxy-backdrop.motion-paused .home-galaxy-ring-inner { animation-play-state: paused; }
 .home-hero .hero-copy,
 .home-hero .hero-visual,
 .home-hero .hero-scroll-hint { position: relative; z-index: 1; }
@@ -884,27 +886,7 @@ html[data-theme="light"] .visual-face-skills {
   font-size: 9px;
   line-height: 1.2;
 }
-@media (max-width: 1000px) {@media (max-width: 1000px) {
-  .home-galaxy-halo { left: 58%; top: 56%; width: min(78vw, 590px); }
-  .home-galaxy-ring { left: 58%; top: 56%; }
-  .home-galaxy-ring-outer { width: min(82vw, 700px); }
-  .home-galaxy-ring-middle { width: min(63vw, 530px); }
-  .home-galaxy-ring-inner { width: min(45vw, 380px); }
-}
-@media (max-width: 600px) {
-  .home-galaxy-backdrop { opacity: .72; }
-  .home-galaxy-halo { left: 54%; top: 65%; width: min(94vw, 440px); }
-  .home-galaxy-ring { left: 54%; top: 65%; }
-  .home-galaxy-ring-outer { width: min(98vw, 490px); }
-  .home-galaxy-ring-middle { width: min(76vw, 380px); }
-  .home-galaxy-ring-inner { width: min(55vw, 290px); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .home-galaxy-ring,
-  .home-galaxy-ring-middle,
-  .home-galaxy-ring-inner { animation: none !important; }
-}
-
+@media (max-width: 1000px) {
   .technology-logo-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (max-width: 600px) {
@@ -2385,4 +2367,25 @@ details[open] > .accordion-content { grid-template-rows: 1fr; opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
   .about-social-links a { transition: none; }
+}
+
+@media (max-width: 1000px) {
+  .home-galaxy-halo { left: 58%; top: 56%; width: min(78vw, 590px); }
+  .home-galaxy-ring { left: 58%; top: 56%; }
+  .home-galaxy-ring-outer { width: min(82vw, 700px); }
+  .home-galaxy-ring-middle { width: min(63vw, 530px); }
+  .home-galaxy-ring-inner { width: min(45vw, 380px); }
+}
+@media (max-width: 600px) {
+  .home-galaxy-backdrop { opacity: .72; }
+  .home-galaxy-halo { left: 54%; top: 65%; width: min(94vw, 440px); }
+  .home-galaxy-ring { left: 54%; top: 65%; }
+  .home-galaxy-ring-outer { width: min(98vw, 490px); }
+  .home-galaxy-ring-middle { width: min(76vw, 380px); }
+  .home-galaxy-ring-inner { width: min(55vw, 290px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-galaxy-ring,
+  .home-galaxy-ring-middle,
+  .home-galaxy-ring-inner { animation: none !important; }
 }
