@@ -18,6 +18,7 @@ import { profile } from "@/data/profile";
 import { skillGroups } from "@/data/site";
 import { useMotionPreference } from "@/components/MotionPreference";
 import BadgesSection from "@/components/BadgesSection";
+import GalaxyBackdrop from "@/components/GalaxyBackdrop";
 
 const primaryRole = "Cybersecurity Analyst";
 
@@ -556,6 +557,7 @@ export default function HomeHero() {
   return (
     <MotionPreferenceProvider>
       <section className="home-hero page-container" aria-labelledby="home-title">
+        <GalaxyBackdrop />
         {snowReady && <SnowLayer />}
         <div className="hero-copy">
           <p className="eyebrow"><span className="status-indicator" /> OPEN TO OPPORTUNITIES · NAIROBI, KENYA</p>
