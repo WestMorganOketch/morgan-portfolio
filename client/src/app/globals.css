@@ -294,9 +294,10 @@ html[data-theme="light"] .nav-book-call:hover { background: #26362b; color: #fff
   width: min(56vw, 690px);
   aspect-ratio: 1;
   border-radius: 50%;
-  transform: translate(-50%, -50%);
+  transform: translate(calc(-50% + var(--galaxy-shift-x, 0px)), calc(-50% + var(--galaxy-shift-y, 0px)));
   background: radial-gradient(circle, rgba(66, 222, 177, .11) 0%, rgba(103, 117, 236, .075) 27%, rgba(131, 105, 218, .035) 46%, transparent 70%);
   filter: blur(8px);
+  transition: transform 220ms ease-out;
 }
 .home-galaxy-ring {
   position: absolute;
@@ -305,30 +306,35 @@ html[data-theme="light"] .nav-book-call:hover { background: #26362b; color: #fff
   display: block;
   border: 1px solid rgba(91, 207, 178, .2);
   border-radius: 50%;
-  transform: translate(-50%, -50%) rotate(-19deg) rotateX(58deg);
+  transform: translate(calc(-50% + var(--galaxy-shift-x, 0px)), calc(-50% + var(--galaxy-shift-y, 0px))) rotate(calc(-19deg + var(--galaxy-rotate, 0deg))) rotateX(calc(58deg + var(--galaxy-tilt, 0deg)));
   transform-style: preserve-3d;
+  transition: transform 240ms ease-out;
   box-shadow: 0 0 25px rgba(76, 210, 175, .045), inset 0 0 26px rgba(130, 139, 255, .035);
 }
 .home-galaxy-ring-outer { width: min(61vw, 750px); aspect-ratio: 1.62; border-color: rgba(121, 153, 255, .16); }
 .home-galaxy-ring-middle {
   width: min(48vw, 590px);
   aspect-ratio: 1.62;
-  transform: translate(-50%, -50%) rotate(16deg) rotateX(62deg);
+  transform: translate(calc(-50% + var(--galaxy-shift-x, 0px)), calc(-50% + var(--galaxy-shift-y, 0px))) rotate(calc(16deg + var(--galaxy-rotate, 0deg))) rotateX(calc(62deg + var(--galaxy-tilt, 0deg)));
   border-color: rgba(85, 220, 185, .22);
 }
 .home-galaxy-ring-inner {
   width: min(34vw, 425px);
   aspect-ratio: 1.62;
-  transform: translate(-50%, -50%) rotate(-31deg) rotateX(65deg);
+  transform: translate(calc(-50% + var(--galaxy-shift-x, 0px)), calc(-50% + var(--galaxy-shift-y, 0px))) rotate(calc(-31deg + var(--galaxy-rotate, 0deg))) rotateX(calc(65deg + var(--galaxy-tilt, 0deg)));
   border-color: rgba(255, 198, 139, .2);
   box-shadow: 0 0 24px rgba(255, 198, 139, .045);
 }
 .home-galaxy-ring-middle,
-.home-galaxy-ring-inner { animation: galaxy-orbit-drift 44s linear infinite; }
-.home-galaxy-ring-inner { animation-duration: 59s; }
+.home-galaxy-ring-inner { animation: galaxy-orbit-drift 220s linear infinite; }
+.home-galaxy-ring-inner { animation-duration: 310s; }
 @keyframes galaxy-orbit-drift {
   from { rotate: 0deg; }
   to { rotate: 360deg; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-galaxy-halo,
+  .home-galaxy-ring { transition: none; }
 }
 html[data-theme="light"] .home-galaxy-backdrop { opacity: .88; mix-blend-mode: multiply; }
 html[data-theme="light"] .home-galaxy-ring {
