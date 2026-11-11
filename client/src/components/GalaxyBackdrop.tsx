@@ -119,6 +119,10 @@ export default function GalaxyBackdrop() {
       targetPointerY = 0;
     };
 
+    const onPointerOut = (event: PointerEvent) => {
+      if (event.relatedTarget === null) resetPointerTarget();
+    };
+
     const applyLayerParallax = () => {
       if (!parallaxLayers) return;
       parallaxLayers.forEach((layer) => {
@@ -270,9 +274,7 @@ export default function GalaxyBackdrop() {
 
     window.addEventListener("resize", resize);
     window.addEventListener("pointermove", updatePointerTarget, { passive: true });
-    window.addEventListener("pointerout", (event) => {
-      if (!(event instanceof PointerEvent) || event.relatedTarget === null) resetPointerTarget();
-    });
+    window.addEventListener("pointerout", onPointerOut);
     window.addEventListener("blur", resetPointerTarget);
     document.addEventListener("visibilitychange", onVisibilityChange);
     reducedMotionQuery.addEventListener("change", onReducedMotionChange);
@@ -282,6 +284,7 @@ export default function GalaxyBackdrop() {
       window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", resize);
       window.removeEventListener("pointermove", updatePointerTarget);
+      window.removeEventListener("pointerout", onPointerOut);
       window.removeEventListener("blur", resetPointerTarget);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       reducedMotionQuery.removeEventListener("change", onReducedMotionChange);
