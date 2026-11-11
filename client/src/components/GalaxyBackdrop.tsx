@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useMotionPreference } from "@/components/MotionPreference";
 
 type Star = {
   x: number;
@@ -39,7 +38,7 @@ function makeStars(): Star[] {
     y: random(),
     radius: 0.35 + random() * 1.15,
     phase: random() * Math.PI * 2,
-    twinkleSpeed: 0.00035 + random() * 0.0012,
+    twinkleSpeed: 0.00024 + random() * 0.00072,
     depth: 0.15 + random() * 0.85,
   }));
 }
@@ -72,10 +71,11 @@ const STAR_TONES = [
   "rgba(255, 218, 166, 0.92)",
 ];
 
+const GALAXY_ROTATION_RATE = 0.000009;
+const POINTER_EASE = 0.035;
+
 export default function GalaxyBackdrop() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const { preference } = useMotionPreference();
-  const userPaused = preference === "paused";
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -85,22 +85,64 @@ export default function GalaxyBackdrop() {
     const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const stars = makeStars();
     const particles = makeGalaxyParticles();
+    const backdrop = canvas.parentElement;
+    const parallaxLayers = backdrop?.querySelectorAll<HTMLElement>(
+      ".home-galaxy-halo, .home-galaxy-ring-outer, .home-galaxy-ring-middle, .home-galaxy-ring-inner",
+    );
     let reducedMotion = reducedMotionQuery.matches;
     let isVisible = !document.hidden;
     let width = 0;
     let height = 0;
     let pixelRatio = 1;
     let frame = 0;
+    let targetPointerX = 0;
+    let targetPointerY = 0;
+    let smoothPointerX = 0;
+    let smoothPointerY = 0;
+
+    const updatePointerTarget = (event: PointerEvent) => {
+      if (reducedMotion || (event.pointerType !== "mouse" && event.pointerType !== "pen")) return;
+      const bounds = canvas.getBoundingClientRect();
+      const inside = event.clientX >= bounds.left && event.clientX <= bounds.right
+        && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
+      if (!inside) {
+        targetPointerX = 0;
+        targetPointerY = 0;
+        return;
+      }
+      targetPointerX = ((event.clientX - bounds.left) / Math.max(bounds.width, 1) - 0.5) * 2;
+      targetPointerY = ((event.clientY - bounds.top) / Math.max(bounds.height, 1) - 0.5) * 2;
+    };
+
+    const resetPointerTarget = () => {
+      targetPointerX = 0;
+      targetPointerY = 0;
+    };
+
+    const applyLayerParallax = () => {
+      if (!parallaxLayers) return;
+      parallaxLayers.forEach((layer) => {
+        const isHalo = layer.classList.contains("home-galaxy-halo");
+        const isMiddle = layer.classList.contains("home-galaxy-ring-middle");
+        const isInner = layer.classList.contains("home-galaxy-ring-inner");
+        const depth = isHalo ? 0.5 : isInner ? 1.15 : isMiddle ? 0.9 : 0.65;
+        layer.style.setProperty("--galaxy-shift-x", `${smoothPointerX * 24 * depth}px`);
+        layer.style.setProperty("--galaxy-shift-y", `${smoothPointerY * 16 * depth}px`);
+        layer.style.setProperty("--galaxy-rotate", `${smoothPointerX * 5 * depth}deg`);
+        layer.style.setProperty("--galaxy-tilt", `${-smoothPointerY * 4 * depth}deg`);
+      });
+    };
 
     const paint = (time: number) => {
       if (!context || width <= 0 || height <= 0) return;
       context.clearRect(0, 0, width, height);
 
       const isCompact = width < 720;
-      const centerX = width * 0.72;
-      const centerY = height * (isCompact ? 0.66 : 0.5);
+      const centerX = width * (isCompact ? 0.64 : 0.72) - smoothPointerX * 24;
+      const centerY = height * (isCompact ? 0.66 : 0.5) - smoothPointerY * 15;
       const outerRadius = Math.min(width * (isCompact ? 0.48 : 0.45), height * 0.49);
-      const rotation = reducedMotion || userPaused ? 0 : time * 0.000045;
+      // Roughly 11.6 minutes per full rotation, with smooth cursor-driven yaw.
+      const rotation = (reducedMotion ? 0 : time * GALAXY_ROTATION_RATE) + smoothPointerX * 0.09;
 
       const nebula = context.createRadialGradient(
         centerX, centerY, 0, centerX, centerY, outerRadius * 1.28,
@@ -118,10 +160,10 @@ export default function GalaxyBackdrop() {
       );
 
       for (const star of stars) {
-        const drift = reducedMotion || userPaused ? 0 : time * star.twinkleSpeed * star.depth;
-        const x = (star.x * width + drift) % width;
-        const y = star.y * height;
-        const twinkle = reducedMotion || userPaused
+        const drift = reducedMotion ? 0 : time * star.twinkleSpeed * star.depth;
+        const x = (star.x * width + drift + smoothPointerX * (4 + star.depth * 12) + width) % width;
+        const y = star.y * height + smoothPointerY * (3 + star.depth * 8);
+        const twinkle = reducedMotion
           ? 0.72
           : 0.45 + ((Math.sin(time * star.twinkleSpeed + star.phase) + 1) / 2) * 0.48;
         context.globalAlpha = twinkle * (0.35 + star.depth * 0.55);
@@ -183,16 +225,22 @@ export default function GalaxyBackdrop() {
 
     const animate = (time: number) => {
       if (!isVisible) return;
+      // Ease toward the pointer rather than moving the scene abruptly.
+      smoothPointerX += (targetPointerX - smoothPointerX) * POINTER_EASE;
+      smoothPointerY += (targetPointerY - smoothPointerY) * POINTER_EASE;
+      applyLayerParallax();
       paint(time);
-      if (!reducedMotion && !userPaused) {
-        frame = window.requestAnimationFrame(animate);
-      }
+      if (!reducedMotion) frame = window.requestAnimationFrame(animate);
     };
 
     const start = () => {
       window.cancelAnimationFrame(frame);
-      paint(0);
-      if (isVisible && !reducedMotion && !userPaused) {
+      if (reducedMotion) {
+        smoothPointerX = 0;
+        smoothPointerY = 0;
+        applyLayerParallax();
+        paint(0);
+      } else if (isVisible) {
         frame = window.requestAnimationFrame(animate);
       }
     };
@@ -216,10 +264,16 @@ export default function GalaxyBackdrop() {
 
     const onReducedMotionChange = () => {
       reducedMotion = reducedMotionQuery.matches;
+      if (reducedMotion) resetPointerTarget();
       start();
     };
 
     window.addEventListener("resize", resize);
+    window.addEventListener("pointermove", updatePointerTarget, { passive: true });
+    window.addEventListener("pointerout", (event) => {
+      if (!(event instanceof PointerEvent) || event.relatedTarget === null) resetPointerTarget();
+    });
+    window.addEventListener("blur", resetPointerTarget);
     document.addEventListener("visibilitychange", onVisibilityChange);
     reducedMotionQuery.addEventListener("change", onReducedMotionChange);
     resize();
@@ -227,16 +281,15 @@ export default function GalaxyBackdrop() {
     return () => {
       window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", resize);
+      window.removeEventListener("pointermove", updatePointerTarget);
+      window.removeEventListener("blur", resetPointerTarget);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       reducedMotionQuery.removeEventListener("change", onReducedMotionChange);
     };
-  }, [userPaused]);
+  }, []);
 
   return (
-    <div
-      className={"home-galaxy-backdrop" + (userPaused ? " motion-paused" : "")}
-      aria-hidden="true"
-    >
+    <div className="home-galaxy-backdrop" aria-hidden="true">
       <canvas className="home-galaxy-canvas" ref={canvasRef} />
       <span className="home-galaxy-ring home-galaxy-ring-outer" />
       <span className="home-galaxy-ring home-galaxy-ring-middle" />
