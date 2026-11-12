@@ -324,6 +324,14 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
                 }}
               >
                 <div className="nav-pages-inner">
+                  <div className="nav-mobile-primary-pages" role="group" aria-label="Main sections">
+                    <p className="nav-mobile-primary-label">MAIN SECTIONS</p>
+                    {publicPages.slice(1, 5).map((page) => (
+                      <Link key={page.href} href={page.href} onClick={() => closeExplore()} aria-current={pathname === page.href ? "page" : undefined}>
+                        {page.label}<small>{page.description}</small>
+                      </Link>
+                    ))}
+                  </div>
                   {publicPages.slice(5).map((page) => (
                     <Link key={page.href} href={page.href} onClick={() => closeExplore()} aria-current={pathname === page.href ? "page" : undefined}>
                       {page.label}<small>{page.description}</small>
