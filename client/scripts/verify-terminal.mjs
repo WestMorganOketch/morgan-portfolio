@@ -99,6 +99,8 @@ const services = serviceChunks.map((block, index) => {
   const targets = targetText.match(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b|\b\d{1,3}(?:\.\d{1,3}){3}\b/gi) ?? [];
   for (const target of targets) {
     const host = target.toLowerCase();
+    // These are technology names in output text, not target hostnames.
+    if (host === "node.js" || host === "next.js") continue;
     const isAllowedHost = host === "lab.example.test"
       || host === "example.com"
       || (host.endsWith(".example.test") && host !== "example.test");
