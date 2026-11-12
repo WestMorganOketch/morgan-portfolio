@@ -117,7 +117,7 @@ function TerminalFace({
       <div className="visual-window-body live-terminal-body">
         <LiveTerminalSession
           chapter={chapter}
-          active={active && visible}
+          active={active}
           paused={paused}
           reducedMotion={reducedMotion}
           manualPreview={manualPreview}
