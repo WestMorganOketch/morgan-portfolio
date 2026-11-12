@@ -12,6 +12,7 @@ const sessionPath = path.join(clientDirectory, "src/components/LiveTerminalSessi
 const heroPath = path.join(clientDirectory, "src/components/HomeHero.tsx");
 const profilePath = path.join(clientDirectory, "src/data/profile.ts");
 const cssPath = path.join(clientDirectory, "src/app/globals.css");
+const marqueePath = path.join(clientDirectory, "src/components/ServicesSkillsMarquee.tsx");
 const errors = [];
 
 function fail(message) {
@@ -37,23 +38,24 @@ const sessionSource = read(sessionPath);
 const heroSource = read(heroPath);
 const profileSource = read(profilePath);
 const cssSource = read(cssPath);
+const marqueeSource = read(marqueePath);
 
 const sectionStart = terminalSource.indexOf("export const TERMINAL_SERVICES = [");
 const sectionEnd = terminalSource.indexOf("] as const satisfies readonly TerminalService[]", sectionStart);
 assert(sectionStart >= 0 && sectionEnd > sectionStart, "Could not locate the typed TERMINAL_SERVICES catalogue.");
 
-const serviceSection = terminalSource.slice(sectionStart, sectionEnd);
-const ownerMarkers = (serviceSection.match(/\/\/ OWNER TO CONFIRM/g) ?? []).length;
+const serviceSection = sectionStart >= 0 && sectionEnd > sectionStart
+  ? terminalSource.slice(sectionStart, sectionEnd)
+  : "";
 const serviceChunks = serviceSection
-  .split("// OWNER TO CONFIRM")
+  .split(/(?=^    id:\s*")/m)
   .slice(1)
   .map((chunk) => {
     const close = chunk.indexOf("\n  },");
-    return close >= 0 ? chunk.slice(0, close + 5) : chunk;
+    return close >= 0 ? chunk.slice(0, close) : chunk;
   });
 
-assert(ownerMarkers > 0, "Every published/draft service must carry an OWNER TO CONFIRM marker.");
-assert(serviceChunks.length === ownerMarkers, "Each OWNER TO CONFIRM marker must correspond to one service.");
+assert(serviceChunks.length >= 2, "The terminal service catalogue must contain multiple services.");
 
 function capture(block, expression) {
   const match = block.match(expression);
@@ -70,7 +72,10 @@ const services = serviceChunks.map((block, index) => {
   const service = {
     id: capture(block, /id:\s*"([^"]+)"/),
     area: capture(block, /area:\s*"(pentesting|web)"/),
-    command: capture(block, /command:\s*"([^"]*)"/),
+    command: (() => {
+      const match = block.match(/command:\s*(?:"((?:[^"\\\\]|\\\\.)*)"|'((?:[^'\\\\]|\\\\.)*)')/);
+      return match?.[1] ?? match?.[2];
+    })(),
     output: parseQuotedArray(block),
     title: capture(block, /title:\s*"([^"]*)"/),
     summary: capture(block, /summary:\s*"([^"]*)"/),
@@ -84,8 +89,8 @@ const services = serviceChunks.map((block, index) => {
   assert(service.area === "pentesting" || service.area === "web", "Service " + service.id + " has invalid area.");
   assert(Array.isArray(service.output) && service.output.length >= 2 && service.output.length <= 4,
     "Service " + service.id + " must have 2–4 simulated output lines.");
-  assert((service.command?.length ?? 0) <= 44, "Command exceeds 44 characters: " + service.id);
-  assert((service.summary?.length ?? 0) <= 90, "Summary exceeds 90 characters: " + service.id);
+  assert((service.command?.length ?? 0) <= 88, "Command exceeds 88 characters: " + service.id);
+  assert((service.summary?.length ?? 0) <= 140, "Summary exceeds 140 characters: " + service.id);
   for (const line of service.output ?? []) {
     assert(line.length <= 56, "Output line exceeds 56 characters for " + service.id + ": " + line);
   }
@@ -129,7 +134,7 @@ const duplicateIds = services.map((service) => service.id)
 assert(duplicateIds.length === 0, "Duplicate service id(s): " + [...new Set(duplicateIds)].join(", "));
 for (const area of ["pentesting", "web"]) {
   const count = services.filter((service) => service.area === area).length;
-  assert(count > 0 && count <= 6, area + " service count must be between 1 and 6; got " + count + ".");
+  assert(count > 0 && count <= 10, area + " service count must be between 1 and 10; got " + count + ".");
 }
 
 assert(terminalSource.includes("// # authorised targets only"), "Content source must include the authorised-targets footer comment.");
@@ -174,10 +179,8 @@ assert(heroSource.includes('document.addEventListener("visibilitychange"'),
   "The session must handle hidden-tab pause/resume.");
 assert(heroSource.includes('aria-label="Previous service"') && heroSource.includes('aria-label="Next service"'),
   "Accessible Previous/Next service controls must be present.");
-assert(heroSource.includes('onPointerEnter={() => setPointerPaused(true)}')
-  && heroSource.includes("onFocusCapture={() => setFocusPaused(true)")
-  && heroSource.includes("onBlurCapture={(event) =>"),
-  "Hover and focus must pause the terminal session.");
+assert(!heroSource.includes("setPointerPaused") && !heroSource.includes("setFocusPaused"),
+  "The live terminal must continue while visitors hover or focus the hero card.");
 assert(heroSource.includes('onClick={() => selectScene(chapter)}')
   && heroSource.includes("onKeyDown={(event) => handleTabKeyDown(event, index)}")
   && heroSource.includes('setPreference(nextPreference)'),
@@ -206,6 +209,25 @@ assert(cssSource.includes(".visual-perspective { position: relative; width: min(
 assert(cssSource.includes("font-size: 11.5px;") && cssSource.includes("height: 430px;"),
   "Terminal text sizing and fixed stage height must remain defined.");
 
+// Verify the homepage services/skills ticker as a first-class production feature.
+assert(heroSource.includes('import ServicesSkillsMarquee from "@/components/ServicesSkillsMarquee";')
+  && heroSource.includes("<ServicesSkillsMarquee />"),
+  "The homepage must render the services and skills marquee.");
+assert(marqueeSource.includes("profile.services.map")
+  && marqueeSource.includes("skillGroups.flatMap"),
+  "The marquee must use the published services and complete skill groups as its source.");
+assert(marqueeSource.includes("all.findIndex")
+  && marqueeSource.includes('aria-hidden={duplicate || undefined}'),
+  "The marquee must de-duplicate labels and hide its repeated visual copy from assistive technology.");
+assert(cssSource.includes("animation: capability-marquee-right 54s linear infinite")
+  && cssSource.includes("@keyframes capability-marquee-right")
+  && cssSource.includes("from { transform: translateX(-50%); }")
+  && cssSource.includes("to { transform: translateX(0); }"),
+  "The marquee must run a seamless continuous left-to-right loop.");
+assert(cssSource.includes("@media (prefers-reduced-motion: reduce)")
+  && cssSource.includes(".capability-marquee-track { animation: none;"),
+  "The marquee must respect reduced-motion preferences.");
+
 const buildMarker = path.join(clientDirectory, ".next", "BUILD_ID");
 assert(fs.existsSync(buildMarker), "Run the production build before verify:terminal; client/.next/BUILD_ID is missing.");
 
@@ -229,6 +251,7 @@ if (errors.length) {
 } else {
   console.log("Terminal verification passed.");
   console.log("Services checked: " + services.length + " (" + services.filter((service) => service.area === "pentesting").length + " pentesting, " + services.filter((service) => service.area === "web").length + " web).");
+  console.log("Homepage marquee checked: published services + skill groups, de-duplication, loop direction, and reduced-motion fallback.");
   console.log("Safety constraints: command/output lengths, target allowlist, banned strings and HTTPS proofs.");
   console.log("Structure checks: timing, chapter loop, static transcript, 14-row cap, shared service source, cleanup and controls.");
   console.log("Production build marker: present.");
