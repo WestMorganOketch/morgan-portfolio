@@ -67,7 +67,13 @@ for (const area of ["pentesting", "web"]) {
   assert.deepEqual(commands, areaServices.map((service) => service.command), area + " commands must follow the service catalogue.");
   const panels = buildStaticTranscript(script).filter((row) => row.type === "panel");
   assert.deepEqual(panels.map((row) => row.service?.id), areaServices.map((service) => service.id));
-  assert.ok(buildStaticTranscript(script).length <= 14, area + " static transcript must fit the row cap.");
+  const transcript = buildStaticTranscript(script);
+  assert.ok(transcript.length > 14, area + " full reduced-motion transcript must include every listed service.");
+  assert.deepEqual(
+    clampTerminalRows(transcript, 14),
+    transcript.slice(-14),
+    area + " animated DOM transcript must retain only the latest 14 rows.",
+  );
   assert.ok(script.some((step) => step.type === "print" && step.lines.includes("# authorised targets only")));
   assert.ok(script.some((step) => step.type === "wait" && step.ms === TERMINAL_TIMING.servicePanelMs));
   const rotated = buildChapterScript(area, TERMINAL_SERVICES, skills, identityLines, 1);
