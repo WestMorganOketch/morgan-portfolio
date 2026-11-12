@@ -16,8 +16,8 @@ import {
 } from "lucide-react";
 import { profile } from "@/data/profile";
 import { skillGroups } from "@/data/site";
-import { TERMINAL_AREAS, TERMINAL_CHAPTERS, TERMINAL_SERVICES } from "@/content/terminal";
-import { chapterLabel, nextTerminalChapter, TERMINAL_TIMING, type TerminalChapter } from "@/lib/terminalEngine";
+import { TERMINAL_AREAS, TERMINAL_SERVICES } from "@/content/terminal";
+import { chapterLabel, nextTerminalChapter, TERMINAL_CHAPTERS, TERMINAL_TIMING, type TerminalChapter } from "@/lib/terminalEngine";
 import LiveTerminalSession from "@/components/LiveTerminalSession";
 import { useMotionPreference } from "@/components/MotionPreference";
 import BadgesSection from "@/components/BadgesSection";
@@ -192,7 +192,6 @@ function FocusVisualizer() {
   const sessionPaused = preference === "paused"
     || !documentVisible
     || !isIntersecting;
-  const currentDwell = estimateChapterDuration(activeScene);
 
   const settleAt = useCallback((chapter: TerminalChapter) => {
     activeSceneRef.current = chapter;
@@ -343,8 +342,8 @@ function FocusVisualizer() {
     const node = perspectiveRef.current;
     if (!node) return;
     if (typeof IntersectionObserver === "undefined") {
-      setIsIntersecting(true);
-      return;
+      const frame = window.requestAnimationFrame(() => setIsIntersecting(true));
+      return () => window.cancelAnimationFrame(frame);
     }
     const observer = new IntersectionObserver((entries) => {
       const entry = entries[0];
