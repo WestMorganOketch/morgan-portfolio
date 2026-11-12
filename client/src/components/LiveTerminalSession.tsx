@@ -218,8 +218,10 @@ export default function LiveTerminalSession({
   const onCompleteRef = useRef(onComplete);
   const onServiceSeenRef = useRef(onServiceSeen);
 
-  onCompleteRef.current = onComplete;
-  onServiceSeenRef.current = onServiceSeen;
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+    onServiceSeenRef.current = onServiceSeen;
+  }, [onComplete, onServiceSeen]);
 
   const previewingPaused = manualPreview && paused;
   const visibleRows = reducedMotion
@@ -507,7 +509,7 @@ export default function LiveTerminalSession({
               older={older}
               currentPanel={Boolean(currentPanel)}
               paused={paused || reducedMotion || !active}
-              spinnerActive={isSpinnerActive && row.id === spinnerRowIdRef.current}
+              spinnerActive={isSpinnerActive && row.type === "spinner"}
               isTypingRow={row.id === typingRowId}
               typingTextRef={typingTextElementRef}
             />
