@@ -59,7 +59,7 @@ export const TERMINAL_SERVICES = [
       "Findings documented within scope",
     ],
     title: "Web application security testing",
-    summary: "Security testing for web applications within an agreed authorized scope.",
+    summary: "Security testing for web applications with explicit authorization and an agreed scope.",
   },
 ] as const satisfies readonly TerminalService[];
 
