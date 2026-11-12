@@ -12,7 +12,7 @@ import {
   useSpring,
 } from "framer-motion";
 import {
-  ArrowDown, ArrowRight, ArrowUpRight, Code2, Mail, Pause, Play,
+  ArrowDown, ArrowRight, ArrowUpRight, ChevronLeft, ChevronRight, Code2, Mail, Pause, Play,
 } from "lucide-react";
 import { profile } from "@/data/profile";
 import { skillGroups } from "@/data/site";
@@ -264,7 +264,7 @@ function FocusVisualizer() {
         await fadeControls.start({
           opacity: 0,
           transition: {
-            duration: HERO_TIMING.CROSSFADE_MS / 2000,
+            duration: HERO_TIMING.CROSSFADE_MS / 1000,
             ease: [0.4, 0, 0.2, 1],
           },
         });
@@ -278,7 +278,7 @@ function FocusVisualizer() {
         await fadeControls.start({
           opacity: 1,
           transition: {
-            duration: HERO_TIMING.CROSSFADE_MS / 2000,
+            duration: HERO_TIMING.CROSSFADE_MS / 1000,
             ease: [0.4, 0, 0.2, 1],
           },
         });
@@ -417,7 +417,7 @@ function FocusVisualizer() {
 
   const renderFace = (chapter: TerminalChapter, face: "front" | "back") => (
     <m.div
-      className="visual-face"
+      className={"visual-face visual-face-" + face}
       animate={face === "front" ? fadeControls : undefined}
       id={visibleFace === face ? "security-showcase-panel" : undefined}
       role={visibleFace === face ? "tabpanel" : undefined}
@@ -429,7 +429,7 @@ function FocusVisualizer() {
       <TerminalFace
         chapter={chapter}
         visible={visibleFace === face}
-        active={visibleFace === face}
+        active={visibleFace === face && isIntersecting && documentVisible}
         paused={sessionPaused}
         reducedMotion={prefersReducedMotion}
         manualPreview={manualPreview}
@@ -498,9 +498,7 @@ function FocusVisualizer() {
             }}
           >
             {renderFace(frontScene, "front")}
-            <div className="visual-face visual-face-back" style={{ position: "absolute", inset: 0, transform: "rotateY(180deg)" }}>
-              {renderFace(backScene, "back")}
-            </div>
+            {renderFace(backScene, "back")}
           </m.div>
           <m.div className="visual-glint" animate={glintControls} aria-hidden="true" />
         </div>
