@@ -22,6 +22,7 @@ type LiveTerminalSessionProps = {
   paused: boolean;
   reducedMotion: boolean;
   manualPreview: boolean;
+  manualPreviewMode: "chapter" | "service";
   serviceOffset: number;
   servicePositions: Readonly<{ pentesting: number; web: number }>;
   skills: readonly string[];
@@ -43,13 +44,7 @@ function TerminalCommand({ text }: { text: string }) {
   );
 }
 
-function ServicePanel({
-  service,
-  current,
-}: {
-  service: TerminalService;
-  current: boolean;
-}) {
+function ServicePanel({ service, current }: { service: TerminalService; current: boolean }) {
   return (
     <article className={"terminal-service-panel" + (current ? " is-current" : " is-previous")}>
       <strong className="terminal-service-title">{service.title}</strong>
@@ -157,6 +152,7 @@ export default function LiveTerminalSession({
   paused,
   reducedMotion,
   manualPreview,
+  manualPreviewMode,
   serviceOffset,
   servicePositions,
   skills,
@@ -173,12 +169,13 @@ export default function LiveTerminalSession({
   const chapterServices = chapter === "pentesting" || chapter === "web"
     ? TERMINAL_AREAS[chapter]
     : [];
-  const previewService = chapterServices[serviceOffset % Math.max(1, chapterServices.length)];
+  const previewService = chapterServices.length
+    ? chapterServices[((serviceOffset % chapterServices.length) + chapterServices.length) % chapterServices.length]
+    : undefined;
   const pausedPreview = useMemo(() => staticPreview(previewService), [previewService]);
 
   const [rows, setRows] = useState<readonly TerminalRow[]>([]);
   const [activePanelRowId, setActivePanelRowId] = useState<string | null>(null);
-  const [isTyping, setIsTyping] = useState(false);
   const [isSpinnerActive, setIsSpinnerActive] = useState(false);
   const rowsRef = useRef<readonly TerminalRow[]>([]);
   const nextRowIdRef = useRef(0);
@@ -190,7 +187,6 @@ export default function LiveTerminalSession({
   const targetCommandRef = useRef("");
   const typeCharacterIndexRef = useRef(0);
   const spinnerRowIdRef = useRef<string | null>(null);
-  const activePanelRowIdRef = useRef<string | null>(null);
   const pendingActionRef = useRef<ScheduledAction | null>(null);
   const deadlineRef = useRef(0);
   const remainingDelayRef = useRef(0);
@@ -199,25 +195,29 @@ export default function LiveTerminalSession({
   const finishedRef = useRef(false);
   const onCompleteRef = useRef(onComplete);
   const onServiceSeenRef = useRef(onServiceSeen);
-  const onPreviewConsumedRef = useRef(onPreviewConsumed);
 
   onCompleteRef.current = onComplete;
   onServiceSeenRef.current = onServiceSeen;
-  onPreviewConsumedRef.current = onPreviewConsumed;
 
+  const previewingPaused = manualPreview && paused;
   const visibleRows = reducedMotion
     ? completedTranscript
-    : manualPreview && paused
-      ? pausedPreview
+    : previewingPaused
+      ? manualPreviewMode === "chapter"
+        ? completedTranscript
+        : pausedPreview
       : rows;
-
   const currentService = [...visibleRows].reverse().find((row) => row.type === "panel")?.service;
-  const currentServiceIndex = currentService && (currentService.area === "pentesting" || currentService.area === "web")
-    ? TERMINAL_AREAS[currentService.area].findIndex((service) => service.id === currentService.id) + 1
-    : 0;
   const statusArea = chapter === "pentesting" || chapter === "web" ? chapter : null;
+  const selectedService = statusArea
+    ? TERMINAL_AREAS[statusArea][servicePositions[statusArea]]
+    : undefined;
   const currentPosition = statusArea
-    ? (currentServiceIndex || servicePositions[statusArea] + 1)
+    ? reducedMotion || previewingPaused
+      ? (servicePositions[statusArea] + 1)
+      : currentService
+        ? TERMINAL_AREAS[statusArea].findIndex((service) => service.id === currentService.id) + 1
+        : servicePositions[statusArea] + 1
     : 0;
   const statusText = paused
     ? "paused"
@@ -225,32 +225,8 @@ export default function LiveTerminalSession({
       ? "static"
       : "live";
   const statusDetail = statusArea
-    ? `${statusArea} ${currentPosition}/${TERMINAL_AREAS[statusArea].length}`
+    ? statusArea + " " + currentPosition + "/" + TERMINAL_AREAS[statusArea].length
     : chapter;
-
-  useEffect(() => {
-    // Every chapter or explicit service jump starts a fresh transcript. No scheduler
-    // is created by this reset effect; hidden faces stay idle.
-    rowsRef.current = [];
-    setRows([]);
-    stepIndexRef.current = 0;
-    printLinesRef.current = [];
-    printLineIndexRef.current = 0;
-    commandRowIdRef.current = null;
-    commandTextRef.current = "";
-    targetCommandRef.current = "";
-    typeCharacterIndexRef.current = 0;
-    spinnerRowIdRef.current = null;
-    activePanelRowIdRef.current = null;
-    pendingActionRef.current = null;
-    deadlineRef.current = 0;
-    remainingDelayRef.current = 0;
-    finishedRef.current = false;
-    nextRowIdRef.current = 0;
-    setActivePanelRowId(null);
-    setIsTyping(false);
-    setIsSpinnerActive(false);
-  }, [chapter, script]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production") {
@@ -270,6 +246,7 @@ export default function LiveTerminalSession({
   useEffect(() => {
     if (reducedMotion || !active || paused || manualPreview) return;
     let disposed = false;
+    let started = false;
     const speed = () => speedMultiplierRef.current;
     const appendRow = (row: Omit<TerminalRow, "id">): string => {
       const id = String(++nextRowIdRef.current);
@@ -316,9 +293,6 @@ export default function LiveTerminalSession({
 
         if (step.type === "clear") {
           rowsRef.current = [];
-          setRows([]);
-          activePanelRowIdRef.current = null;
-          setActivePanelRowId(null);
           stepIndexRef.current += 1;
           continue;
         }
@@ -327,9 +301,7 @@ export default function LiveTerminalSession({
           targetCommandRef.current = step.text;
           commandTextRef.current = "";
           typeCharacterIndexRef.current = 0;
-          activePanelRowIdRef.current = null;
           setActivePanelRowId(null);
-          setIsTyping(true);
           commandRowIdRef.current = appendRow({ type: "command", text: "" });
           stepIndexRef.current += 1;
           schedule("type-character", nextCharacterDelay());
@@ -354,7 +326,6 @@ export default function LiveTerminalSession({
 
         if (step.type === "panel") {
           const rowId = appendRow({ type: "panel", service: step.service });
-          activePanelRowIdRef.current = rowId;
           setActivePanelRowId(rowId);
           const areaServices = TERMINAL_AREAS[step.service.area];
           const index = areaServices.findIndex((service) => service.id === step.service.id);
@@ -393,7 +364,6 @@ export default function LiveTerminalSession({
         if (typeCharacterIndexRef.current < targetCommandRef.current.length) {
           schedule("type-character", nextCharacterDelay());
         } else {
-          setIsTyping(false);
           commandRowIdRef.current = null;
           processNextStep();
         }
@@ -402,7 +372,13 @@ export default function LiveTerminalSession({
 
       if (action === "spinner-finished") {
         const rowId = spinnerRowIdRef.current;
-        if (rowId) updateRow(rowId, (row) => ({ type: "output", id: row.id, text: "✓ " + (row.text ?? "scope checked") }));
+        if (rowId) {
+          updateRow(rowId, (row) => ({
+            id: row.id,
+            type: "output",
+            text: "✓ " + (row.text ?? "scope checked"),
+          }));
+        }
         spinnerRowIdRef.current = null;
         setIsSpinnerActive(false);
         processNextStep();
@@ -431,32 +407,30 @@ export default function LiveTerminalSession({
         return;
       }
 
-      if (action === "finish") {
-        if (!finishedRef.current) {
-          finishedRef.current = true;
-          disposed = true;
-          onCompleteRef.current();
-        }
+      if (action === "finish" && !finishedRef.current) {
+        finishedRef.current = true;
+        disposed = true;
+        onCompleteRef.current();
       }
     };
 
-    onCompleteRef.current = onCompleteRef.current;
-
     function tick(now: number) {
       if (disposed) return;
-      if (pendingActionRef.current !== null && now >= deadlineRef.current) {
+      if (!started) {
+        started = true;
+        if (pendingActionRef.current !== null) {
+          deadlineRef.current = now + remainingDelayRef.current;
+          remainingDelayRef.current = 0;
+        } else {
+          processNextStep();
+        }
+      }
+      if (!disposed && pendingActionRef.current !== null && now >= deadlineRef.current) {
         executeScheduledAction();
       }
       if (!disposed) animationFrameRef.current = window.requestAnimationFrame(tick);
     }
 
-    if (pendingActionRef.current !== null) {
-      const remaining = remainingDelayRef.current;
-      deadlineRef.current = performance.now() + remaining;
-      remainingDelayRef.current = 0;
-    } else {
-      processNextStep();
-    }
     animationFrameRef.current = window.requestAnimationFrame(tick);
 
     return () => {
@@ -466,26 +440,21 @@ export default function LiveTerminalSession({
         remainingDelayRef.current = Math.max(0, deadlineRef.current - performance.now());
       }
     };
-  }, [
-    active,
-    chapter,
-    manualPreview,
-    paused,
-    reducedMotion,
-    script,
-    serviceOffset,
-  ]);
+  }, [active, manualPreview, paused, reducedMotion, script]);
 
   useEffect(() => {
     if (active && !paused && !reducedMotion && manualPreview) onPreviewConsumed();
   }, [active, manualPreview, onPreviewConsumed, paused, reducedMotion]);
 
-  const lastVisibleService = currentService?.id ?? null;
-  const chosenStaticIndex = statusArea ? servicePositions[statusArea] : -1;
+  const staticServiceId = reducedMotion || previewingPaused
+    ? manualPreviewMode === "service" && previewingPaused
+      ? previewService?.id
+      : selectedService?.id
+    : undefined;
 
   return (
     <div
-      className={"live-terminal" + (paused || reducedMotion ? " is-paused" : "")}
+      className={"live-terminal" + (paused || reducedMotion || !active ? " is-paused" : "")}
       data-chapter={chapter}
       style={{ "--terminal-scanline-duration": TERMINAL_TIMING.scanlineMs + "ms" } as React.CSSProperties}
     >
@@ -499,9 +468,8 @@ export default function LiveTerminalSession({
         {visibleRows.map((row, index) => {
           const older = index < visibleRows.length - 5;
           const currentPanel = row.type === "panel" && (
-            manualPreview || reducedMotion
-              ? row.service?.id === (TERMINAL_AREAS.pentesting[chosenStaticIndex]?.id ?? lastVisibleService)
-                || row.service?.id === lastVisibleService
+            staticServiceId !== undefined
+              ? row.service?.id === staticServiceId
               : row.id === activePanelRowId
           );
           return (
@@ -510,7 +478,7 @@ export default function LiveTerminalSession({
               key={row.id}
               older={older}
               currentPanel={Boolean(currentPanel)}
-              paused={paused || reducedMotion}
+              paused={paused || reducedMotion || !active}
               spinnerActive={isSpinnerActive && row.id === spinnerRowIdRef.current}
             />
           );
