@@ -80,7 +80,6 @@ function estimateChapterDuration(chapter: TerminalChapter): number {
 
 function TerminalFace({
   chapter,
-  visible,
   active,
   paused,
   reducedMotion,
@@ -95,7 +94,6 @@ function TerminalFace({
   onNextService,
 }: {
   chapter: TerminalChapter;
-  visible: boolean;
   active: boolean;
   paused: boolean;
   reducedMotion: boolean;
@@ -428,7 +426,6 @@ function FocusVisualizer() {
     >
       <TerminalFace
         chapter={chapter}
-        visible={visibleFace === face}
         active={visibleFace === face && isIntersecting && documentVisible}
         paused={sessionPaused}
         reducedMotion={prefersReducedMotion}
