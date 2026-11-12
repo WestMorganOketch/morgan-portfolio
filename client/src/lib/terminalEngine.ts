@@ -23,6 +23,14 @@ export type TerminalStep =
   | { type: "wait"; ms: number }
   | { type: "outro"; text: string };
 
+export type TerminalStaticRow = {
+  id: string;
+  type: "command" | "output" | "spinner" | "panel" | "outro";
+  text?: string;
+  lines?: readonly string[];
+  service?: TerminalService;
+};
+
 export const TERMINAL_CHAPTERS: readonly TerminalChapter[] = [
   "identity",
   "pentesting",
@@ -52,12 +60,13 @@ export function buildChapterScript(
   services: readonly TerminalService[],
   skills: readonly string[],
   identityLines: readonly string[],
+  startServiceIndex = 0,
 ): readonly TerminalStep[] {
   if (chapter === "identity") {
     return [
       { type: "clear" },
       { type: "type", text: "whoami" },
-      { type: "print", lines: identityLines.slice(0, 6) },
+      { type: "print", lines: identityLines.slice(0, 4) },
       { type: "wait", ms: TERMINAL_TIMING.identityDwellMs },
       { type: "outro", text: "session ready" },
     ];
@@ -72,15 +81,20 @@ export function buildChapterScript(
         type: "print",
         lines: skills.slice(0, 9).map((skill) => "• " + skill),
       },
-      { type: "wait", ms: TERMINAL_TIMING.chapterOutroMs },
       { type: "outro", text: "session complete" },
     ];
   }
 
   const chapterServices = services.filter((service) => service.area === chapter);
+  const normalizedStart = chapterServices.length
+    ? ((startServiceIndex % chapterServices.length) + chapterServices.length) % chapterServices.length
+    : 0;
+  const orderedServices = chapterServices.length
+    ? [...chapterServices.slice(normalizedStart), ...chapterServices.slice(0, normalizedStart)]
+    : [];
   const steps: TerminalStep[] = [{ type: "clear" }];
 
-  chapterServices.forEach((service) => {
+  orderedServices.forEach((service) => {
     steps.push(
       { type: "type", text: service.command },
       { type: "spinner", text: "checking scope" },
@@ -96,6 +110,30 @@ export function buildChapterScript(
   return steps;
 }
 
+/** Complete, non-animated transcript for reduced-motion mode and test tooling. */
+export function buildStaticTranscript(
+  script: readonly TerminalStep[],
+): readonly TerminalStaticRow[] {
+  const rows: TerminalStaticRow[] = [];
+  let id = 0;
+  for (const step of script) {
+    id += 1;
+    if (step.type === "clear" || step.type === "wait") continue;
+    if (step.type === "type") {
+      rows.push({ id: String(id), type: "command", text: step.text });
+    } else if (step.type === "spinner") {
+      rows.push({ id: String(id), type: "output", text: "✓ " + step.text });
+    } else if (step.type === "print") {
+      rows.push({ id: String(id), type: "output", lines: step.lines });
+    } else if (step.type === "panel") {
+      rows.push({ id: String(id), type: "panel", service: step.service });
+    } else {
+      rows.push({ id: String(id), type: "outro", text: step.text });
+    }
+  }
+  return rows;
+}
+
 export function clampTerminalRows<T>(rows: readonly T[], maxRows = 14): readonly T[] {
   return rows.length <= maxRows ? rows : rows.slice(rows.length - maxRows);
 }
@@ -107,3 +145,10 @@ export function typingDuration(text: string, jitterFactor: number): number {
   );
   return Math.max(1, text.length * TERMINAL_TIMING.typingMsPerCharacter * boundedJitter);
 }
+
+export function scaleTerminalDelay(milliseconds: number, multiplier: number): number {
+  const speed = Number.isFinite(multiplier) ? Math.max(1, Math.min(multiplier, 8)) : 1;
+  return Math.max(8, Math.round(milliseconds / speed));
+}
+
+// # authorised targets only
