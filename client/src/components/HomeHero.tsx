@@ -16,8 +16,8 @@ import {
 } from "lucide-react";
 import { profile } from "@/data/profile";
 import { skillGroups } from "@/data/site";
-import { TERMINAL_AREAS, TERMINAL_CHAPTERS, TERMINAL_SERVICES } from "@/content/terminal";
-import { chapterLabel, nextTerminalChapter, TERMINAL_TIMING, type TerminalChapter } from "@/lib/terminalEngine";
+import { TERMINAL_AREAS, TERMINAL_SERVICES } from "@/content/terminal";
+import { chapterLabel, nextTerminalChapter, TERMINAL_CHAPTERS, TERMINAL_TIMING, type TerminalChapter } from "@/lib/terminalEngine";
 import LiveTerminalSession from "@/components/LiveTerminalSession";
 import { useMotionPreference } from "@/components/MotionPreference";
 import BadgesSection from "@/components/BadgesSection";
