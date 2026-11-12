@@ -1,3 +1,5 @@
+import { PORTFOLIO_SERVICES } from "@/content/terminal";
+
 export type PortfolioProject = {
   id?: string;
   title: string;
@@ -132,27 +134,5 @@ export const profile = {
       status: "IN PROGRESS",
     },
   ],
-  services: [
-    {
-      number: "01",
-      title: "Cybersecurity tutoring",
-      description:
-        "Practical, beginner-friendly guidance in cybersecurity, networking, and safe lab learning.",
-      note: "Learning support",
-    },
-    {
-      number: "02",
-      title: "Web development",
-      description:
-        "Web application development with React, Node.js, and REST APIs.",
-      note: "Web applications",
-    },
-    {
-      number: "03",
-      title: "Web application security testing",
-      description:
-        "Security testing for web applications only with explicit authorization and an agreed scope.",
-      note: "Authorized scope only",
-    },
-  ],
+  services: PORTFOLIO_SERVICES,
 } as const;

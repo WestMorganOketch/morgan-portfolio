@@ -12,10 +12,13 @@ import {
   useSpring,
 } from "framer-motion";
 import {
-  ArrowDown, ArrowRight, ArrowUpRight, Code2, Mail, Pause, Play,
+  ArrowDown, ArrowRight, ArrowUpRight, ChevronLeft, ChevronRight, Code2, Mail, Pause, Play,
 } from "lucide-react";
 import { profile } from "@/data/profile";
 import { skillGroups } from "@/data/site";
+import { TERMINAL_AREAS, TERMINAL_CHAPTERS, TERMINAL_SERVICES } from "@/content/terminal";
+import { chapterLabel, nextTerminalChapter, TERMINAL_TIMING, type TerminalChapter } from "@/lib/terminalEngine";
+import LiveTerminalSession from "@/components/LiveTerminalSession";
 import { useMotionPreference } from "@/components/MotionPreference";
 import BadgesSection from "@/components/BadgesSection";
 import GalaxyBackdrop from "@/components/GalaxyBackdrop";
@@ -28,33 +31,24 @@ const SnowLayer = dynamic(() => import("@/components/SnowLayer"), {
 });
 
 export const HERO_TIMING = {
-  FIRST_SPIN_MS: 6000,
-  OVERVIEW_DWELL_MS: 4000,
-  SERVICE_LINE_MS: 1800,
-  SERVICE_BUFFER_MS: 600,
-  SKILLS_DWELL_MS: 7000,
   SWIRL_MS: 1500,
   CROSSFADE_MS: 400,
-  SKILL_STAGGER_MS: 80,
   CHIP_FLOAT_MS: 6000,
 } as const;
 
-const SCENES = ["overview", "services", "skills"] as const;
-type ShowcaseScene = (typeof SCENES)[number];
+const SCENES = TERMINAL_CHAPTERS;
 type TransitionSource = "auto" | "manual";
 
-const serviceItems = profile.services.slice(0, 5);
-const skillItems = skillGroups
-  .flatMap((group) =>
-    group.skills.map(([name, description, level]) => ({
-      name, description, level, category: group.name,
-    })),
-  )
+const terminalSkillNames = skillGroups
+  .flatMap((group) => group.skills.map(([name]) => name))
   .slice(0, 9);
 
-function nextScene(scene: ShowcaseScene): ShowcaseScene {
-  return scene === "overview" ? "services" : scene === "services" ? "skills" : "overview";
-}
+const terminalIdentityLines = [
+  profile.name,
+  "ALERT REVIEW · In progress",
+  "APPROACH · Evidence-led",
+  "FOCUS · Defensive security",
+] as const;
 
 function supportsPreserve3D() {
   return typeof CSS !== "undefined"
@@ -63,138 +57,112 @@ function supportsPreserve3D() {
     && CSS.supports("perspective", "1200px");
 }
 
-function OverviewFace() {
+function estimateChapterDuration(chapter: TerminalChapter): number {
+  if (chapter === "identity") {
+    return "whoami".length * TERMINAL_TIMING.typingMsPerCharacter
+      + terminalIdentityLines.length * TERMINAL_TIMING.outputLineMs
+      + TERMINAL_TIMING.identityDwellMs
+      + TERMINAL_TIMING.chapterOutroMs;
+  }
+  if (chapter === "skills") {
+    return "stack --list".length * TERMINAL_TIMING.typingMsPerCharacter
+      + TERMINAL_TIMING.spinnerMs
+      + terminalSkillNames.length * TERMINAL_TIMING.outputLineMs
+      + TERMINAL_TIMING.chapterOutroMs;
+  }
+  return TERMINAL_AREAS[chapter].reduce((total, service) => total
+    + service.command.length * TERMINAL_TIMING.typingMsPerCharacter
+    + TERMINAL_TIMING.spinnerMs
+    + (service.output.length + 1) * TERMINAL_TIMING.outputLineMs
+    + TERMINAL_TIMING.servicePanelMs
+    + TERMINAL_TIMING.commandPauseMs, 0) + TERMINAL_TIMING.chapterOutroMs;
+}
+
+function TerminalFace({
+  chapter,
+  active,
+  paused,
+  reducedMotion,
+  manualPreview,
+  manualPreviewMode,
+  serviceOffset,
+  servicePositions,
+  onServiceSeen,
+  onPreviewConsumed,
+  onComplete,
+  onPreviousService,
+  onNextService,
+}: {
+  chapter: TerminalChapter;
+  active: boolean;
+  paused: boolean;
+  reducedMotion: boolean;
+  manualPreview: boolean;
+  manualPreviewMode: "chapter" | "service";
+  serviceOffset: number;
+  servicePositions: Readonly<{ pentesting: number; web: number }>;
+  onServiceSeen: (area: "pentesting" | "web", index: number) => void;
+  onPreviewConsumed: () => void;
+  onComplete: () => void;
+  onPreviousService: () => void;
+  onNextService: () => void;
+}) {
   return (
     <>
       <div className="visual-window-header">
         <div className="window-dots" aria-hidden="true"><i /><i /><i /></div>
-        <span>THREAT MONITORING</span>
+        <span>LIVE CLI SIMULATION</span>
         <span className="live-label"><span className="status-indicator" /> ACTIVE</span>
       </div>
-      <div className="visual-window-body overview-body">
-        <div className="visual-kicker">// A PRACTICAL, CURIOUS APPROACH</div>
-        <h2>Signals into context.</h2>
-        <div className="visual-terminal">
-          <div><span className="terminal-prompt">morgan@portfolio</span>:<span className="terminal-path">~</span>$ security.operations()</div>
-          <div className="terminal-line"><span aria-hidden="true">›</span> Observe carefully. Respond thoughtfully.</div>
-          <div className="terminal-line"><span aria-hidden="true">›</span> Always learn, document, and improve.</div>
-        </div>
-        <div className="visual-readout">
-          <div><span>ALERT REVIEW</span><strong>In progress</strong></div>
-          <div><span>APPROACH</span><strong>Evidence-led</strong></div>
-          <div><span>FOCUS</span><strong>Defensive security</strong></div>
-        </div>
+      <div className="visual-window-body live-terminal-body">
+        <LiveTerminalSession
+          chapter={chapter}
+          active={active}
+          paused={paused}
+          reducedMotion={reducedMotion}
+          manualPreview={manualPreview}
+          manualPreviewMode={manualPreviewMode}
+          serviceOffset={serviceOffset}
+          servicePositions={servicePositions}
+          skills={terminalSkillNames}
+          identityLines={terminalIdentityLines}
+          onServiceSeen={onServiceSeen}
+          onPreviewConsumed={onPreviewConsumed}
+          onComplete={onComplete}
+        />
       </div>
-      <div className="visual-window-footer">
-        <span>NAIROBI, KE <span aria-hidden="true">·</span> EAT</span>
-        <span>PORTFOLIO // 2026</span>
+      <div className="visual-window-footer terminal-window-footer">
+        <span className="terminal-footer-location">NAIROBI, KE <span aria-hidden="true">·</span> EAT</span>
+        <div className="terminal-service-navigation">
+          <button type="button" aria-label="Previous service" title="Previous service" onClick={onPreviousService}>
+            <ChevronLeft size={13} aria-hidden="true" />
+          </button>
+          <button type="button" aria-label="Next service" title="Next service" onClick={onNextService}>
+            <ChevronRight size={13} aria-hidden="true" />
+          </button>
+        </div>
+        <span className="terminal-footer-tag">CLI // 2026</span>
       </div>
     </>
   );
-}
-
-function ServicesFace({ activeLine }: { activeLine: number }) {
-  return (
-    <>
-      <div className="visual-window-header">
-        <div className="window-dots" aria-hidden="true"><i /><i /><i /></div>
-        <span>SERVICES</span>
-        <span className="live-label"><span className="status-indicator" /> AVAILABLE</span>
-      </div>
-      <div className="visual-window-body services-body">
-        <div className="visual-kicker">// PROFESSIONAL SUPPORT</div>
-        <h2>What I can help with.</h2>
-        <div className="service-terminal-list" aria-label="Services">
-          {serviceItems.map((service, index) => (
-            <div className={index === activeLine ? "service-terminal-line active" : "service-terminal-line"} key={service.number}>
-              <span className="service-line-index">{service.number}</span>
-              <span className="service-line-title">{service.title}</span>
-              {index === activeLine ? <span className="service-line-caret" aria-hidden="true">▌</span> : <span className="service-line-spacer" aria-hidden="true" />}
-            </div>
-          ))}
-        </div>
-        <p className="service-terminal-note">Select Services below to explore the full scope.</p>
-      </div>
-      <div className="visual-window-footer">
-        <span>SECURITY <span aria-hidden="true">·</span> SYSTEMS <span aria-hidden="true">·</span> WEB</span>
-        <span>{String(serviceItems.length).padStart(2, "0")} SERVICES</span>
-      </div>
-    </>
-  );
-}
-
-function SkillsFace({ reducedMotion, visible }: { reducedMotion: boolean; visible: boolean }) {
-  return (
-    <>
-      <div className="visual-window-header">
-        <div className="window-dots" aria-hidden="true"><i /><i /><i /></div>
-        <span>SKILLS</span>
-        <span className="live-label skills-live-label"><span className="status-indicator" /> TOOLKIT</span>
-      </div>
-      <div className="visual-window-body skills-body">
-        <div className="visual-kicker">// TECHNICAL SKILLS · SELECTED</div>
-        <h2>What I work with.</h2>
-        <div className="showcase-skill-grid" aria-label="Selected technical skills">
-          {skillItems.map((skill, index) => (
-            <m.span
-              className="showcase-skill-chip"
-              key={skill.name}
-              initial={false}
-              animate={visible ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }}
-              transition={{
-                duration: reducedMotion ? 0.1 : 0.32,
-                delay: reducedMotion ? 0 : index * (HERO_TIMING.SKILL_STAGGER_MS / 1000),
-                ease: [0.22, 1, 0.36, 1],
-              }}
-              title={skill.category}
-            >
-              <span className="skill-chip-dot" aria-hidden="true" />
-              <span>{skill.name}</span>
-              {skill.level === "Learning" && <small>LEARNING</small>}
-            </m.span>
-          ))}
-        </div>
-        <p className="skills-terminal-note">A selected view of the skills documented in my portfolio.</p>
-      </div>
-      <div className="visual-window-footer skills-window-footer">
-        <span>SECURITY <span aria-hidden="true">·</span> NETWORKS <span aria-hidden="true">·</span> SYSTEMS</span>
-        <span>{String(skillItems.length).padStart(2, "0")} SKILLS</span>
-      </div>
-    </>
-  );
-}
-
-function ShowcaseFace({
-  scene,
-  activeServiceLine,
-  reducedMotion,
-  visible,
-}: {
-  scene: ShowcaseScene;
-  activeServiceLine: number;
-  reducedMotion: boolean;
-  visible: boolean;
-}) {
-  if (scene === "overview") return <OverviewFace />;
-  if (scene === "services") return <ServicesFace activeLine={activeServiceLine} />;
-  return <SkillsFace reducedMotion={reducedMotion} visible={visible} />;
 }
 
 function FocusVisualizer() {
   const { preference, setPreference, isSpinning, setIsSpinning } = useMotionPreference();
   const prefersReducedMotion = Boolean(useReducedMotion());
-  const [activeScene, setActiveScene] = useState<ShowcaseScene>("overview");
+  const [activeScene, setActiveScene] = useState<TerminalChapter>("identity");
   const [visibleFace, setVisibleFace] = useState<"front" | "back">("front");
-  const [frontScene, setFrontScene] = useState<ShowcaseScene>("overview");
-  const [backScene, setBackScene] = useState<ShowcaseScene>("services");
-  const [activeServiceLine, setActiveServiceLine] = useState(0);
-  const [pointerPaused, setPointerPaused] = useState(false);
-  const [focusPaused, setFocusPaused] = useState(false);
+  const [frontScene, setFrontScene] = useState<TerminalChapter>("identity");
+  const [backScene, setBackScene] = useState<TerminalChapter>("pentesting");
   const [documentVisible, setDocumentVisible] = useState(true);
+  const [isIntersecting, setIsIntersecting] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [announceManually, setAnnounceManually] = useState(false);
   const [progressRevision, setProgressRevision] = useState(0);
-  const [hasLeftFirstOverview, setHasLeftFirstOverview] = useState(false);
+  const [manualPreview, setManualPreview] = useState(false);
+  const [manualPreviewMode, setManualPreviewMode] = useState<"chapter" | "service">("chapter");
+  const [serviceOffsets, setServiceOffsets] = useState({ pentesting: 0, web: 0 });
+  const [servicePositions, setServicePositions] = useState({ pentesting: 0, web: 0 });
+  const [sessionRevision, setSessionRevision] = useState(0);
 
   const spinnerControls = useAnimationControls();
   const fadeControls = useAnimationControls();
@@ -203,11 +171,13 @@ function FocusVisualizer() {
   const transitionVersionRef = useRef(0);
   const angleRef = useRef(0);
   const swappedFaceRef = useRef(false);
-  const spinTargetRef = useRef<ShowcaseScene>("services");
-  const activeSceneRef = useRef<ShowcaseScene>("overview");
+  const spinTargetRef = useRef<TerminalChapter>("pentesting");
+  const activeSceneRef = useRef<TerminalChapter>("identity");
   const visibleFaceRef = useRef<"front" | "back">("front");
   const pauseButtonRef = useRef<HTMLButtonElement>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const perspectiveRef = useRef<HTMLDivElement>(null);
+  const preferredServiceAreaRef = useRef<"pentesting" | "web">("pentesting");
 
   const pointerX = useMotionValue(0);
   const pointerY = useMotionValue(0);
@@ -216,24 +186,20 @@ function FocusVisualizer() {
 
   const cardAutoPaused = preference === "paused"
     || prefersReducedMotion
-    || pointerPaused
-    || focusPaused
-    || !documentVisible;
+    || !documentVisible
+    || !isIntersecting;
+  const sessionPaused = preference === "paused"
+    || !documentVisible
+    || !isIntersecting;
+  const currentDwell = estimateChapterDuration(activeScene);
 
-  const currentDwell = activeScene === "overview"
-    ? (hasLeftFirstOverview ? HERO_TIMING.OVERVIEW_DWELL_MS : HERO_TIMING.FIRST_SPIN_MS)
-    : activeScene === "services"
-      ? serviceItems.length * HERO_TIMING.SERVICE_LINE_MS + HERO_TIMING.SERVICE_BUFFER_MS
-      : HERO_TIMING.SKILLS_DWELL_MS;
-
-  const settleAt = useCallback((scene: ShowcaseScene) => {
-    activeSceneRef.current = scene;
-    setActiveScene(scene);
-    setFrontScene(scene);
-    setBackScene(nextScene(scene));
+  const settleAt = useCallback((chapter: TerminalChapter) => {
+    activeSceneRef.current = chapter;
+    setActiveScene(chapter);
+    setFrontScene(chapter);
+    setBackScene(nextTerminalChapter(chapter));
     visibleFaceRef.current = "front";
     setVisibleFace("front");
-    setActiveServiceLine(0);
     angleRef.current = 0;
     spinnerControls.set({ rotateY: 0, rotateX: 0, rotateZ: 0, scale: 1 });
     fadeControls.set({ opacity: 1 });
@@ -242,21 +208,14 @@ function FocusVisualizer() {
     setIsSpinning(false);
   }, [fadeControls, setIsSpinning, spinnerControls]);
 
-  const transitionTo = useCallback(async (target: ShowcaseScene, source: TransitionSource) => {
+  const transitionTo = useCallback(async (target: TerminalChapter, source: TransitionSource) => {
     if (transitionBusyRef.current || target === activeSceneRef.current) return;
     transitionBusyRef.current = true;
     setIsTransitioning(true);
     const version = ++transitionVersionRef.current;
     spinTargetRef.current = target;
-    if (source === "manual") {
-      setAnnounceManually(true);
-      setProgressRevision((value) => value + 1);
-    } else {
-      setAnnounceManually(false);
-    }
-    if (activeSceneRef.current === "overview" && target !== "overview") {
-      setHasLeftFirstOverview(true);
-    }
+    setProgressRevision((value) => value + 1);
+    if (source === "auto") setManualPreview(false);
 
     const use3D = preference === "auto" && !prefersReducedMotion && supportsPreserve3D();
     if (use3D) {
@@ -265,7 +224,6 @@ function FocusVisualizer() {
       setVisibleFace("front");
       swappedFaceRef.current = false;
       angleRef.current = 0;
-      setActiveServiceLine(0);
       setIsSpinning(true);
       spinnerControls.set({ rotateY: 0, rotateX: 0, rotateZ: 0, scale: 1 });
 
@@ -292,33 +250,86 @@ function FocusVisualizer() {
       if (version !== transitionVersionRef.current) return;
       settleAt(target);
     } else {
-      await fadeControls.start({
-        opacity: 0,
-        transition: {
-          duration: HERO_TIMING.CROSSFADE_MS / 2000,
-          ease: [0.4, 0, 0.2, 1],
-        },
-      });
+      if (prefersReducedMotion) {
+        fadeControls.set({ opacity: 1 });
+      } else {
+        await fadeControls.start({
+          opacity: 0,
+          transition: {
+            duration: HERO_TIMING.CROSSFADE_MS / 1000,
+            ease: [0.4, 0, 0.2, 1],
+          },
+        });
+      }
       if (version !== transitionVersionRef.current) return;
       activeSceneRef.current = target;
       setActiveScene(target);
       setFrontScene(target);
-      setBackScene(nextScene(target));
-      setActiveServiceLine(0);
-      await fadeControls.start({
-        opacity: 1,
-        transition: {
-          duration: HERO_TIMING.CROSSFADE_MS / 2000,
-          ease: [0.4, 0, 0.2, 1],
-        },
-      });
+      setBackScene(nextTerminalChapter(target));
+      if (!prefersReducedMotion) {
+        await fadeControls.start({
+          opacity: 1,
+          transition: {
+            duration: HERO_TIMING.CROSSFADE_MS / 1000,
+            ease: [0.4, 0, 0.2, 1],
+          },
+        });
+      }
       if (version !== transitionVersionRef.current) return;
       transitionBusyRef.current = false;
       setIsTransitioning(false);
     }
   }, [
-    fadeControls, glintControls, preference, prefersReducedMotion, setIsSpinning, settleAt, spinnerControls,
+    fadeControls,
+    glintControls,
+    preference,
+    prefersReducedMotion,
+    setIsSpinning,
+    settleAt,
+    spinnerControls,
   ]);
+
+  const handleServiceSeen = useCallback((area: "pentesting" | "web", index: number) => {
+    preferredServiceAreaRef.current = area;
+    setServicePositions((current) => current[area] === index
+      ? current
+      : { ...current, [area]: index });
+  }, []);
+
+  const consumeManualPreview = useCallback(() => {
+    setManualPreview(false);
+  }, []);
+
+  const completeChapter = useCallback((chapter: TerminalChapter) => {
+    if (
+      chapter !== activeSceneRef.current
+      || cardAutoPaused
+      || isTransitioning
+      || preference !== "auto"
+      || prefersReducedMotion
+    ) return;
+    void transitionTo(nextTerminalChapter(chapter), "auto");
+  }, [cardAutoPaused, isTransitioning, preference, prefersReducedMotion, transitionTo]);
+
+  const navigateService = useCallback((direction: -1 | 1) => {
+    const scene = activeSceneRef.current;
+    const area = scene === "web"
+      ? "web"
+      : scene === "pentesting"
+        ? "pentesting"
+        : preferredServiceAreaRef.current;
+    const services = TERMINAL_AREAS[area];
+    if (!services.length) return;
+    const currentIndex = servicePositions[area] ?? serviceOffsets[area];
+    const nextIndex = (currentIndex + direction + services.length) % services.length;
+    preferredServiceAreaRef.current = area;
+    setServiceOffsets((current) => ({ ...current, [area]: nextIndex }));
+    setServicePositions((current) => ({ ...current, [area]: nextIndex }));
+    setManualPreview(true);
+    setManualPreviewMode("service");
+    setSessionRevision((value) => value + 1);
+    if (scene !== area) void transitionTo(area, "manual");
+  }, [serviceOffsets, servicePositions, transitionTo]);
 
   useEffect(() => {
     const onVisibilityChange = () => setDocumentVisible(!document.hidden);
@@ -328,30 +339,28 @@ function FocusVisualizer() {
   }, []);
 
   useEffect(() => {
+    const node = perspectiveRef.current;
+    if (!node) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setIsIntersecting(true);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      setIsIntersecting(Boolean(entry?.isIntersecting && entry.intersectionRatio >= 0.05));
+    }, { threshold: [0, 0.05] });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     if (preference !== "paused" || !isSpinning) return;
     transitionVersionRef.current += 1;
     spinnerControls.stop();
     glintControls.stop();
-    const scene = angleRef.current >= 180 ? spinTargetRef.current : activeSceneRef.current;
-    settleAt(scene);
+    const chapter = angleRef.current >= 180 ? spinTargetRef.current : activeSceneRef.current;
+    settleAt(chapter);
   }, [glintControls, isSpinning, preference, settleAt, spinnerControls]);
-
-  useEffect(() => {
-    if (cardAutoPaused || isTransitioning || transitionBusyRef.current) return;
-    const target = nextScene(activeScene);
-    const timer = window.setTimeout(() => {
-      void transitionTo(target, "auto");
-    }, currentDwell);
-    return () => window.clearTimeout(timer);
-  }, [activeScene, cardAutoPaused, currentDwell, isTransitioning, transitionTo]);
-
-  useEffect(() => {
-    if (activeScene !== "services" || cardAutoPaused || isTransitioning) return;
-    const timer = window.setInterval(() => {
-      setActiveServiceLine((current) => Math.min(current + 1, serviceItems.length - 1));
-    }, HERO_TIMING.SERVICE_LINE_MS);
-    return () => window.clearInterval(timer);
-  }, [activeScene, cardAutoPaused, isTransitioning]);
 
   useEffect(() => {
     if (isSpinning || prefersReducedMotion) {
@@ -360,8 +369,14 @@ function FocusVisualizer() {
     }
   }, [isSpinning, pointerX, pointerY, prefersReducedMotion]);
 
-  const selectScene = (scene: ShowcaseScene) => {
+  const selectScene = (scene: TerminalChapter) => {
     if (scene === activeSceneRef.current || transitionBusyRef.current) return;
+    if (preference === "paused" && !prefersReducedMotion) {
+      setManualPreview(true);
+      setManualPreviewMode("chapter");
+    } else {
+      setManualPreview(false);
+    }
     void transitionTo(scene, "manual");
   };
 
@@ -387,27 +402,46 @@ function FocusVisualizer() {
   };
 
   const handlePointerLeave = () => {
-    setPointerPaused(false);
     pointerX.set(0);
     pointerY.set(0);
   };
 
+  const renderFace = (chapter: TerminalChapter, face: "front" | "back") => (
+    <m.div
+      className={"visual-face visual-face-" + face}
+      animate={face === "front" ? fadeControls : undefined}
+      id={visibleFace === face ? "security-showcase-panel" : undefined}
+      role={visibleFace === face ? "tabpanel" : undefined}
+      aria-labelledby={visibleFace === face ? "showcase-tab-" + chapter : undefined}
+      aria-hidden={visibleFace !== face}
+      inert={visibleFace !== face}
+      key={face + "-" + chapter + "-" + serviceOffsets.pentesting + "-" + serviceOffsets.web + "-" + sessionRevision}
+    >
+      <TerminalFace
+        chapter={chapter}
+        active={visibleFace === face && isIntersecting && documentVisible}
+        paused={sessionPaused}
+        reducedMotion={prefersReducedMotion}
+        manualPreview={manualPreview}
+        manualPreviewMode={manualPreviewMode}
+        serviceOffset={serviceOffsets[chapter === "web" ? "web" : "pentesting"] ?? 0}
+        servicePositions={servicePositions}
+        onServiceSeen={handleServiceSeen}
+        onPreviewConsumed={consumeManualPreview}
+        onComplete={() => completeChapter(chapter)}
+        onPreviousService={() => navigateService(-1)}
+        onNextService={() => navigateService(1)}
+      />
+    </m.div>
+  );
+
   return (
     <div
-      className={"hero-visual scene-" + activeScene}
-      role="region"
-      aria-roledescription="interactive showcase"
-      aria-label="Cybersecurity services and skills showcase"
-      aria-live={announceManually ? "polite" : "off"}
-      onPointerEnter={() => setPointerPaused(true)}
+      className={"hero-visual scene-" + activeScene + (preference === "paused" ? " motion-paused" : "")}
+      role="group"
+      aria-label="Live terminal simulation of cybersecurity services, web development, and technical skills. Commands and output are illustrative only and are never executed."
+      aria-live="off"
       onPointerLeave={handlePointerLeave}
-      onFocusCapture={() => setFocusPaused(true)}
-      onBlurCapture={(event) => {
-        const nextTarget = event.relatedTarget;
-        if (nextTarget === pauseButtonRef.current || !(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
-          setFocusPaused(false);
-        }
-      }}
     >
       <div className="visual-glow" aria-hidden="true" />
       <div className="visual-orbit orbit-one" aria-hidden="true" />
@@ -423,7 +457,7 @@ function FocusVisualizer() {
         style={{ rotateX: springRotateX, rotateY: springRotateY }}
         onPointerMove={handlePointerMove}
       >
-        <div className="visual-perspective">
+        <div className="visual-perspective" ref={perspectiveRef}>
           <m.div
             className="visual-spinner"
             animate={spinnerControls}
@@ -445,37 +479,8 @@ function FocusVisualizer() {
               }
             }}
           >
-            <m.div
-              className={"visual-face visual-face-front" + (frontScene === "skills" ? " visual-face-skills" : "")}
-              animate={fadeControls}
-              id={visibleFace === "front" ? "security-showcase-panel" : undefined}
-              role={visibleFace === "front" ? "tabpanel" : undefined}
-              aria-labelledby={visibleFace === "front" ? "showcase-tab-" + frontScene : undefined}
-              aria-hidden={visibleFace !== "front"}
-              inert={visibleFace !== "front"}
-            >
-              <ShowcaseFace
-                scene={frontScene}
-                activeServiceLine={activeServiceLine}
-                reducedMotion={prefersReducedMotion}
-                visible={visibleFace === "front"}
-              />
-            </m.div>
-            <div
-              className={"visual-face visual-face-back" + (backScene === "skills" ? " visual-face-skills" : "")}
-              id={visibleFace === "back" ? "security-showcase-panel" : undefined}
-              role={visibleFace === "back" ? "tabpanel" : undefined}
-              aria-labelledby={visibleFace === "back" ? "showcase-tab-" + backScene : undefined}
-              aria-hidden={visibleFace !== "back"}
-              inert={visibleFace !== "back"}
-            >
-              <ShowcaseFace
-                scene={backScene}
-                activeServiceLine={0}
-                reducedMotion={prefersReducedMotion}
-                visible={visibleFace === "back"}
-              />
-            </div>
+            {renderFace(frontScene, "front")}
+            {renderFace(backScene, "back")}
           </m.div>
           <m.div className="visual-glint" animate={glintControls} aria-hidden="true" />
         </div>
@@ -490,37 +495,36 @@ function FocusVisualizer() {
           onClick={() => {
             const nextPreference = preference === "paused" ? "auto" : "paused";
             setPreference(nextPreference);
-            if (nextPreference === "auto") setFocusPaused(false);
           }}
           title={preference === "paused" ? "Play animations" : "Pause animations"}
         >
           {preference === "paused" ? <Play size={13} aria-hidden="true" /> : <Pause size={13} aria-hidden="true" />}
           <span>{preference === "paused" ? "PLAY" : "PAUSE"}</span>
         </button>
-        <div className="visual-pagination" role="tablist" aria-label="Showcase scenes">
-          {SCENES.map((scene, index) => (
+        <div className="visual-pagination" role="tablist" aria-label="Terminal chapters">
+          {SCENES.map((chapter, index) => (
             <button
               ref={(element) => { tabRefs.current[index] = element; }}
-              key={scene}
-              id={"showcase-tab-" + scene}
-              className={activeScene === scene ? "active" : ""}
+              key={chapter}
+              id={"showcase-tab-" + chapter}
+              className={activeScene === chapter ? "active" : ""}
               type="button"
               role="tab"
-              aria-selected={activeScene === scene}
+              aria-selected={activeScene === chapter}
               aria-controls="security-showcase-panel"
-              tabIndex={activeScene === scene ? 0 : -1}
-              onClick={() => selectScene(scene)}
+              tabIndex={activeScene === chapter ? 0 : -1}
+              onClick={() => selectScene(chapter)}
               onKeyDown={(event) => handleTabKeyDown(event, index)}
-              title={scene === "overview" ? "Overview" : scene === "services" ? "Services" : "Skills"}
+              title={chapterLabel(chapter)}
             >
-              <span className="sr-only">{scene === "overview" ? "Overview" : scene === "services" ? "Services" : "Skills"}</span>
+              <span className="sr-only">{chapterLabel(chapter)}</span>
               <span className="visual-tab-track" aria-hidden="true">
                 <span
                   className="visual-tab-fill"
-                  key={scene + "-" + progressRevision + "-" + activeScene}
+                  key={chapter + "-" + progressRevision + "-" + activeScene}
                   style={{
-                    animationDuration: currentDwell + "ms",
-                    animationPlayState: activeScene === scene && !cardAutoPaused && !isTransitioning ? "running" : "paused",
+                    animationDuration: estimateChapterDuration(chapter) + "ms",
+                    animationPlayState: activeScene === chapter && !cardAutoPaused && !isTransitioning ? "running" : "paused",
                   }}
                 />
               </span>
@@ -528,6 +532,19 @@ function FocusVisualizer() {
           ))}
         </div>
       </div>
+      <ul className="sr-only terminal-accessible-services" aria-label="Terminal service catalogue">
+        {TERMINAL_SERVICES.map((service) => (
+          <li key={service.id}>
+            <strong>{service.title}</strong>
+            <span>{service.summary}</span>
+            {service.proof?.map((proof) => (
+              <a key={proof.href} href={proof.href} target="_blank" rel="noopener noreferrer" tabIndex={-1}>
+                {proof.label}
+              </a>
+            ))}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
