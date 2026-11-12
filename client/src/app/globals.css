@@ -212,6 +212,8 @@ a:active, button:active:not(:disabled) {
 }
 .nav-explore-open > nav { grid-template-rows: 1fr; overflow: auto; border-color: var(--border); opacity: 1; pointer-events: auto; transform: translateY(0); transition-duration: var(--motion-base); }
 .nav-pages-inner { display: grid; min-height: 0; gap: 3px; overflow: hidden; }
+.nav-mobile-primary-pages { display: none; }
+.nav-mobile-primary-label { margin: 0; padding: 5px 10px 7px; color: var(--muted); font: 8px/1.4 var(--mono); letter-spacing: .14em; }
 .nav-drawer-backdrop { display: none; }
 .nav-explore > nav a { display: grid; gap: 4px; padding: 10px; border: 1px solid transparent; border-radius: 9px; color: var(--body-text); font-size: 12px; text-decoration: none; }
 .nav-explore > nav a:hover,
@@ -1263,8 +1265,11 @@ details[open] > .accordion-content { grid-template-rows: 1fr; opacity: 1; }
   .site-nav-compact { --nav-height: 56px; }
   .primary-nav > a { display: none; }
   .primary-nav { margin-left: auto; }
-  .nav-explore > nav { position: fixed; z-index: 51; top: calc(var(--nav-height) + 16px); right: 12px; width: min(350px, calc(100vw - 24px)); max-height: calc(100dvh - var(--nav-height) - 24px); grid-template-rows: 1fr; overflow: auto; transform: translateX(12px); transition-duration: var(--motion-exit); touch-action: pan-y; }
-  .nav-explore-open > nav { transform: translateX(0); }
+  .nav-explore > nav { position: fixed; z-index: 51; top: calc(var(--nav-height) + 16px); right: 12px; width: min(350px, calc(100vw - 24px)); max-height: calc(100dvh - var(--nav-height) - 24px); grid-template-rows: auto; overflow: auto; transform: translateX(12px); transition-duration: var(--motion-exit); touch-action: pan-y; }
+  .nav-pages-inner { min-height: max-content; overflow: visible; align-content: start; }
+  .nav-mobile-primary-pages { display: grid; gap: 3px; padding-bottom: 8px; margin-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .nav-mobile-primary-label { padding-inline: 10px; }
+  .nav-explore-open > nav { grid-template-rows: auto; transform: translateX(0); }
   .nav-explore-open > nav { transition-duration: var(--motion-drawer); }
   .nav-drawer-backdrop { position: fixed; z-index: 49; inset: 0; display: block; width: 100vw; height: 100dvh; padding: 0; border: 0; background: rgba(1, 7, 8, 0.56); opacity: 0; pointer-events: none; transform: none; transition: opacity var(--motion-exit) var(--motion-ease-move); }
   .nav-explore-open .nav-drawer-backdrop { opacity: 1; pointer-events: auto; transition-duration: var(--motion-drawer); }
