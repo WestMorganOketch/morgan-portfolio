@@ -156,7 +156,7 @@ function FocusVisualizer() {
   const [frontScene, setFrontScene] = useState<TerminalChapter>("identity");
   const [backScene, setBackScene] = useState<TerminalChapter>("pentesting");
   const [documentVisible, setDocumentVisible] = useState(true);
-  const [isIntersecting, setIsIntersecting] = useState(false);
+  const [isIntersecting, setIsIntersecting] = useState(true);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [progressRevision, setProgressRevision] = useState(0);
   const [manualPreview, setManualPreview] = useState(false);
@@ -192,7 +192,6 @@ function FocusVisualizer() {
   const sessionPaused = preference === "paused"
     || !documentVisible
     || !isIntersecting;
-  const currentDwell = estimateChapterDuration(activeScene);
 
   const settleAt = useCallback((chapter: TerminalChapter) => {
     activeSceneRef.current = chapter;
