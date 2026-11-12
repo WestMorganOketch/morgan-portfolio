@@ -2690,7 +2690,12 @@ html[data-theme="light"] .live-terminal[data-chapter="skills"] { --terminal-acce
   background: var(--accent);
   box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 60%, transparent);
 }
-.capability-marquee-window { width: 100%; overflow: hidden; }
+.capability-marquee-window {
+  /* Inset the moving content so it disappears before reaching the screen edges. */
+  width: calc(100% - clamp(32px, 5vw, 64px));
+  margin-inline: auto;
+  overflow: hidden;
+}
 .capability-marquee-track {
   display: flex;
   width: max-content;
