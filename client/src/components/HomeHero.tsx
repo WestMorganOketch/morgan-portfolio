@@ -111,7 +111,7 @@ function TerminalFace({
     <>
       <div className="visual-window-header">
         <div className="window-dots" aria-hidden="true"><i /><i /><i /></div>
-        <span>THREAT MONITORING</span>
+        <span>LIVE CLI SIMULATION</span>
         <span className="live-label"><span className="status-indicator" /> ACTIVE</span>
       </div>
       <div className="visual-window-body live-terminal-body">
@@ -154,8 +154,6 @@ function FocusVisualizer() {
   const [visibleFace, setVisibleFace] = useState<"front" | "back">("front");
   const [frontScene, setFrontScene] = useState<TerminalChapter>("identity");
   const [backScene, setBackScene] = useState<TerminalChapter>("pentesting");
-  const [pointerPaused, setPointerPaused] = useState(false);
-  const [focusPaused, setFocusPaused] = useState(false);
   const [documentVisible, setDocumentVisible] = useState(true);
   const [isIntersecting, setIsIntersecting] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -188,13 +186,9 @@ function FocusVisualizer() {
 
   const cardAutoPaused = preference === "paused"
     || prefersReducedMotion
-    || pointerPaused
-    || focusPaused
     || !documentVisible
     || !isIntersecting;
   const sessionPaused = preference === "paused"
-    || pointerPaused
-    || focusPaused
     || !documentVisible
     || !isIntersecting;
   const currentDwell = estimateChapterDuration(activeScene);
@@ -408,7 +402,6 @@ function FocusVisualizer() {
   };
 
   const handlePointerLeave = () => {
-    setPointerPaused(false);
     pointerX.set(0);
     pointerY.set(0);
   };
@@ -448,15 +441,7 @@ function FocusVisualizer() {
       role="group"
       aria-label="Live terminal simulation of cybersecurity services, web development, and technical skills. Commands and output are illustrative only and are never executed."
       aria-live="off"
-      onPointerEnter={() => setPointerPaused(true)}
       onPointerLeave={handlePointerLeave}
-      onFocusCapture={() => setFocusPaused(true)}
-      onBlurCapture={(event) => {
-        const nextTarget = event.relatedTarget;
-        if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
-          setFocusPaused(false);
-        }
-      }}
     >
       <div className="visual-glow" aria-hidden="true" />
       <div className="visual-orbit orbit-one" aria-hidden="true" />
@@ -510,7 +495,6 @@ function FocusVisualizer() {
           onClick={() => {
             const nextPreference = preference === "paused" ? "auto" : "paused";
             setPreference(nextPreference);
-            if (nextPreference === "auto") setFocusPaused(false);
           }}
           title={preference === "paused" ? "Play animations" : "Pause animations"}
         >
