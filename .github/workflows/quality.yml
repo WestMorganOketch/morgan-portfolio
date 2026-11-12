@@ -58,3 +58,6 @@ jobs:
       - name: Build client
         working-directory: client
         run: npm run build
+      - name: Verify terminal content and production-build constraints
+        working-directory: client
+        run: npm run verify:terminal
