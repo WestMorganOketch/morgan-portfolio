@@ -95,7 +95,8 @@ const services = serviceChunks.map((block, index) => {
   assert(!/\b(?:password|passwd|token|secret|exploit|payload|reverse\s+shell)\b|flag\{/i.test(safeText),
     "Unsafe word/pattern found in service fields: " + service.id);
 
-  const targets = safeText.match(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b|\b\d{1,3}(?:\.\d{1,3}){3}\b/gi) ?? [];
+  const targetText = [service.command, ...(service.output ?? [])].join("\\n");
+  const targets = targetText.match(/\\b(?:[a-z0-9-]+\\.)+[a-z]{2,}\\b|\\b\\d{1,3}(?:\\.\\d{1,3}){3}\\b/gi) ?? [];
   for (const target of targets) {
     const host = target.toLowerCase();
     const isAllowedHost = host === "lab.example.test"
@@ -133,7 +134,7 @@ assert(engineSource.includes("// # authorised targets only"), "Terminal engine m
 assert(engineSource.includes('text: "whoami"'), "Identity chapter must begin with whoami.");
 assert(engineSource.includes('text: "stack --list"'), "Skills chapter must use stack --list.");
 assert(engineSource.includes('"session complete"'), "Terminal loop must print session complete.");
-assert(engineSource.includes('"identity", "pentesting", "web", "skills"'), "Chapter order must be Identity → Pentesting → Web → Skills.");
+assert(/TERMINAL_CHAPTERS[\\s\\S]*?"identity"[\\s\\S]*?"pentesting"[\\s\\S]*?"web"[\\s\\S]*?"skills"/.test(engineSource), "Chapter order must be Identity → Pentesting → Web → Skills.");
 assert(engineSource.includes("clampTerminalRows") && engineSource.includes("maxRows = 14"),
   "Terminal row retention must be capped at 14 DOM rows.");
 assert(engineSource.includes("typingMsPerCharacter: 32"), "Typing timing must remain 32 ms/character.");
@@ -152,7 +153,7 @@ assert(!/window\.set(?:Timeout|Interval)\s*\(/.test(sessionSource),
   "The live session should use one requestAnimationFrame scheduler, not extra timeout/interval loops.");
 assert(!/\bfetch\s*\(|\beval\s*\(|new Function\s*\(/.test(sessionSource),
   "The hero terminal must not make network requests or evaluate commands.");
-assert(sessionSource.includes('reducedMotion ? completedTranscript'),
+assert(/const visibleRows = reducedMotion\\s*\\?\\s*completedTranscript/.test(sessionSource),
   "Reduced-motion mode must show the complete static transcript.");
 assert(sessionSource.includes('rel="noopener noreferrer"') && sessionSource.includes('target="_blank"'),
   "Proof links must open safely in a new tab.");
