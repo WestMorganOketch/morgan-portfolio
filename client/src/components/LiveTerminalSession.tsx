@@ -28,6 +28,7 @@ type LiveTerminalSessionProps = {
   identityLines: readonly string[];
   onServiceSeen: (area: "pentesting" | "web", index: number) => void;
   onPreviewConsumed: () => void;
+  onComplete: () => void;
 };
 
 function TerminalCommand({ text }: { text: string }) {
@@ -162,6 +163,7 @@ export default function LiveTerminalSession({
   identityLines,
   onServiceSeen,
   onPreviewConsumed,
+  onComplete,
 }: LiveTerminalSessionProps) {
   const script = useMemo(
     () => buildChapterScript(chapter, TERMINAL_SERVICES, skills, identityLines, serviceOffset),
@@ -195,10 +197,11 @@ export default function LiveTerminalSession({
   const animationFrameRef = useRef(0);
   const speedMultiplierRef = useRef(1);
   const finishedRef = useRef(false);
-  const onCompleteRef = useRef<(() => void) | null>(null);
+  const onCompleteRef = useRef(onComplete);
   const onServiceSeenRef = useRef(onServiceSeen);
   const onPreviewConsumedRef = useRef(onPreviewConsumed);
 
+  onCompleteRef.current = onComplete;
   onServiceSeenRef.current = onServiceSeen;
   onPreviewConsumedRef.current = onPreviewConsumed;
 
@@ -305,7 +308,8 @@ export default function LiveTerminalSession({
         if (!step) {
           if (!finishedRef.current) {
             finishedRef.current = true;
-            onCompleteRef.current?.();
+            disposed = true;
+            onCompleteRef.current();
           }
           return;
         }
@@ -430,16 +434,13 @@ export default function LiveTerminalSession({
       if (action === "finish") {
         if (!finishedRef.current) {
           finishedRef.current = true;
-          onCompleteRef.current?.();
+          disposed = true;
+          onCompleteRef.current();
         }
       }
     };
 
-    onCompleteRef.current = () => {
-      if (!disposed) onPreviewConsumedRef.current();
-      // The callback itself is stable in the parent; it may start the chapter swirl.
-      if (!disposed) propsOnComplete();
-    };
+    onCompleteRef.current = onCompleteRef.current;
 
     function tick(now: number) {
       if (disposed) return;
@@ -474,9 +475,6 @@ export default function LiveTerminalSession({
     script,
     serviceOffset,
   ]);
-
-  // Kept out of a ref so the current parent callback is always used by the scheduler.
-  const propsOnComplete = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     if (active && !paused && !reducedMotion && manualPreview) onPreviewConsumed();
