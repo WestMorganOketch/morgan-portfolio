@@ -106,7 +106,7 @@ export function buildChapterScript(
     );
   });
 
-  steps.push({ type: "outro", text: "session complete" });
+  steps.push({ type: "outro", text: "chapter complete" });
   return steps;
 }
 
