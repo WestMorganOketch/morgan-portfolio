@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
   buildChapterScript,
   buildStaticTranscript,
@@ -32,7 +32,23 @@ type LiveTerminalSessionProps = {
   onComplete: () => void;
 };
 
-function TerminalCommand({ text }: { text: string }) {
+function TerminalCommand({
+  text,
+  isTyping = false,
+  typingRef,
+}: {
+  text: string;
+  isTyping?: boolean;
+  typingRef?: RefObject<HTMLSpanElement | null>;
+}) {
+  if (isTyping) {
+    return (
+      <>
+        <span className="terminal-prompt">morgan@portfolio:~$</span>{" "}
+        <span className="terminal-command-main" ref={typingRef} />
+      </>
+    );
+  }
   const parts = text.split(/\s+/);
   const command = parts.shift() ?? "";
   return (
@@ -73,12 +89,16 @@ function TerminalRowView({
   currentPanel,
   paused,
   spinnerActive,
+  isTypingRow,
+  typingTextRef,
 }: {
   row: TerminalRow;
   older: boolean;
   currentPanel: boolean;
   paused: boolean;
   spinnerActive: boolean;
+  isTypingRow: boolean;
+  typingTextRef: RefObject<HTMLSpanElement | null>;
 }) {
   const rowClass = [
     "terminal-row",
@@ -98,7 +118,7 @@ function TerminalRowView({
   if (row.type === "command") {
     return (
       <div className={rowClass} aria-hidden="true" key={row.id}>
-        <TerminalCommand text={row.text ?? ""} />
+        <TerminalCommand text={row.text ?? ""} isTyping={isTypingRow} typingRef={typingTextRef} />
         {!paused && <span className="live-terminal-caret" />}
       </div>
     );
@@ -176,7 +196,9 @@ export default function LiveTerminalSession({
 
   const [rows, setRows] = useState<readonly TerminalRow[]>([]);
   const [activePanelRowId, setActivePanelRowId] = useState<string | null>(null);
+  const [typingRowId, setTypingRowId] = useState<string | null>(null);
   const [isSpinnerActive, setIsSpinnerActive] = useState(false);
+  const typingTextElementRef = useRef<HTMLSpanElement | null>(null);
   const rowsRef = useRef<readonly TerminalRow[]>([]);
   const nextRowIdRef = useRef(0);
   const stepIndexRef = useRef(0);
@@ -303,6 +325,7 @@ export default function LiveTerminalSession({
           typeCharacterIndexRef.current = 0;
           setActivePanelRowId(null);
           commandRowIdRef.current = appendRow({ type: "command", text: "" });
+          setTypingRowId(commandRowIdRef.current);
           stepIndexRef.current += 1;
           schedule("type-character", nextCharacterDelay());
           return;
@@ -359,12 +382,17 @@ export default function LiveTerminalSession({
       if (action === "type-character") {
         typeCharacterIndexRef.current += 1;
         commandTextRef.current = targetCommandRef.current.slice(0, typeCharacterIndexRef.current);
-        const rowId = commandRowIdRef.current;
-        if (rowId) updateRow(rowId, (row) => ({ ...row, text: commandTextRef.current }));
+        // Update only this DOM text node while typing; commit the completed command to React state once.
+        if (typingTextElementRef.current) {
+          typingTextElementRef.current.textContent = commandTextRef.current;
+        }
         if (typeCharacterIndexRef.current < targetCommandRef.current.length) {
           schedule("type-character", nextCharacterDelay());
         } else {
+          const rowId = commandRowIdRef.current;
+          if (rowId) updateRow(rowId, (row) => ({ ...row, text: commandTextRef.current }));
           commandRowIdRef.current = null;
+          setTypingRowId(null);
           processNextStep();
         }
         return;
@@ -480,6 +508,8 @@ export default function LiveTerminalSession({
               currentPanel={Boolean(currentPanel)}
               paused={paused || reducedMotion || !active}
               spinnerActive={isSpinnerActive && row.id === spinnerRowIdRef.current}
+              isTypingRow={row.id === typingRowId}
+              typingTextRef={typingTextElementRef}
             />
           );
         })}
