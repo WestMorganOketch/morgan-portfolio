@@ -2695,7 +2695,7 @@ html[data-theme="light"] .live-terminal[data-chapter="skills"] { --terminal-acce
   display: flex;
   width: max-content;
   will-change: transform;
-  animation: capability-marquee-right 36s linear infinite;
+  animation: capability-marquee-left 84s linear infinite;
   animation-play-state: running;
 }
 .capability-marquee-group {
@@ -2741,9 +2741,9 @@ html[data-theme="light"] .live-terminal[data-chapter="skills"] { --terminal-acce
   font-weight: 600;
   letter-spacing: -.015em;
 }
-@keyframes capability-marquee-right {
-  from { transform: translateX(-50%); }
-  to { transform: translateX(0); }
+@keyframes capability-marquee-left {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
 }
 @media (max-width: 640px) {
   .capability-marquee { padding-block: 14px; }
@@ -2758,7 +2758,7 @@ html[data-theme="light"] .live-terminal[data-chapter="skills"] { --terminal-acce
 @media (prefers-reduced-motion: reduce) {
   /* Keep the requested TV-style ticker automatic, but travel more slowly. */
   .capability-marquee-track {
-    animation-duration: 52s;
+    animation-duration: 110s;
     animation-timing-function: linear;
     animation-iteration-count: infinite;
     animation-play-state: running;
