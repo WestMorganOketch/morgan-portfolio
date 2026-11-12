@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -161,6 +162,10 @@ assert(sessionSource.includes('rel="noopener noreferrer"') && sessionSource.incl
   "Proof links must open safely in a new tab.");
 assert(sessionSource.includes('aria-hidden="true"'),
   "Animated command/output rows must be decorative to assistive technology.");
+assert(sessionSource.includes('process.env.NODE_ENV === "production"')
+  && sessionSource.includes('new URLSearchParams(window.location.search).get("tspeed"'),
+  "The ?tspeed development multiplier must be ignored in production.");
+
 assert(heroSource.includes('role="group"') && heroSource.includes('aria-live="off"'),
   "Hero terminal must provide a labelled group with aria-live off.");
 assert(heroSource.includes("new IntersectionObserver"),
@@ -169,6 +174,19 @@ assert(heroSource.includes('document.addEventListener("visibilitychange"'),
   "The session must handle hidden-tab pause/resume.");
 assert(heroSource.includes('aria-label="Previous service"') && heroSource.includes('aria-label="Next service"'),
   "Accessible Previous/Next service controls must be present.");
+assert(heroSource.includes('onPointerEnter={() => setPointerPaused(true)}')
+  && heroSource.includes("onFocusCapture={() => setFocusPaused(true)")
+  && heroSource.includes("onBlurCapture={(event) =>"),
+  "Hover and focus must pause the terminal session.");
+assert(heroSource.includes('onClick={() => selectScene(chapter)}')
+  && heroSource.includes("onKeyDown={(event) => handleTabKeyDown(event, index)}")
+  && heroSource.includes('setPreference(nextPreference)'),
+  "Chapter tabs and the shared Pause/Play control must remain wired.");
+assert(heroSource.includes("active={visibleFace === face && isIntersecting && documentVisible}"),
+  "Only the visible, in-viewport face may run a session.");
+assert(heroSource.includes('className={"visual-face visual-face-" + face}')
+  && !heroSource.includes('className="visual-face visual-face-back" style={{ position: "absolute"'),
+  "The two faces must be siblings, not nested/mirrored text containers.");
 assert(heroSource.includes('setIsSpinning(true)') && heroSource.includes("HERO_TIMING.SWIRL_MS"),
   "The existing 3D swirl must remain between chapters.");
 assert(profileSource.includes('import { PORTFOLIO_SERVICES } from "@/content/terminal"')
@@ -180,9 +198,29 @@ assert(cssSource.includes('html[data-theme="light"] .live-terminal[data-chapter=
 assert(cssSource.includes("@media (max-width: 600px)")
   && cssSource.includes("@media (prefers-reduced-motion: reduce)"),
   "Terminal styles must cover mobile and reduced-motion preferences.");
+assert(cssSource.includes(".visual-perspective { position: relative; width: min(100%, 460px); height: 430px; perspective: 1200px; }")
+  && cssSource.includes(".visual-face-front { transform: rotateY(0deg); }")
+  && cssSource.includes(".visual-face-back { transform: rotateY(180deg); }")
+  && cssSource.includes("backface-visibility: hidden;"),
+  "The existing fixed-height, two-face 3D stage must remain intact.");
+assert(cssSource.includes("font-size: 11.5px;") && cssSource.includes("height: 430px;"),
+  "Terminal text sizing and fixed stage height must remain defined.");
 
 const buildMarker = path.join(clientDirectory, ".next", "BUILD_ID");
 assert(fs.existsSync(buildMarker), "Run the production build before verify:terminal; client/.next/BUILD_ID is missing.");
+
+const engineTest = spawnSync(
+  process.execPath,
+  ["--experimental-strip-types", path.join(scriptDirectory, "test-terminal-engine.mjs")],
+  { cwd: clientDirectory, encoding: "utf8", timeout: 30000 },
+);
+if (engineTest.error) {
+  fail("Terminal engine test could not start: " + engineTest.error.message);
+} else if (engineTest.status !== 0) {
+  fail("Terminal engine tests failed:\n" + (engineTest.stdout ?? "") + (engineTest.stderr ?? ""));
+} else if (engineTest.stdout.trim()) {
+  console.log(engineTest.stdout.trim());
+}
 
 if (errors.length) {
   console.error("Terminal verification failed:");
