@@ -2640,8 +2640,8 @@ html[data-theme="light"] .live-terminal[data-chapter="skills"] { --terminal-acce
       color-mix(in srgb, var(--skills-accent) 7%, var(--surface-raised)) 48%,
       color-mix(in srgb, var(--accent) 8%, var(--surface)) 100%);
 }
-.capability-marquee::before,
-.capability-marquee::after {
+.capability-marquee-window::before,
+.capability-marquee-window::after {
   position: absolute;
   z-index: 2;
   top: 0;
@@ -2650,13 +2650,13 @@ html[data-theme="light"] .live-terminal[data-chapter="skills"] { --terminal-acce
   content: "";
   pointer-events: none;
 }
-.capability-marquee::before {
+.capability-marquee-window::before {
   left: 0;
-  background: linear-gradient(90deg, var(--surface), transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--surface-raised) 98%, transparent), transparent);
 }
-.capability-marquee::after {
+.capability-marquee-window::after {
   right: 0;
-  background: linear-gradient(270deg, var(--surface), transparent);
+  background: linear-gradient(270deg, color-mix(in srgb, var(--surface-raised) 98%, transparent), transparent);
 }
 .capability-marquee-heading {
   display: flex;
@@ -2691,10 +2691,16 @@ html[data-theme="light"] .live-terminal[data-chapter="skills"] { --terminal-acce
   box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 60%, transparent);
 }
 .capability-marquee-window {
-  /* Inset the moving content so it disappears before reaching the screen edges. */
+  /* Match the navigation's outlined capsule while keeping the ticker inset from the screen edges. */
+  position: relative;
   width: calc(100% - clamp(96px, 14vw, 180px));
   margin-inline: auto;
   overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 92%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, .16), inset 0 1px 0 rgba(255, 255, 255, .035);
+  backdrop-filter: blur(22px) saturate(140%);
 }
 .capability-marquee-track {
   display: flex;
