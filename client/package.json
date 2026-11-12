@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "verify:resume": "node scripts/verify-resume.mjs",
-    "preview": "next start --hostname 127.0.0.1"
+    "preview": "next start --hostname 127.0.0.1",
+    "verify:terminal": "node scripts/verify-terminal.mjs"
   },
   "dependencies": {
     "framer-motion": "^14.6.0",
