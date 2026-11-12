@@ -198,6 +198,7 @@ export default function LiveTerminalSession({
   const [activePanelRowId, setActivePanelRowId] = useState<string | null>(null);
   const [typingRowId, setTypingRowId] = useState<string | null>(null);
   const [isSpinnerActive, setIsSpinnerActive] = useState(false);
+  const [activeSpinnerRowId, setActiveSpinnerRowId] = useState<string | null>(null);
   const typingTextElementRef = useRef<HTMLSpanElement | null>(null);
   const rowsRef = useRef<readonly TerminalRow[]>([]);
   const nextRowIdRef = useRef(0);
@@ -218,8 +219,10 @@ export default function LiveTerminalSession({
   const onCompleteRef = useRef(onComplete);
   const onServiceSeenRef = useRef(onServiceSeen);
 
-  onCompleteRef.current = onComplete;
-  onServiceSeenRef.current = onServiceSeen;
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+    onServiceSeenRef.current = onServiceSeen;
+  }, [onComplete, onServiceSeen]);
 
   const previewingPaused = manualPreview && paused;
   const visibleRows = reducedMotion
@@ -334,6 +337,7 @@ export default function LiveTerminalSession({
         if (step.type === "spinner") {
           setIsSpinnerActive(true);
           spinnerRowIdRef.current = appendRow({ type: "spinner", text: step.text });
+          setActiveSpinnerRowId(spinnerRowIdRef.current);
           stepIndexRef.current += 1;
           schedule("spinner-finished", TERMINAL_TIMING.spinnerMs);
           return;
@@ -408,6 +412,7 @@ export default function LiveTerminalSession({
           }));
         }
         spinnerRowIdRef.current = null;
+        setActiveSpinnerRowId(null);
         setIsSpinnerActive(false);
         processNextStep();
         return;
@@ -507,7 +512,7 @@ export default function LiveTerminalSession({
               older={older}
               currentPanel={Boolean(currentPanel)}
               paused={paused || reducedMotion || !active}
-              spinnerActive={isSpinnerActive && row.id === spinnerRowIdRef.current}
+              spinnerActive={isSpinnerActive && row.id === activeSpinnerRowId}
               isTypingRow={row.id === typingRowId}
               typingTextRef={typingTextElementRef}
             />
