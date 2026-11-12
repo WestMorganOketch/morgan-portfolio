@@ -219,14 +219,14 @@ assert(marqueeSource.includes("profile.services.map")
 assert(marqueeSource.includes("all.findIndex")
   && marqueeSource.includes('aria-hidden={duplicate || undefined}'),
   "The marquee must de-duplicate labels and hide its repeated visual copy from assistive technology.");
-assert(cssSource.includes("animation: capability-marquee-right 36s linear infinite")
+assert(cssSource.includes("animation: capability-marquee-left 84s linear infinite")
   && cssSource.includes("animation-play-state: running;")
-  && cssSource.includes("@keyframes capability-marquee-right")
-  && cssSource.includes("from { transform: translateX(-50%); }")
-  && cssSource.includes("to { transform: translateX(0); }"),
-  "The marquee must run a seamless continuous left-to-right loop.");
+  && cssSource.includes("@keyframes capability-marquee-left")
+  && cssSource.includes("from { transform: translateX(0); }")
+  && cssSource.includes("to { transform: translateX(-50%); }"),
+  "The marquee must run a seamless, slow, continuous right-to-left loop.");
 assert(cssSource.includes("@media (prefers-reduced-motion: reduce)")
-  && cssSource.includes("animation-duration: 52s;")
+  && cssSource.includes("animation-duration: 110s;")
   && cssSource.includes("animation-iteration-count: infinite;")
   && cssSource.includes("animation-play-state: running;")
   && cssSource.includes(".capability-marquee-window { overflow: hidden; }"),
