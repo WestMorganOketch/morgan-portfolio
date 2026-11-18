@@ -1,0 +1,157 @@
+{
+  "name": "Career Radar — Scheduled Scan (n8n)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "15 0,6,12,18 * * *"
+            }
+          ]
+        }
+      },
+      "id": "b97e5b37-0ffb-46e8-9d7f-7cdd135c7c01",
+      "name": "Every 6 hours (Nairobi)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        180
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "73bf79a5-e9ca-43ae-9890-1e7d4d2cf089",
+      "name": "Manual test",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://REPLACE-WITH-YOUR-API-ORIGIN/api/health",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "313b5939-fb04-4895-8d05-0a45ab34b62c",
+      "name": "Wait for API health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        260
+      ],
+      "retryOnFail": true,
+      "maxTries": 12,
+      "waitBetweenTries": 10000,
+      "notesInFlow": true,
+      "notes": "Replace the URL with the deployed API origin, not the public frontend URL. Retries help with a sleeping API host."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://REPLACE-WITH-YOUR-API-ORIGIN/api/internal/jobs/run",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "id": "b9824dde-2f63-426d-8864-07de6c1b9c7e",
+      "name": "Trigger private Career Radar scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        800,
+        260
+      ],
+      "notesInFlow": true,
+      "notes": "Assign a Header Auth credential with header name X-Cron-Secret and the exact JOB_CRON_SECRET value configured on the API. Never place the secret in this workflow JSON. Automatic retries are intentionally disabled because the API allows four worker triggers per 24 hours; inspect n8n execution history before retrying a timeout."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const payload = $input.first().json;\nconst status = typeof payload?.status === 'string' ? payload.status : '';\nif (!(status === 'already_running' || (status && payload?.id))) {\n  throw new Error('Career Radar API returned an unexpected scan response. Check the API execution log and configuration.');\n}\nreturn [{ json: {\n  ok: true,\n  status,\n  runId: payload.id ?? null,\n  message: status === 'already_running'\n    ? 'A scan was already running; no duplicate scan was started.'\n    : 'The scan request was accepted. Review source results in the private Career Radar admin panel.',\n  checkedAt: new Date().toISOString()\n} }];"
+      },
+      "id": "3f31bb12-636d-41d2-a0f7-735cfc4e5b88",
+      "name": "Validate scan response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        260
+      ],
+      "notesInFlow": true,
+      "notes": "This confirms that the API accepted the trigger; the Career Radar run ledger remains the source of truth for per-source scan completion."
+    }
+  ],
+  "connections": {
+    "Every 6 hours (Nairobi)": {
+      "main": [
+        [
+          {
+            "node": "Wait for API health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual test": {
+      "main": [
+        [
+          {
+            "node": "Wait for API health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for API health": {
+      "main": [
+        [
+          {
+            "node": "Trigger private Career Radar scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger private Career Radar scan": {
+      "main": [
+        [
+          {
+            "node": "Validate scan response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Nairobi"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "versionId": "f20ffade-54cb-44db-b191-10d079c30b84",
+  "active": false
+}
