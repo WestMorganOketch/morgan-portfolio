@@ -7,7 +7,7 @@ This folder provides an importable n8n workflow that schedules the existing priv
 - Runs at 00:15, 06:15, 12:15, and 18:15 in `Africa/Nairobi`.
 - Also has a manual trigger for a controlled test.
 - Waits for the API health endpoint to respond, with bounded retries for a sleeping API host.
-- Sends an authenticated `POST /api/internal/jobs/run`.
+- Sends one authenticated `POST /api/internal/jobs/run` with automatic retries disabled, because the API limits this endpoint to four requests per 24 hours.
 - Validates the trigger response and records a useful execution result in n8n.
 - Never sends an application email, uploads documents, submits applications, or publishes the public snapshot.
 
@@ -26,7 +26,7 @@ The workflow cannot go live until the existing Career Radar release prerequisite
 2. In **both** HTTP Request nodes, replace `https://REPLACE-WITH-YOUR-API-ORIGIN` with the actual deployed **API origin** (HTTPS origin only, no path or trailing slash). Do not assume the public Vercel frontend URL is also the API host.
 3. Create a **Header Auth** credential. Set the header name to `X-Cron-Secret` and its value to the exact same secret configured as `JOB_CRON_SECRET` on the API host. Save it in n8n's credential store, then select it on **Trigger private Career Radar scan**. Do not hard-code the secret in a node expression.
 4. Save the workflow and use **Manual test** first. The health request must return successfully; the scan request should return a response with a status and run ID, or `already_running`.
-5. Check the private admin Career Radar run history and source status, rather than treating an accepted trigger as proof that every source finished successfully.
+5. Check the private admin Career Radar run history and source status, rather than treating an accepted trigger as proof that every source finished successfully. Avoid repeated manual trigger tests: the worker endpoint has a limit of four requests per rolling 24 hours.
 6. After a successful manual test, **publish/activate** the workflow so the schedule can run.
 
 ## Scheduler handover
