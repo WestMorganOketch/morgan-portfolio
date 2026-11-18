@@ -74,11 +74,8 @@
         800,
         260
       ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 15000,
       "notesInFlow": true,
-      "notes": "Assign a Header Auth credential with header name X-Cron-Secret and the exact JOB_CRON_SECRET value configured on the API. Never place the secret in this workflow JSON."
+      "notes": "Assign a Header Auth credential with header name X-Cron-Secret and the exact JOB_CRON_SECRET value configured on the API. Never place the secret in this workflow JSON. Automatic retries are intentionally disabled because the API allows four worker triggers per 24 hours; inspect n8n execution history before retrying a timeout."
     },
     {
       "parameters": {
