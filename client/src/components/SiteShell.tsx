@@ -9,7 +9,7 @@ import { publicPages } from "@/data/site";
 import { profile } from "@/data/profile";
 
 const analyticsPages = new Set([
-  "home", "about", "skills", "experience", "projects", "education", "certifications",
+  "home", "about", "skills", "experience", "projects", "work", "education", "certifications",
   "timeline", "achievements", "blog", "gallery", "services", "writeups", "inventions",
   "cheatsheets", "ctfs", "assignments", "documents", "triage", "leaderboard", "contact", "privacy",
 ]);
@@ -266,7 +266,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
           <nav className="primary-nav" aria-label="Primary navigation">
             <Link href="/" aria-current={pathname === "/" ? "page" : undefined}>Home</Link>
             <Link href="/about" aria-current={pathname === "/about" ? "page" : undefined}>About</Link>
-            <Link href="/projects" aria-current={pathname === "/projects" ? "page" : undefined}>Work</Link>
+            <Link href="/work" aria-current={pathname === "/work" ? "page" : undefined}>Work</Link>
             <Link href="/blog" aria-current={pathname === "/blog" ? "page" : undefined}>Writing</Link>
             <Link href="/resume" aria-current={pathname === "/resume" ? "page" : undefined}>Résumé</Link>
             <div className={`nav-explore ${exploreOpen ? "nav-explore-open" : ""}`} ref={exploreRef}>

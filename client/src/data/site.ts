@@ -6,6 +6,7 @@ export const publicPages = [
   { href: "/skills", label: "Skills", description: "Technical skills and current learning." },
   { href: "/experience", label: "Experience", description: "Teaching, support, and IT experience." },
   { href: "/projects", label: "Projects", description: "Selected work and public GitHub projects." },
+  { href: "/work", label: "Work in real time", description: "Live GitHub profile statistics, public activity, languages, and recent repositories." },
   { href: "/resume", label: "Résumé", description: "Read Morgan West Oketch's résumé or download the ATS-ready PDF." },
   { href: "/education", label: "Education", description: "Academic background and learning." },
   { href: "/certifications", label: "Certifications", description: "Completed programs and training." },
@@ -145,6 +146,11 @@ export const details: Record<string, { title: string; eyebrow: string; intro: st
     title: "Learning through hands-on projects.",
     eyebrow: "SELECTED WORK",
     intro: "A growing collection of security, networking, and web development work. Public repositories are loaded from GitHub when available.",
+  },
+  work: {
+    title: "The work, in real time.",
+    eyebrow: "GITHUB · LIVE",
+    intro: "Live public GitHub profile statistics, primary-language distribution, recent activity, and latest repositories.",
   },
   education: {
     title: "A strong foundation in mathematics and computing.",

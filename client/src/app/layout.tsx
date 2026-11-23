@@ -3,6 +3,7 @@ import { LazyMotion, MotionConfig, domAnimation } from "framer-motion";
 import { ThemeProvider } from "next-themes";
 import { SiteShell } from "@/components/SiteShell";
 import "./globals.css";
+import "./github-live.css";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
 
