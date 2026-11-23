@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, BookOpen, BriefcaseBusiness, Shield } from "lucide-react";
+import { Activity, ArrowRight, ArrowUpRight, BookOpen, BriefcaseBusiness, Shield } from "lucide-react";
 import HomeHero from "@/components/HomeHero";
 import { profile } from "@/data/profile";
 
@@ -36,6 +36,17 @@ export default function HomePage() {
           <article><span className="home-feature-icon"><BriefcaseBusiness size={19} aria-hidden="true" /></span><p className="card-index">REAL-WORLD EXPERIENCE</p><h3>Support that empowers.</h3><p>Helping learners and users solve real IT problems while making technical topics approachable.</p><Link href="/experience">View experience <ArrowRight size={13} aria-hidden="true" /></Link></article>
           <article><span className="home-feature-icon"><BookOpen size={19} aria-hidden="true" /></span><p className="card-index">ALWAYS LEARNING</p><h3>Progress, documented.</h3><p>Building a portfolio of learning, from professional programs to practical projects.</p><Link href="/projects">Browse project work <ArrowRight size={13} aria-hidden="true" /></Link></article>
         </div>
+      </section>
+      <section className="home-live-work page-container" aria-labelledby="home-live-work-title">
+        <Link className="home-live-work-card" href="/work">
+          <span className="home-live-work-icon"><Activity size={20} aria-hidden="true" /></span>
+          <span className="home-live-work-copy">
+            <span className="home-live-work-kicker">GITHUB · LIVE</span>
+            <span className="home-live-work-title" id="home-live-work-title">The work, <em>in real time.</em></span>
+            <span className="home-live-work-description">Current profile statistics, public activity, language breakdown, and recently updated repositories.</span>
+          </span>
+          <span className="home-live-work-action">Open live dashboard <ArrowUpRight size={16} aria-hidden="true" /></span>
+        </Link>
       </section>
       <section className="home-journey-band">
         <div className="page-container journey-content">
