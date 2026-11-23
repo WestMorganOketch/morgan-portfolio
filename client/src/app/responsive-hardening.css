@@ -468,6 +468,12 @@ td {
   .page-container {
     width: calc(100% - 32px);
   }
+  /* iOS Safari zooms the page when text controls use a font smaller than 16px. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
   .home-hero {
     gap: 22px;
     padding-block: 52px 60px;
