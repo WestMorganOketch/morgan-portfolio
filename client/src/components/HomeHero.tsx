@@ -15,6 +15,7 @@ import {
   ArrowDown, ArrowRight, ArrowUpRight, ChevronLeft, ChevronRight, Code2, Mail, Pause, Play,
 } from "lucide-react";
 import { profile } from "@/data/profile";
+import PortfolioMusicPlayer from "@/components/PortfolioMusicPlayer";
 import { skillGroups } from "@/data/site";
 import { TERMINAL_AREAS, TERMINAL_SERVICES } from "@/content/terminal";
 import { chapterLabel, nextTerminalChapter, TERMINAL_CHAPTERS, TERMINAL_TIMING, type TerminalChapter } from "@/lib/terminalEngine";
@@ -598,6 +599,7 @@ export default function HomeHero() {
             <a href={profile.linkedin} target="_blank" rel="noreferrer"><span className="social-brand-mark" aria-hidden="true">in</span> LinkedIn <span className="sr-only">(opens in a new tab)</span></a>
             <a href={"mailto:" + profile.email}><Mail size={16} aria-hidden="true" /> Email</a>
           </nav>
+          <PortfolioMusicPlayer />
         </div>
         <FocusVisualizer />
         <a className="hero-scroll-hint" href="#services"><span className="scroll-line" /> DISCOVER THE WORK <ArrowDown size={13} aria-hidden="true" /></a>
