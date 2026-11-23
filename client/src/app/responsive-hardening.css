@@ -1,0 +1,838 @@
+/*
+ * Responsive hardening layer
+ * Loaded after the site and GitHub dashboard styles so component-specific
+ * breakpoints remain predictable and the narrow-device overrides win.
+ */
+
+/* Intrinsic sizing: prevent long content from forcing a page wider than the viewport. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-padding-top: 88px;
+}
+body {
+  min-width: 320px;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.modern-site,
+.modern-site > main,
+#main-content,
+.inner-page,
+.page-container,
+.page-content,
+.home-hero,
+.home-hero > *,
+.home-detail-section,
+.home-detail-section > *,
+.home-feature-grid > *,
+.snapshot-grid > *,
+.content-grid > *,
+.skill-group-grid > *,
+.project-card-grid > *,
+.experience-grid > *,
+.certification-grid > *,
+.achievement-grid > *,
+.service-grid > *,
+.managed-content-grid > *,
+.education-layout > *,
+.contact-layout > *,
+.vault-grid > *,
+.github-live-panels > *,
+.github-live-repository-grid > *,
+.admin-page,
+.admin-page > *,
+.admin-panel,
+.career-centre,
+.career-centre > *,
+.career-panel,
+.career-subpanel,
+.career-application,
+.admin-quick-links > *,
+.home-live-work-card > * {
+  min-width: 0;
+}
+img,
+picture,
+video,
+canvas,
+iframe {
+  max-width: 100%;
+}
+img,
+picture,
+video,
+canvas {
+  height: auto;
+}
+svg {
+  flex-shrink: 0;
+}
+button,
+input,
+select,
+textarea {
+  max-width: 100%;
+}
+input,
+select,
+textarea {
+  min-width: 0;
+}
+p,
+li,
+dd,
+dt,
+figcaption,
+blockquote,
+label,
+small,
+time,
+code {
+  overflow-wrap: anywhere;
+}
+pre {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  white-space: pre;
+}
+table {
+  max-width: 100%;
+}
+th,
+td {
+  overflow-wrap: anywhere;
+}
+:where(.page-container, .page-content, .admin-page, .admin-panel) :where(h1, h2, h3, h4) {
+  min-width: 0;
+  text-wrap: balance;
+}
+:where(.page-container, .page-content) :where(a, button) {
+  -webkit-tap-highlight-color: transparent;
+}
+:where(.page-container, .page-content, .admin-page) :where(button, input, select, textarea) {
+  scroll-margin-block: 96px;
+}
+
+/* Common content widths and card internals. */
+.home-detail-section,
+.snapshot-section,
+.home-live-work,
+.page-intro,
+.page-content,
+.page-bottom-cta,
+.about-editorial,
+.github-live-dashboard {
+  box-sizing: border-box;
+}
+.home-feature-grid,
+.snapshot-grid,
+.technology-logo-grid,
+.badge-grid,
+.skill-group-grid,
+.project-card-grid,
+.experience-grid,
+.certification-grid,
+.achievement-grid,
+.service-grid,
+.managed-content-grid,
+.education-layout,
+.contact-layout,
+.vault-grid,
+.github-live-panels,
+.github-live-repository-grid,
+.career-stat-grid,
+.career-two-columns,
+.career-count-grid,
+.career-config-list,
+.career-setup-status-list,
+.career-packet-facts {
+  min-width: 0;
+}
+.home-feature-grid > *,
+.snapshot-grid > *,
+.technology-logo-grid > *,
+.badge-grid > *,
+.skill-group-grid > *,
+.project-card-grid > *,
+.experience-grid > *,
+.certification-grid > *,
+.achievement-grid > *,
+.service-grid > *,
+.managed-content-grid > *,
+.education-layout > *,
+.contact-layout > *,
+.vault-grid > *,
+.career-stat-grid > *,
+.career-two-columns > *,
+.career-count-grid > *,
+.career-config-list > *,
+.career-setup-status-list > *,
+.career-packet-facts > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.content-card,
+.skill-group-card,
+.project-card,
+.experience-card,
+.cert-card,
+.achievement-card,
+.service-card,
+.managed-entry,
+.education-feature,
+.contact-info,
+.contact-form,
+.vault-card,
+.github-live-panel,
+.github-live-repository-card,
+.career-subpanel,
+.career-application,
+.career-job-card,
+.admin-panel {
+  overflow-wrap: anywhere;
+}
+.button,
+.nav-book-call,
+.about-connect-link,
+.github-live-refresh,
+.admin-back-link,
+.admin-panel-action,
+.career-actions .button,
+.career-packet-actions .button {
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+}
+.form-field input,
+.form-field textarea,
+.form-field select,
+.contact-form input,
+.contact-form textarea,
+.contact-form select,
+.vault-filters input,
+.vault-filters select,
+.career-form input,
+.career-form select,
+.career-form textarea,
+.career-application input,
+.career-application select,
+.career-application textarea,
+.career-inline-form input,
+.career-inline-form select,
+.admin-page input,
+.admin-page select,
+.admin-page textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Medium screens: remove squeeze before content becomes hard to read. */
+@media (max-width: 1100px) {
+  .page-container {
+    width: min(var(--content-width), calc(100% - 48px));
+  }
+  .home-hero {
+    gap: clamp(24px, 3vw, 38px);
+  }
+  .badge-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .technology-logo-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .contact-layout {
+    gap: clamp(24px, 4vw, 42px);
+  }
+  .career-stat-grid {
+    gap: 8px;
+  }
+  .career-stat-grid > article {
+    padding: 12px;
+  }
+}
+
+/* Tablet and compact laptop: switch the hero and navigation together. */
+@media (max-width: 840px) {
+  .page-container {
+    width: min(var(--content-width), calc(100% - 40px));
+  }
+  .site-nav {
+    --nav-height: 62px;
+    top: 8px;
+    width: calc(100% - 24px);
+    padding: 6px 9px 6px 12px;
+    gap: 9px;
+  }
+  .primary-nav > a {
+    display: none;
+  }
+  .primary-nav {
+    margin-left: auto;
+  }
+  .nav-explore > nav {
+    position: fixed;
+    z-index: 51;
+    top: calc(var(--nav-height) + 16px);
+    right: 12px;
+    width: min(350px, calc(100vw - 24px));
+    max-height: calc(100vh - var(--nav-height) - 24px);
+    max-height: calc(100dvh - var(--nav-height) - 24px);
+    grid-template-rows: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    transform: translateX(12px);
+    touch-action: pan-y;
+  }
+  .nav-pages-inner {
+    min-height: max-content;
+    overflow: visible;
+    align-content: start;
+  }
+  .nav-mobile-primary-pages {
+    display: grid;
+    gap: 3px;
+    padding-bottom: 8px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-mobile-primary-label {
+    padding-inline: 10px;
+  }
+  .nav-explore-open > nav {
+    grid-template-rows: auto;
+    transform: translateX(0);
+    transition-duration: var(--motion-drawer);
+  }
+  .nav-drawer-backdrop {
+    position: fixed;
+    z-index: 49;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    padding: 0;
+    border: 0;
+    background: rgba(1, 7, 8, .56);
+    opacity: 0;
+    pointer-events: none;
+    transform: none;
+    transition: opacity var(--motion-exit) var(--motion-ease-move);
+  }
+  .nav-explore-open .nav-drawer-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+    transition-duration: var(--motion-drawer);
+  }
+  .home-hero {
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+    padding-block: clamp(58px, 8vw, 76px);
+  }
+  .hero-copy {
+    width: 100%;
+    max-width: 720px;
+  }
+  .hero-visual {
+    width: min(100%, 620px);
+    min-height: 390px;
+    margin-inline: auto;
+  }
+  .visual-tilt,
+  .visual-perspective,
+  .visual-spinner,
+  .visual-face,
+  .visual-window {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .snapshot-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .home-feature-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .skill-group-grid,
+  .project-card-grid,
+  .experience-grid,
+  .certification-grid,
+  .achievement-grid,
+  .service-grid,
+  .managed-content-grid,
+  .education-layout,
+  .content-grid,
+  .contact-layout,
+  .career-two-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .career-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .career-setup-status-list,
+  .career-packet-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .github-live-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .github-live-repository-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .site-footer {
+    padding-inline: 24px;
+    gap: 18px 22px;
+  }
+}
+
+/* Phones and small tablets: preserve hierarchy, tap targets and readable line lengths. */
+@media (max-width: 760px) {
+  .page-container {
+    width: calc(100% - 36px);
+  }
+  .content-grid,
+  .skill-group-grid,
+  .project-card-grid,
+  .experience-grid,
+  .certification-grid,
+  .achievement-grid,
+  .service-grid,
+  .managed-content-grid,
+  .education-layout,
+  .contact-layout,
+  .career-two-columns,
+  .career-preparation-choices {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .about-story-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .timeline-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .admin-navigation,
+  .career-tabs {
+    max-width: 100%;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+  .admin-navigation {
+    padding-inline: 14px;
+  }
+  .career-tabs {
+    top: 55px;
+  }
+  .admin-panel,
+  .admin-subpanel,
+  .career-subpanel,
+  .career-application {
+    padding: clamp(13px, 3vw, 18px);
+  }
+  .career-profile-layout,
+  .admin-title-row,
+  .admin-panel-heading,
+  .admin-application-heading {
+    align-items: flex-start;
+  }
+  .career-job-head,
+  .career-application-heading,
+  .career-packet-row {
+    min-width: 0;
+  }
+  .career-config-list,
+  .career-packet-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .career-inline-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .career-modal-backdrop {
+    place-items: start center;
+    overflow-y: auto;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  }
+  .career-note-modal {
+    width: 100%;
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+/* Small phones: intentionally resolve the older 420px / 620px cascade overlap. */
+@media (max-width: 620px) {
+  html {
+    scroll-padding-top: 76px;
+  }
+  [id] {
+    scroll-margin-top: 76px;
+  }
+  .page-container {
+    width: calc(100% - 32px);
+  }
+  .home-hero {
+    gap: 22px;
+    padding-block: 52px 60px;
+  }
+  .home-hero h1 {
+    font-size: clamp(42px, 12.4vw, 62px);
+    line-height: 1.02;
+    overflow-wrap: normal;
+  }
+  .hero-summary {
+    max-width: 100%;
+    font-size: 13px;
+    line-height: 1.75;
+  }
+  .hero-actions {
+    align-items: stretch;
+    gap: 8px;
+  }
+  .hero-actions .button {
+    min-height: 42px;
+    padding-inline: 12px;
+    font-size: 10px;
+    line-height: 1.35;
+  }
+  .hero-visual {
+    min-height: 340px;
+    width: 100%;
+    max-width: 100%;
+    overflow: visible;
+  }
+  .visual-tilt,
+  .visual-perspective,
+  .visual-spinner {
+    width: 100%;
+    max-width: 100%;
+  }
+  .visual-window {
+    width: min(100%, 460px);
+  }
+  .visual-window-body {
+    min-height: 0;
+    padding: 22px 16px 18px;
+  }
+  .visual-window-header,
+  .visual-window-footer {
+    min-width: 0;
+    padding-inline: 10px;
+    gap: 6px;
+    font-size: 8px;
+  }
+  .floating-chip {
+    max-width: 48%;
+    padding: 8px 9px;
+    font-size: 8px;
+  }
+  .chip-top {
+    top: 4%;
+    right: 0;
+  }
+  .chip-bottom {
+    bottom: 4%;
+    left: 0;
+  }
+  .snapshot-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .home-feature-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .site-footer {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    padding: 22px 18px max(72px, calc(22px + env(safe-area-inset-bottom)));
+  }
+  .site-footer > *,
+  .site-footer nav,
+  .site-footer > p,
+  .copyright {
+    grid-column: 1;
+    grid-row: auto;
+    min-width: 0;
+  }
+  .site-footer nav {
+    flex-wrap: wrap;
+    gap: 12px 16px;
+  }
+  .inner-page {
+    padding-top: 44px;
+  }
+  .page-intro h1 {
+    font-size: clamp(36px, 9.5vw, 52px);
+    line-height: 1.06;
+  }
+  .page-lede {
+    font-size: 13px;
+    line-height: 1.75;
+  }
+  .page-content {
+    padding-top: 18px;
+  }
+  .filter-row {
+    align-items: flex-start;
+  }
+  .filter-chip {
+    min-height: 36px;
+    max-width: 100%;
+    white-space: normal;
+    line-height: 1.35;
+  }
+  .badge-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+  .badge-card {
+    min-height: 196px;
+    padding: 11px 7px 12px;
+  }
+  .badge-art {
+    width: min(100%, 120px);
+    height: 112px;
+  }
+  .github-live-dashboard {
+    width: calc(100% - 32px);
+  }
+  .github-live-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .github-live-stat {
+    min-width: 0;
+    padding: 16px 13px;
+  }
+  .github-live-stat strong {
+    font-size: clamp(26px, 7vw, 34px);
+  }
+  .github-live-stat > span {
+    font-size: 8px;
+    letter-spacing: .12em;
+    overflow-wrap: anywhere;
+  }
+  .github-live-repository-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .github-live-repositories-heading {
+    align-items: flex-start;
+  }
+  .capability-marquee-heading {
+    width: calc(100% - 32px);
+  }
+  .capability-marquee-window {
+    width: calc(100% - 32px);
+  }
+  .capability-marquee-group {
+    flex-wrap: nowrap;
+    gap: 0;
+    padding-inline: 0;
+  }
+  .capability-marquee-item {
+    flex: 0 0 auto;
+    padding-inline: 13px 25px;
+  }
+  .capability-marquee-window::before,
+  .capability-marquee-window::after {
+    width: 22px;
+  }
+  .admin-quick-links {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .career-stat-grid,
+  .career-setup-status-list,
+  .career-packet-facts,
+  .career-count-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .command-palette {
+    width: 100%;
+    max-height: calc(100vh - 20px);
+    max-height: calc(100dvh - 20px);
+  }
+  .palette-backdrop {
+    align-items: flex-start;
+    overflow-y: auto;
+    padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));
+  }
+  .palette-results {
+    max-height: min(58vh, 460px);
+  }
+}
+
+/* Very narrow screens: make the navbar, actions and editor layouts intentionally compact. */
+@media (max-width: 390px) {
+  .site-nav {
+    width: calc(100% - 12px);
+    gap: 5px;
+    padding: 5px 6px;
+  }
+  .brand {
+    min-width: 0;
+    flex: 0 1 auto;
+    gap: 5px;
+  }
+  .brand-mark {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+  }
+  .brand-name {
+    min-width: 0;
+    max-width: 102px;
+    font-size: 6.8px;
+    letter-spacing: .04em;
+    overflow-wrap: normal;
+  }
+  .brand-name small {
+    display: none;
+  }
+  .primary-nav {
+    flex: 0 0 auto;
+  }
+  .nav-explore-trigger {
+    min-width: 32px;
+    min-height: 34px;
+    padding-inline: 4px;
+  }
+  .nav-actions {
+    flex: 0 0 auto;
+    gap: 3px;
+  }
+  .nav-actions > .theme-toggle {
+    min-width: 30px;
+    min-height: 30px;
+    padding-inline: 4px;
+  }
+  .nav-book-call {
+    min-height: 33px;
+    gap: 3px;
+    padding-inline: 7px;
+    font-size: 8px;
+    white-space: nowrap;
+  }
+  .nav-book-call svg {
+    width: 12px;
+  }
+  .hero-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 340px;
+  }
+  .hero-actions .button {
+    width: 100%;
+    justify-content: space-between;
+    font-size: 10px;
+  }
+  .hero-socials {
+    flex-wrap: wrap;
+    gap: 12px 16px;
+  }
+  .snapshot-grid article {
+    padding: 13px 10px;
+  }
+  .snapshot-grid article strong {
+    font-size: clamp(24px, 7vw, 30px);
+  }
+  .about-editorial-title {
+    font-size: clamp(38px, 11vw, 44px);
+  }
+  .about-editorial-kicker {
+    flex-wrap: wrap;
+    letter-spacing: .12em;
+  }
+  .github-live-panel,
+  .github-live-repositories {
+    padding: 18px 14px;
+  }
+  .github-live-language-legend {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .career-stat-grid,
+  .career-count-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .career-review-heading,
+  .career-application-heading,
+  .career-role-track,
+  .career-overview-jobs li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .career-overview-jobs li {
+    display: flex;
+  }
+  .career-score {
+    align-self: flex-start;
+  }
+  .capability-marquee-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .capability-marquee-status {
+    font-size: 7px;
+  }
+  .home-live-work-card {
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 12px;
+    padding: 16px;
+  }
+  .home-live-work-icon {
+    width: 34px;
+    height: 34px;
+  }
+  .home-live-work-action {
+    grid-column: 2;
+    justify-self: start;
+    white-space: normal;
+  }
+}
+
+/* Landscape phones: keep the main navigation and dialogs within the usable screen height. */
+@media (max-height: 520px) and (orientation: landscape) {
+  .site-nav {
+    position: sticky;
+    top: 4px;
+  }
+  .nav-explore > nav {
+    top: calc(var(--nav-height) + 10px);
+    max-height: calc(100vh - var(--nav-height) - 16px);
+    max-height: calc(100dvh - var(--nav-height) - 16px);
+  }
+  .career-note-modal,
+  .command-palette {
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+  .home-hero {
+    padding-block: 38px;
+  }
+}
+
+/* Safe-area support for notched phones and reduced motion for non-pointer devices. */
+@supports not (height: 100dvh) {
+  .nav-explore > nav {
+    max-height: calc(100vh - var(--nav-height) - 24px);
+  }
+  .nav-drawer-backdrop {
+    height: 100vh;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-live-work-card,
+  .github-live-language-bar span,
+  .github-live-skeleton::after,
+  .is-spinning {
+    animation: none !important;
+    transition: none !important;
+  }
+  .home-live-work-card:hover {
+    transform: none;
+  }
+}
