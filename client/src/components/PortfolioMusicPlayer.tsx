@@ -152,7 +152,7 @@ export default function PortfolioMusicPlayer() {
           <span className="portfolio-music-art-bars"><i /><i /><i /><i /><i /></span>
         </div>
         <div className="portfolio-music-track-copy">
-          <p className="portfolio-music-title">Portfolio soundtrack</p>
+          <p className="portfolio-music-title">West's professional Anthem</p>
           <p className="portfolio-music-subtitle">{playing ? "Music is playing" : "A little music while you explore"}</p>
         </div>
         <span className={playing ? "portfolio-music-playing is-active" : "portfolio-music-playing"} aria-hidden="true">
