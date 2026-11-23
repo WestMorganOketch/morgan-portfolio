@@ -521,6 +521,7 @@ function ContactContent() {
         <a href={`mailto:${profile.email}`}><MailIcon />{profile.email}</a>
         <a href={profile.linkedin} target="_blank" rel="noreferrer"><span className="contact-symbol" aria-hidden="true">in</span>LinkedIn <ArrowUpRight size={14} aria-hidden="true" /><span className="sr-only">(opens in a new tab)</span></a>
         <a href={profile.github} target="_blank" rel="noreferrer"><span className="contact-symbol" aria-hidden="true">⌘</span>GitHub <ArrowUpRight size={14} aria-hidden="true" /><span className="sr-only">(opens in a new tab)</span></a>
+        <a href={profile.telegram} target="_blank" rel="noreferrer"><span className="contact-symbol" aria-hidden="true">TG</span>Telegram <ArrowUpRight size={14} aria-hidden="true" /><span className="sr-only">(opens in a new tab)</span></a>
         <div className="calendar-placeholder"><span className="card-index">SCHEDULING</span><p>Calendar booking will be added when a scheduling link is available.</p></div>
       </section>
       <ContactForm />
