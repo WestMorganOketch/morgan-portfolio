@@ -89,7 +89,7 @@ export async function GET(): Promise<Response> {
   const contentWidth = width - PAGE_MARGIN * 2;
   const right = width - PAGE_MARGIN;
   const pages: PDFPage[] = [];
-  let page: PDFPage;
+  let page!: PDFPage;
   let y = 0;
 
   function addPage(firstPage = false) {
