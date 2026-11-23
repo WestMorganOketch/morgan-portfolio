@@ -468,6 +468,13 @@ td {
 
 /* Small phones: intentionally resolve the older 420px / 620px cascade overlap. */
 @media (max-width: 620px) {
+  .site-nav {
+    --nav-height: 58px;
+    top: 6px;
+  }
+  .site-nav-compact {
+    --nav-height: 54px;
+  }
   html {
     scroll-padding-top: 76px;
   }
@@ -645,10 +652,12 @@ td {
     grid-template-columns: minmax(0, 1fr);
   }
   .career-stat-grid,
-  .career-setup-status-list,
-  .career-packet-facts,
   .career-count-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .career-setup-status-list,
+  .career-packet-facts {
+    grid-template-columns: minmax(0, 1fr);
   }
   .command-palette {
     width: 100%;
@@ -668,6 +677,7 @@ td {
 /* Very narrow screens: make the navbar, actions and editor layouts intentionally compact. */
 @media (max-width: 390px) {
   .site-nav {
+    top: 4px;
     width: calc(100% - 12px);
     gap: 5px;
     padding: 5px 6px;
