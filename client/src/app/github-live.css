@@ -184,3 +184,52 @@
   .is-spinning { animation: none; }
   .github-live-language-bar span { transition: none; }
 }
+
+
+/* A direct homepage entry point to the live GitHub dashboard. */
+.home-live-work {
+  position: relative;
+  z-index: 1;
+  margin-top: 0;
+  margin-bottom: clamp(52px, 7vw, 92px);
+}
+.home-live-work-card {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+  padding: clamp(20px, 3vw, 32px);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface-raised) 93%, var(--accent));
+  box-shadow: 0 15px 45px rgba(0,0,0,.07);
+  text-decoration: none;
+}
+.home-live-work-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 65%, var(--border));
+  box-shadow: 0 18px 55px rgba(0,0,0,.11);
+}
+.home-live-work-icon {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+}
+.home-live-work-copy { display: grid; gap: 7px; min-width: 0; }
+.home-live-work-kicker { color: var(--muted); font: 9px ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .18em; }
+.home-live-work-title { color: var(--body-text); font: 400 clamp(25px, 3.6vw, 36px)/1.1 Georgia, "Times New Roman", serif; letter-spacing: -.045em; }
+.home-live-work-title em { color: #2e80ff; font-weight: 400; }
+.home-live-work-description { max-width: 640px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.home-live-work-action { display: inline-flex; align-items: center; gap: 7px; justify-self: end; color: var(--accent); font-size: 11px; font-weight: 650; white-space: nowrap; }
+@media (max-width: 700px) {
+  .home-live-work-card { grid-template-columns: 40px minmax(0,1fr); gap: 14px; padding: 19px; border-radius: 14px; }
+  .home-live-work-icon { width: 39px; height: 39px; border-radius: 10px; }
+  .home-live-work-action { grid-column: 2; justify-self: start; margin-top: 3px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-live-work-card { transition: none; }
+}
