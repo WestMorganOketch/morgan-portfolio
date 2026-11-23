@@ -396,24 +396,8 @@ td {
   .page-container {
     width: calc(100% - 36px);
   }
-  .content-grid,
-  .skill-group-grid,
-  .project-card-grid,
-  .experience-grid,
-  .certification-grid,
-  .achievement-grid,
-  .service-grid,
-  .managed-content-grid,
-  .education-layout,
-  .contact-layout,
   .career-two-columns,
   .career-preparation-choices {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .about-story-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .timeline-item {
     grid-template-columns: minmax(0, 1fr);
   }
   .admin-navigation,
