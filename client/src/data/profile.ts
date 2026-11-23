@@ -38,6 +38,7 @@ export const profile = {
   email: "westmorgan777@gmail.com",
   github: "https://github.com/WestMorganOketch",
   linkedin: "https://www.linkedin.com/in/morgan-west-415445319/",
+  telegram: "https://t.me/crymsonglow",
   summary:
     "Technology specialist focused on web application development, systems security, prompt engineering, and AI-assisted development. Holds a Bachelor of Science in Mathematics and Computer Science from Tom Mboya University, combining analytical problem-solving with practical experience building web applications, supporting IT infrastructure, and strengthening system and application security. Experienced in secure API integration, network controls, data systems, and supporting more than 50 users. Uses AI tools to accelerate prototyping while reviewing, testing, and refining generated code for quality, reliability, and security.",
   skills: [
