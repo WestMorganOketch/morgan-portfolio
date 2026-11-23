@@ -140,11 +140,14 @@ export default function GithubLiveDashboard() {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    // Defer the initial request out of the effect body to avoid a synchronous
+    // state update during effect setup while still allowing Strict Mode cleanup.
+    const initialRequest = window.setTimeout(() => { void refresh(); }, 0);
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void refresh(true);
     }, 5 * 60 * 1000);
     return () => {
+      window.clearTimeout(initialRequest);
       window.clearInterval(timer);
       requestActive.current = false;
       controllerRef.current?.abort();
