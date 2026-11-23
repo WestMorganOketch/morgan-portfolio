@@ -80,9 +80,16 @@ export default function PortfolioMusicPlayer() {
   const toggleMute = () => {
     const audio = audioRef.current;
     if (!audio) return;
-    const nextMuted = !audio.muted;
-    audio.muted = nextMuted;
-    setMuted(nextMuted);
+    if (audio.muted || volume === 0) {
+      const restoredVolume = volume > 0 ? volume : DEFAULT_VOLUME;
+      audio.volume = restoredVolume;
+      audio.muted = false;
+      setVolume(restoredVolume);
+      setMuted(false);
+      return;
+    }
+    audio.muted = true;
+    setMuted(true);
   };
 
   const retry = () => {
@@ -203,6 +210,7 @@ export default function PortfolioMusicPlayer() {
           value={muted ? 0 : volume}
           onChange={handleVolumeChange}
           aria-label="Music volume"
+          style={{ "--music-volume": (muted ? 0 : volume) * 100 + "%" } as React.CSSProperties}
         />
         <span>{Math.round((muted ? 0 : volume) * 100)}%</span>
       </div>
