@@ -5,7 +5,7 @@ import { details, publicPages } from "@/data/site";
 
 type PageProps = { params: Promise<{ slug: string }> };
 
-const slugs = [...publicPages.map((page) => page.href.slice(1)).filter((slug) => slug && slug !== "resume"), "privacy"];
+const slugs = [...publicPages.map((page) => page.href.slice(1)).filter((slug) => slug && slug !== "resume" && slug !== "work"), "privacy"];
 
 export function generateStaticParams() {
   return slugs.map((slug) => ({ slug }));
