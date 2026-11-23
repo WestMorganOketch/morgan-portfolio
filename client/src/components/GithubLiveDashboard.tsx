@@ -130,10 +130,12 @@ export default function GithubLiveDashboard() {
       if (cause instanceof Error && cause.name === "AbortError") return;
       setError(cause instanceof Error ? cause.message : "GitHub could not be reached. Please retry.");
     } finally {
-      if (controllerRef.current === controller) controllerRef.current = null;
-      requestActive.current = false;
-      setLoading(false);
-      setRefreshing(false);
+      if (controllerRef.current === controller) {
+        controllerRef.current = null;
+        requestActive.current = false;
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
@@ -144,7 +146,9 @@ export default function GithubLiveDashboard() {
     }, 5 * 60 * 1000);
     return () => {
       window.clearInterval(timer);
+      requestActive.current = false;
       controllerRef.current?.abort();
+      controllerRef.current = null;
     };
   }, [refresh]);
 
