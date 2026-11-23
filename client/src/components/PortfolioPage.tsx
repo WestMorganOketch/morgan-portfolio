@@ -14,6 +14,7 @@ import ContactForm from "@/components/ContactForm";
 import AlertTriageGame from "@/components/AlertTriageGame";
 import DocumentVault from "@/components/DocumentVault";
 import Leaderboard from "@/components/Leaderboard";
+import GithubLiveDashboard from "@/components/GithubLiveDashboard";
 
 const icons = { shield: Shield, network: Network, code: Code2, server: Server, users: Users };
 
@@ -537,6 +538,7 @@ export default function PortfolioPage({ slug }: { slug: string }) {
     case "about": content = <AboutContent />; break;
     case "skills": content = <SkillsContent />; break;
     case "projects": content = <ProjectsContent />; break;
+    case "work": content = <GithubLiveDashboard />; break;
     case "experience": content = <ExperienceContent />; break;
     case "education": content = <EducationContent />; break;
     case "certifications": content = <CertificationsContent />; break;
@@ -551,14 +553,17 @@ export default function PortfolioPage({ slug }: { slug: string }) {
   }
 
   const isAbout = slug === "about";
+  const isLiveWork = slug === "work";
   return (
-    <div className={`inner-page ${isAbout ? "inner-page-about" : ""}`}>
-      {isAbout ? null : <PageIntro slug={slug} />}
-      <div className={`page-container page-content ${isAbout ? "about-page-content" : ""}`}>{content}{managedCategories[slug] ? <ManagedContent key={slug} slug={slug} /> : null}</div>
-      <div className="page-bottom-cta page-container">
-        <p>{isAbout ? "Have a role, project, or idea in mind?" : "Curious about my work?"}</p>
-        <Link href={isAbout || slug === "projects" ? "/contact" : "/projects"}>{isAbout ? "Let’s connect" : slug === "projects" ? "Start a conversation" : "Explore selected projects"} <ArrowRight size={15} aria-hidden="true" /></Link>
-      </div>
+    <div className={`inner-page ${isAbout ? "inner-page-about" : isLiveWork ? "inner-page-work" : ""}`}>
+      {isAbout || isLiveWork ? null : <PageIntro slug={slug} />}
+      <div className={`page-container page-content ${isAbout ? "about-page-content" : isLiveWork ? "github-live-content" : ""}`}>{content}{managedCategories[slug] ? <ManagedContent key={slug} slug={slug} /> : null}</div>
+      {!isLiveWork && (
+        <div className="page-bottom-cta page-container">
+          <p>{isAbout ? "Have a role, project, or idea in mind?" : "Curious about my work?"}</p>
+          <Link href={isAbout || slug === "projects" ? "/contact" : "/projects"}>{isAbout ? "Let’s connect" : slug === "projects" ? "Start a conversation" : "Explore selected projects"} <ArrowRight size={15} aria-hidden="true" /></Link>
+        </div>
+      )}
     </div>
   );
 }
