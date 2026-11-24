@@ -16,7 +16,9 @@ type Meteor = {
 };
 
 const PINWHEEL_GALAXY_IMAGE =
-  "https://apod.nasa.gov/apod/image/2505/M101_hst6000.jpg";
+  "https://apod.nasa.gov/apod/fap/image/2505/M101_hst1280.jpg";
+const PINWHEEL_GALAXY_FALLBACK =
+  "https://www.star.ucl.ac.uk/~apod/apod/image/2505/M101_hst1280.jpg";
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -279,6 +281,12 @@ export default function GalaxyBackdrop() {
           draggable={false}
           decoding="async"
           fetchPriority="high"
+          onError={(event) => {
+            const image = event.currentTarget;
+            if (image.src !== PINWHEEL_GALAXY_FALLBACK) {
+              image.src = PINWHEEL_GALAXY_FALLBACK;
+            }
+          }}
         />
       </div>
       <canvas className="home-galaxy-meteors" ref={canvasRef} />
