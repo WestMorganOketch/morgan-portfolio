@@ -248,7 +248,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
   const isAdmin = pathname === "/admin" || pathname?.startsWith("/admin/") === true;
 
   return (
-    <div className="modern-site">
+    <div className={isAdmin ? "modern-site admin-site" : "modern-site public-site"}>
       {!isAdmin && <GalaxyBackdrop />}
       {!isAdmin && (
         <header className={`site-nav ${compact ? "site-nav-compact" : ""}`}>
