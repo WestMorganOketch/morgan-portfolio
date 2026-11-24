@@ -397,8 +397,12 @@ function FocusVisualizer() {
     const bounds = event.currentTarget.getBoundingClientRect();
     const horizontal = (event.clientX - bounds.left) / Math.max(bounds.width, 1);
     const vertical = (event.clientY - bounds.top) / Math.max(bounds.height, 1);
-    pointerX.set((horizontal - 0.5) * 8);
-    pointerY.set((0.5 - vertical) * 8);
+    // Keep the same tilt character across devices while reducing its angle on
+    // compact viewports; the spring itself remains identical for consistency.
+    const compactViewport = window.matchMedia("(max-width: 900px)").matches;
+    const tiltRange = compactViewport ? 5 : 7;
+    pointerX.set((horizontal - 0.5) * tiltRange);
+    pointerY.set((0.5 - vertical) * tiltRange);
   };
 
   const handlePointerLeave = () => {
