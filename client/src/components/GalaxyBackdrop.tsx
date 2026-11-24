@@ -20,6 +20,18 @@ type GalaxyParticle = {
   tone: number;
 };
 
+type ShootingStar = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  angle: number;
+  hue: number;
+  life: number;
+  maxLife: number;
+  length: number;
+};
+
 function seededRandom(seed: number) {
   let value = seed >>> 0;
   return () => {
@@ -99,6 +111,9 @@ export default function GalaxyBackdrop() {
     let targetPointerY = 0;
     let smoothPointerX = 0;
     let smoothPointerY = 0;
+    let shootingStars: ShootingStar[] = [];
+    let nextShootingStarAt = 1200 + Math.random() * 2600;
+    let previousFrameTime = 0;
 
     const updatePointerTarget = (event: PointerEvent) => {
       if (event.pointerType !== "mouse" && event.pointerType !== "pen") return;
@@ -226,6 +241,71 @@ export default function GalaxyBackdrop() {
       context.ellipse(0, 0, outerRadius * 0.2, outerRadius * 0.2, 0, 0, Math.PI * 2);
       context.fill();
       context.restore();
+      context.globalAlpha = 1;
+
+      // Occasional meteors cross the viewport on varied trajectories.
+      // A short, bright head and fading tail keep the effect visible but restrained.
+      const frameDelta = previousFrameTime > 0 ? Math.min(time - previousFrameTime, 40) : 16.7;
+      previousFrameTime = time;
+
+      if (time >= nextShootingStarAt) {
+        if (!reducedMotion && shootingStars.length < 2) {
+          const towardRight = Math.random() < 0.5;
+          const angle = (Math.random() * 0.48 - 0.24) + (towardRight ? 0 : Math.PI);
+          const speed = 0.85 + Math.random() * 0.7;
+          const life = 520 + Math.random() * 620;
+          shootingStars.push({
+            x: towardRight ? -70 : width + 70,
+            y: Math.random() * height * 0.76,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            angle,
+            hue: Math.random() < 0.72 ? 192 : 257,
+            life,
+            maxLife: life,
+            length: 110 + Math.random() * 180,
+          });
+        }
+        nextShootingStarAt = time + 2300 + Math.random() * 6200;
+      }
+
+      for (const meteor of shootingStars) {
+        meteor.x += meteor.vx * frameDelta;
+        meteor.y += meteor.vy * frameDelta;
+        meteor.life -= frameDelta;
+      }
+      shootingStars = shootingStars.filter((meteor) =>
+        meteor.life > 0
+        && meteor.x > -meteor.length - 120
+        && meteor.x < width + meteor.length + 120
+        && meteor.y > -meteor.length - 120
+        && meteor.y < height + meteor.length + 120,
+      );
+
+      for (const meteor of shootingStars) {
+        const lifeFade = Math.min(1, meteor.life / 170);
+        const tailX = meteor.x - Math.cos(meteor.angle) * meteor.length;
+        const tailY = meteor.y - Math.sin(meteor.angle) * meteor.length;
+        const trail = context.createLinearGradient(tailX, tailY, meteor.x, meteor.y);
+        trail.addColorStop(0, "hsla(" + meteor.hue + ", 100%, 82%, 0)");
+        trail.addColorStop(0.68, "hsla(" + meteor.hue + ", 100%, 82%, " + (0.64 * lifeFade) + ")");
+        trail.addColorStop(1, "rgba(255, 255, 255, " + (0.98 * lifeFade) + ")");
+        context.globalAlpha = 1;
+        context.strokeStyle = trail;
+        context.lineWidth = 1.35;
+        context.lineCap = "round";
+        context.beginPath();
+        context.moveTo(tailX, tailY);
+        context.lineTo(meteor.x, meteor.y);
+        context.stroke();
+        context.shadowBlur = 13 * lifeFade;
+        context.shadowColor = "hsl(" + meteor.hue + ", 100%, 82%)";
+        context.fillStyle = "rgba(255, 255, 255, " + lifeFade + ")";
+        context.beginPath();
+        context.arc(meteor.x, meteor.y, 1.45, 0, Math.PI * 2);
+        context.fill();
+        context.shadowBlur = 0;
+      }
       context.globalAlpha = 1;
     };
 
