@@ -15,10 +15,11 @@ type Meteor = {
   width: number;
 };
 
-const PINWHEEL_GALAXY_IMAGE =
-  "https://cdn.esahubble.org/archives/images/wallpaper_fhd/heic0602a.jpg";
-const PINWHEEL_GALAXY_FALLBACK =
-  "https://apod.nasa.gov/apod/fap/image/2505/M101_hst1280.jpg";
+const PINWHEEL_GALAXY_SOURCES = [
+  "https://cdn.esahubble.org/archives/images/wallpaper_fhd/heic0602a.jpg",
+  "https://apod.nasa.gov/apod/fap/image/2505/M101_hst1280.jpg",
+  "https://www.star.ucl.ac.uk/~apod/apod/image/2505/M101_hst1280.jpg",
+] as const;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -275,20 +276,24 @@ export default function GalaxyBackdrop() {
       <div className="home-galaxy-photo" ref={galaxyRef}>
         <img
           className="home-galaxy-photo-image"
-          src={PINWHEEL_GALAXY_IMAGE}
+          src={PINWHEEL_GALAXY_SOURCES[0]}
           alt=""
           aria-hidden="true"
           draggable={false}
           decoding="async"
           loading="eager"
           fetchPriority="high"
+          referrerPolicy="no-referrer"
           onLoad={(event) => {
             event.currentTarget.dataset.loaded = "true";
           }}
           onError={(event) => {
             const image = event.currentTarget;
-            if (image.src !== PINWHEEL_GALAXY_FALLBACK) {
-              image.src = PINWHEEL_GALAXY_FALLBACK;
+            const currentIndex = Number(image.dataset.sourceIndex ?? "0");
+            const nextIndex = currentIndex + 1;
+            if (nextIndex < PINWHEEL_GALAXY_SOURCES.length) {
+              image.dataset.sourceIndex = String(nextIndex);
+              image.src = PINWHEEL_GALAXY_SOURCES[nextIndex];
             }
           }}
         />
