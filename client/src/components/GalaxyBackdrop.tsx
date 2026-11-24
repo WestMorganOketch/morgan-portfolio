@@ -91,7 +91,7 @@ const STAR_TONES = [
 ];
 
 const GALAXY_ROTATION_RATE = 0.000026;
-const POINTER_EASE = 0.075;
+const POINTER_EASE = 0.11;
 
 export default function GalaxyBackdrop() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -154,16 +154,19 @@ export default function GalaxyBackdrop() {
       const pointerType = "pointerType" in event ? event.pointerType : "mouse";
       if (pointerType !== "mouse" && pointerType !== "pen") return;
 
-      const bounds = canvas.getBoundingClientRect();
-      if (bounds.width <= 0 || bounds.height <= 0) return;
+      // Use viewport coordinates rather than the canvas bounds. This keeps
+      // tracking reliable even when an ancestor creates a fixed-position
+      // containing block or a browser reports fractional canvas dimensions.
+      const viewportWidth = Math.max(window.innerWidth, 1);
+      const viewportHeight = Math.max(window.innerHeight, 1);
 
       targetPointerX = Math.max(-1, Math.min(
         1,
-        ((event.clientX - bounds.left) / bounds.width - 0.5) * 2,
+        (event.clientX / viewportWidth - 0.5) * 2,
       ));
       targetPointerY = Math.max(-1, Math.min(
         1,
-        ((event.clientY - bounds.top) / bounds.height - 0.5) * 2,
+        (event.clientY / viewportHeight - 0.5) * 2,
       ));
 
       animateReducedMotionPointer();
@@ -181,10 +184,10 @@ export default function GalaxyBackdrop() {
 
     const applyLayerParallax = () => {
       parallaxLayers?.forEach((layer) => {
-        layer.style.setProperty("--galaxy-shift-x", `${-smoothPointerX * 74}px`);
-        layer.style.setProperty("--galaxy-shift-y", `${-smoothPointerY * 56}px`);
-        layer.style.setProperty("--galaxy-rotate", `${smoothPointerX * 9}deg`);
-        layer.style.setProperty("--galaxy-tilt", `${-smoothPointerY * 7}deg`);
+        layer.style.setProperty("--galaxy-shift-x", `${-smoothPointerX * 190}px`);
+        layer.style.setProperty("--galaxy-shift-y", `${-smoothPointerY * 140}px`);
+        layer.style.setProperty("--galaxy-rotate", `${smoothPointerX * 22}deg`);
+        layer.style.setProperty("--galaxy-tilt", `${-smoothPointerY * 16}deg`);
       });
     };
 
@@ -229,15 +232,18 @@ export default function GalaxyBackdrop() {
       context.clearRect(0, 0, width, height);
 
       const isCompact = width < 720;
-      const centerX = width * 0.5 - smoothPointerX * width * 0.072;
-      const centerY = height * 0.5 - smoothPointerY * height * 0.074;
+      // Larger parallax travel makes movement clearly visible on desktop.
+      const centerX = width * 0.5 - smoothPointerX * width * 0.2;
+      const centerY = height * 0.5 - smoothPointerY * height * 0.17;
       const outerRadius = Math.min(
         width * (isCompact ? 0.54 : 0.47),
         height * (isCompact ? 0.31 : 0.45),
       );
       const motionScale = reducedMotion ? 0 : 1;
-      const rotation = time * GALAXY_ROTATION_RATE * motionScale + smoothPointerX * 0.18;
-      const verticalPerspective = 0.43 + smoothPointerY * 0.045;
+      const rotation = time * GALAXY_ROTATION_RATE * motionScale
+        + smoothPointerX * 0.44
+        + smoothPointerY * 0.16;
+      const verticalPerspective = 0.48 + smoothPointerY * 0.14;
 
       // Background nebula: a soft glow large enough to remain visible between
       // the portfolio cards without washing out foreground text.
@@ -262,8 +268,8 @@ export default function GalaxyBackdrop() {
       // separate depth planes as the pointer moves horizontally and vertically.
       for (const star of stars) {
         const drift = time * star.twinkleSpeed * star.depth * motionScale;
-        const x = (star.x * width + drift - smoothPointerX * (7 + star.depth * 25) + width * 2) % width;
-        const y = star.y * height - smoothPointerY * (5 + star.depth * 20);
+        const x = (star.x * width + drift - smoothPointerX * (22 + star.depth * 48) + width * 2) % width;
+        const y = star.y * height - smoothPointerY * (16 + star.depth * 32);
         const twinklePhase = Math.sin(time * star.twinkleSpeed * motionScale + star.phase);
         const twinkle = reducedMotion
           ? 0.58
@@ -474,15 +480,15 @@ export default function GalaxyBackdrop() {
     };
 
     window.addEventListener("resize", resize);
-    window.addEventListener("pointermove", updatePointerTarget, { passive: true });
-    window.addEventListener("pointerout", onPointerOut);
 
-    // Older desktop browsers may not dispatch Pointer Events.
-    const supportsPointerEvents = "PointerEvent" in window;
-    if (!supportsPointerEvents) {
-      window.addEventListener("mousemove", updatePointerTarget, { passive: true });
-      window.addEventListener("mouseout", onPointerOut);
-    }
+    // Listen in the document capture phase so menus, cards, and other
+    // components cannot stop the movement event before the galaxy sees it.
+    // Subscribe to both event families: modern browsers dispatch Pointer
+    // Events, while mousemove keeps desktop tracking dependable as a fallback.
+    document.addEventListener("pointermove", updatePointerTarget, { passive: true, capture: true });
+    document.addEventListener("mousemove", updatePointerTarget, { passive: true, capture: true });
+    document.addEventListener("pointerout", onPointerOut, true);
+    document.addEventListener("mouseout", onPointerOut, true);
     window.addEventListener("blur", resetPointerTarget);
     document.addEventListener("visibilitychange", onVisibilityChange);
     reducedMotionQuery.addEventListener("change", onReducedMotionChange);
@@ -492,12 +498,10 @@ export default function GalaxyBackdrop() {
       window.cancelAnimationFrame(frame);
       window.cancelAnimationFrame(reducedMotionPointerFrame);
       window.removeEventListener("resize", resize);
-      window.removeEventListener("pointermove", updatePointerTarget);
-      window.removeEventListener("pointerout", onPointerOut);
-      if (!supportsPointerEvents) {
-        window.removeEventListener("mousemove", updatePointerTarget);
-        window.removeEventListener("mouseout", onPointerOut);
-      }
+      document.removeEventListener("pointermove", updatePointerTarget, true);
+      document.removeEventListener("mousemove", updatePointerTarget, true);
+      document.removeEventListener("pointerout", onPointerOut, true);
+      document.removeEventListener("mouseout", onPointerOut, true);
       window.removeEventListener("blur", resetPointerTarget);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       reducedMotionQuery.removeEventListener("change", onReducedMotionChange);
