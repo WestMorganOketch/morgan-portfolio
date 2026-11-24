@@ -157,3 +157,10 @@ html[data-theme="dark"] .public-site > .home-galaxy-backdrop {
     backdrop-filter: none;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .public-site > .home-galaxy-backdrop .home-galaxy-ring-middle,
+  .public-site > .home-galaxy-backdrop .home-galaxy-ring-inner {
+    animation: none !important;
+  }
+}
