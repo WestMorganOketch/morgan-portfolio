@@ -284,7 +284,9 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={isAdmin ? "modern-site admin-site" : "modern-site public-site"}>
-      {!isAdmin && galaxyReady && <GalaxyBackdrop />}
+      {!isAdmin && (galaxyReady
+        ? <GalaxyBackdrop />
+        : <div className="home-galaxy-backdrop galaxy-loading" aria-hidden="true" />)}
       {!isAdmin && (
         <header className={`site-nav ${compact ? "site-nav-compact" : ""}`}>
           <Link className="brand" href="/" aria-label="Morgan West Oketch, home">
