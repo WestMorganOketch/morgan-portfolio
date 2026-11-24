@@ -16,9 +16,9 @@ type Meteor = {
 };
 
 const PINWHEEL_GALAXY_IMAGE =
-  "https://apod.nasa.gov/apod/fap/image/2505/M101_hst1280.jpg";
+  "https://cdn.esahubble.org/archives/images/wallpaper_fhd/heic0602a.jpg";
 const PINWHEEL_GALAXY_FALLBACK =
-  "https://www.star.ucl.ac.uk/~apod/apod/image/2505/M101_hst1280.jpg";
+  "https://apod.nasa.gov/apod/fap/image/2505/M101_hst1280.jpg";
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -280,7 +280,11 @@ export default function GalaxyBackdrop() {
           aria-hidden="true"
           draggable={false}
           decoding="async"
+          loading="eager"
           fetchPriority="high"
+          onLoad={(event) => {
+            event.currentTarget.dataset.loaded = "true";
+          }}
           onError={(event) => {
             const image = event.currentTarget;
             if (image.src !== PINWHEEL_GALAXY_FALLBACK) {
