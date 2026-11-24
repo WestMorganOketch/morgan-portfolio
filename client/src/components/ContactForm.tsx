@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Mail, RefreshCw } from "lucide-react";
+import { profile } from "@/data/profile";
 
 const contactSchema = z.object({
   name: z.string().trim().min(2, "Please enter at least 2 characters.").max(80, "Please keep your name under 80 characters."),
@@ -15,11 +16,25 @@ const contactSchema = z.object({
 });
 
 type ContactDetails = z.infer<typeof contactSchema>;
-type FormNotice = { type: "pending" | "success" | "error"; message: string };
+type FormNotice = { type: "pending" | "success" | "error"; message: string; fallbackHref?: string };
+
+function makeEmailFallback(values: ContactDetails): string {
+  const subject = "Portfolio enquiry: " + values.subject.trim();
+  const body = [
+    "Hello Morgan,",
+    "",
+    values.message.trim(),
+    "",
+    "From: " + values.name.trim(),
+    "Reply email: " + values.email.trim(),
+  ].join("\n");
+  return "mailto:" + profile.email + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+}
 
 export default function ContactForm() {
   const [notice, setNotice] = useState<FormNotice | null>(null);
   const noticeRef = useRef<HTMLParagraphElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const submissionInProgress = useRef(false);
   const {
     register, handleSubmit, setError, clearErrors, reset,
@@ -57,6 +72,7 @@ export default function ContactForm() {
       }
       return;
     }
+    const emailFallback = makeEmailFallback(parsed.data);
     const controller = new AbortController();
     const timeoutTimer = window.setTimeout(() => controller.abort(), 45_000);
     const wakeTimer = window.setTimeout(() => setNotice({
@@ -80,12 +96,19 @@ export default function ContactForm() {
       if (!response.ok) {
         const apiMessage = typeof result === "object" && result !== null && "error" in result
           && typeof result.error === "string" ? result.error : null;
-        const message = response.status === 403
-          ? "This site was blocked from sending your message. Please contact Morgan directly while the website settings are checked."
-          : response.status === 429 && apiMessage
-            ? apiMessage
-            : "I couldn't send your message just now. Please try again.";
-        setNotice({ type: "error", message });
+        let message: string;
+        if (response.status === 403) {
+          message = "The message service rejected this website request. You can retry or email Morgan directly below.";
+        } else if (response.status === 404) {
+          message = "The message service endpoint is unavailable. Your message has not been sent.";
+        } else if (response.status === 429) {
+          message = apiMessage ?? "Too many messages were submitted. Please wait a little before trying again.";
+        } else if ([502, 503, 504].includes(response.status)) {
+          message = "The message service is temporarily unavailable. Your message has not been sent.";
+        } else {
+          message = "I couldn't send your message just now. Your text is still here so you can retry or email Morgan directly.";
+        }
+        setNotice({ type: "error", message, fallbackHref: emailFallback });
         return;
       }
       reset();
@@ -95,8 +118,9 @@ export default function ContactForm() {
       setNotice({
         type: "error",
         message: timedOut
-          ? "The server may be waking up and took too long to respond. Please retry in a moment."
-          : "I couldn't reach the message service. It may be waking up; please try again in a moment.",
+          ? "The message service took too long to respond. Your text is still here; retry or email Morgan directly below."
+          : "I couldn't reach the message service. Your message has not been confirmed as sent; retry or email Morgan directly below.",
+        fallbackHref: emailFallback,
       });
     } finally {
       window.clearTimeout(timeoutTimer);
@@ -105,7 +129,7 @@ export default function ContactForm() {
   }
 
   return (
-    <form className="contact-form" onSubmit={handleFormSubmit} noValidate aria-labelledby="contact-form-title" aria-busy={isSubmitting}>
+    <form ref={formRef} className="contact-form" onSubmit={handleFormSubmit} noValidate aria-labelledby="contact-form-title" aria-busy={isSubmitting}>
       <div className="contact-form-heading"><span className="card-index">SEND A MESSAGE</span><h2 id="contact-form-title">Tell me what you have in mind.</h2></div>
       <div className="form-field">
         <label htmlFor="contact-name">Your name</label>
@@ -134,13 +158,25 @@ export default function ContactForm() {
       <span className={`field-error${errors.consent ? "" : " field-error-empty"}`} id="contact-consent-error" aria-hidden={!errors.consent}>{errors.consent?.message ?? ""}</span>
       <button className="button button-primary" type="submit" disabled={isSubmitting}>{isSubmitting ? "Sending..." : "Send message"} {!isSubmitting && <ArrowUpRight size={15} aria-hidden="true" />}</button>
       <p className="form-privacy">Messages are private to the admin inbox and automatically expire after 90 days.</p>
-      <p
-        ref={noticeRef}
-        className={`form-notice${notice ? " form-notice-visible" : ""}${notice?.type === "pending" ? " waking-note" : ""}`}
-        role="status"
-        aria-live="polite"
-        tabIndex={notice?.type === "success" ? -1 : undefined}
-      >{notice?.message ?? ""}</p>
+      <div className={`form-notice-wrap${notice ? " form-notice-visible" : ""}`}>
+        <p
+          ref={noticeRef}
+          className={`form-notice${notice?.type === "pending" ? " waking-note" : ""}`}
+          role="status"
+          aria-live="polite"
+          tabIndex={notice?.type === "success" ? -1 : undefined}
+        >{notice?.message ?? ""}</p>
+        {notice?.type === "error" && notice.fallbackHref ? (
+          <div className="form-notice-actions">
+            <button type="button" className="form-retry-button" onClick={() => formRef.current?.requestSubmit()} disabled={isSubmitting}>
+              <RefreshCw size={13} aria-hidden="true" /> Try again
+            </button>
+            <a className="form-fallback-link" href={notice.fallbackHref}>
+              <Mail size={13} aria-hidden="true" /> Email Morgan directly
+            </a>
+          </div>
+        ) : null}
+      </div>
     </form>
   );
 }
