@@ -16,7 +16,7 @@ type Meteor = {
 };
 
 const PINWHEEL_GALAXY_IMAGE =
-  "https://apod.nasa.gov/apod/image/2505/M101_hst6000.jpg";
+  "https://apod.nasa.gov/apod/fap/image/2505/M101_hst1280.jpg";
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
