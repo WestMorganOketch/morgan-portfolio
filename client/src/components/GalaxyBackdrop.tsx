@@ -14,13 +14,14 @@ type GalaxyProps = {
   shootingStars?: boolean;
 };
 
-type Comet = {
-  active: boolean;
-  age: number;
-  life: number;
-  speed: number;
-  position: THREE.Vector3;
-  direction: THREE.Vector3;
+type Meteor = {
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  progress: number;
+  duration: number;
+  trailLength: number;
 };
 
 const clamp = (value: number, min: number, max: number) =>
@@ -201,86 +202,118 @@ export default function GalaxyBackdrop({
     const stars = new THREE.Points(starGeometry, starMaterial);
     scene.add(stars);
 
-    // Shooting stars are shader-rendered points along a fading comet trail.
-    // Keep the meteor field to one comet so each trail has its own quiet moment.
-    const cometPool = 1;
-    const trailCount = 40;
-    const trailSpacing = 0.085;
-    const trailPositions = new Float32Array(cometPool * trailCount * 3);
-    const trailFades = new Float32Array(cometPool * trailCount);
-    const trailGeometry = new THREE.BufferGeometry();
-    trailGeometry.setAttribute("position", new THREE.BufferAttribute(trailPositions, 3));
-    trailGeometry.setAttribute("aFade", new THREE.BufferAttribute(trailFades, 1));
-    const trailMaterial = new THREE.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      uniforms: { uSize: { value: 80 } },
-      vertexShader: [
-        "uniform float uSize;",
-        "attribute float aFade;",
-        "varying float vFade;",
-        "void main() {",
-        "  vec4 vp = viewMatrix * vec4(position, 1.0);",
-        "  gl_Position = projectionMatrix * vp;",
-        "  gl_PointSize = clamp(uSize * (0.25 + aFade) / max(-vp.z, 0.1), 0.5, 7.0);",
-        "  vFade = aFade;",
-        "}",
-      ].join("\n"),
-      fragmentShader: [
-        "varying float vFade;",
-        "void main() {",
-        "  float d = length(gl_PointCoord - 0.5);",
-        "  float glow = pow(1.0 - clamp(d * 2.0, 0.0, 1.0), 2.0);",
-        "  vec3 col = mix(vec3(0.35, 0.6, 1.0), vec3(1.0), vFade);",
-        "  gl_FragColor = vec4(col, glow * vFade);",
-        "}",
-      ].join("\n"),
-    });
-    const trailPoints = new THREE.Points(trailGeometry, trailMaterial);
-    trailPoints.frustumCulled = false;
-    scene.add(trailPoints);
-
-    const comets: Comet[] = Array.from({ length: cometPool }, () => ({
-      active: false,
-      age: 0,
-      life: 1,
-      speed: 10,
-      position: new THREE.Vector3(),
-      direction: new THREE.Vector3(),
-    }));
-
-    const spawnComet = (comet: Comet) => {
-      comet.active = true;
-      comet.age = 0;
-      // A longer, slower passage with a gentle downward arc.
-      comet.life = 2.25 + Math.random() * 0.55;
-      comet.speed = 4.8 + Math.random() * 1.35;
-      const fromRight = Math.random() < 0.5;
-      const slope = 0.16 + Math.random() * 0.18;
-      const depth = -2 + Math.random() * 4;
-      if (fromRight) {
-        comet.position.set(7.0 + Math.random() * 1.2, 4.1 + Math.random() * 2.0, depth);
-        comet.direction.set(-1, -slope, (Math.random() - 0.5) * 0.08).normalize();
-      } else {
-        comet.position.set(-7.0 - Math.random() * 1.2, 6.1 - Math.random() * 2.0, depth);
-        comet.direction.set(1, -slope, (Math.random() - 0.5) * 0.08).normalize();
-      }
-    };
+    // Screen-space meteors stay visible regardless of galaxy camera perspective.
+    const meteorCanvas = document.createElement("canvas");
+    meteorCanvas.className = "home-galaxy-meteors";
+    meteorCanvas.setAttribute("aria-hidden", "true");
+    mount.appendChild(meteorCanvas);
+    const meteorContext = meteorCanvas.getContext("2d");
 
     const targetPointer = { x: 0, y: 0 };
     const smoothPointer = { x: 0, y: 0 };
     let targetScroll = 0;
     let smoothScroll = 0;
-    // First meteor appears after a calm pause; later meteors wait until the
-    // previous one has fully faded before the next begins.
-    let nextCometAt = 3.0 + Math.random() * 2.0;
+    let meteor: Meteor | null = null;
+    let nextMeteorIn = 0.75;
+    let nextMeteorDirection = 1;
     let lastTime = 0;
     let elapsed = 0;
     let animationFrame = 0;
     let visible = !document.hidden;
     let width = 1;
     let height = 1;
+
+    const spawnMeteor = () => {
+      const direction = nextMeteorDirection;
+      nextMeteorDirection *= -1;
+      const fromX = direction > 0 ? -48 : width + 48;
+      const toX = direction > 0 ? width + 48 : -48;
+      const fromY = height * (0.10 + Math.random() * 0.25);
+      const toY = fromY + height * (0.20 + Math.random() * 0.16);
+      const distance = Math.hypot(toX - fromX, toY - fromY);
+
+      meteor = {
+        fromX,
+        fromY,
+        toX,
+        toY,
+        progress: 0,
+        duration: clamp(distance / 820, 1.35, 2.65),
+        trailLength: clamp(width * 0.18, 180, 340),
+      };
+    };
+
+    const drawMeteor = (delta: number) => {
+      if (!meteorContext) return;
+      meteorContext.clearRect(0, 0, width, height);
+
+      if (!shootingStars || reduceMotion) {
+        meteor = null;
+        nextMeteorIn = 0.9;
+        return;
+      }
+
+      if (!meteor) {
+        nextMeteorIn -= delta;
+        if (nextMeteorIn > 0) return;
+        spawnMeteor();
+      }
+      if (!meteor) return;
+
+      meteor.progress = Math.min(1, meteor.progress + delta / meteor.duration);
+      const progress = meteor.progress;
+      const headX = meteor.fromX + (meteor.toX - meteor.fromX) * progress;
+      const headY = meteor.fromY + (meteor.toY - meteor.fromY) * progress;
+      const dx = meteor.toX - meteor.fromX;
+      const dy = meteor.toY - meteor.fromY;
+      const distance = Math.max(1, Math.hypot(dx, dy));
+      const tailX = headX - (dx / distance) * meteor.trailLength;
+      const tailY = headY - (dy / distance) * meteor.trailLength;
+      const edgeFade = Math.max(0, Math.min(1, progress / 0.055, (1 - progress) / 0.12));
+
+      const ctx = meteorContext;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.lineCap = "round";
+
+      const trail = ctx.createLinearGradient(tailX, tailY, headX, headY);
+      trail.addColorStop(0, "rgba(93, 151, 255, 0)");
+      trail.addColorStop(0.48, `rgba(112, 166, 255, ${0.16 * edgeFade})`);
+      trail.addColorStop(0.84, `rgba(190, 220, 255, ${0.62 * edgeFade})`);
+      trail.addColorStop(1, `rgba(255, 255, 255, ${0.96 * edgeFade})`);
+      ctx.strokeStyle = trail;
+      ctx.lineWidth = 2.4;
+      ctx.shadowBlur = 19;
+      ctx.shadowColor = `rgba(137, 185, 255, ${0.88 * edgeFade})`;
+      ctx.beginPath();
+      ctx.moveTo(tailX, tailY);
+      ctx.lineTo(headX, headY);
+      ctx.stroke();
+
+      // A fine white core gives the streak a crisp leading edge.
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = `rgba(244, 250, 255, ${0.78 * edgeFade})`;
+      ctx.lineWidth = 0.85;
+      ctx.beginPath();
+      ctx.moveTo(tailX + (headX - tailX) * 0.64, tailY + (headY - tailY) * 0.64);
+      ctx.lineTo(headX, headY);
+      ctx.stroke();
+
+      const headGlow = ctx.createRadialGradient(headX, headY, 0, headX, headY, 15);
+      headGlow.addColorStop(0, `rgba(255, 255, 255, ${0.95 * edgeFade})`);
+      headGlow.addColorStop(0.18, `rgba(205, 228, 255, ${0.58 * edgeFade})`);
+      headGlow.addColorStop(1, "rgba(125, 177, 255, 0)");
+      ctx.fillStyle = headGlow;
+      ctx.beginPath();
+      ctx.arc(headX, headY, 15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      if (progress >= 1) {
+        meteor = null;
+        nextMeteorIn = 1.05 + Math.random() * 0.65;
+      }
+    };
 
     const readScroll = () => {
       const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
@@ -303,10 +336,14 @@ export default function GalaxyBackdrop({
       camera.aspect = width / Math.max(height, 1);
       camera.updateProjectionMatrix();
       const ratio = renderer.getPixelRatio();
+      meteorCanvas.width = Math.max(1, Math.round(width * ratio));
+      meteorCanvas.height = Math.max(1, Math.round(height * ratio));
+      meteorContext?.setTransform(ratio, 0, 0, ratio, 0, 0);
+      meteor = null;
+      nextMeteorIn = 0.65;
       const k = (height / 900) * ratio;
       galaxyMaterial.uniforms.uSize.value = 36 * k;
       starMaterial.uniforms.uSize.value = 140 * k;
-      trailMaterial.uniforms.uSize.value = 80 * k;
       readScroll();
     };
 
@@ -336,37 +373,7 @@ export default function GalaxyBackdrop({
       stars.rotation.y = elapsed * 0.004 + smoothPointer.x * 0.025;
       stars.rotation.x = smoothPointer.y * 0.018;
 
-      if (shootingStars && !reduceMotion) {
-        const comet = comets[0];
-        nextCometAt -= delta;
-
-        if (!comet.active && nextCometAt <= 0) {
-          spawnComet(comet);
-        }
-
-        if (comet.active) {
-          comet.age += delta;
-          comet.position.addScaledVector(comet.direction, comet.speed * delta);
-          if (comet.age >= comet.life) {
-            comet.active = false;
-            // Let the last trail disappear before the next comet enters.
-            nextCometAt = 3.2 + Math.random() * 2.5;
-          }
-        }
-
-        const fade = comet.active
-          ? Math.sin(Math.PI * clamp(comet.age / comet.life, 0, 1))
-          : 0;
-        for (let k = 0; k < trailCount; k++) {
-          const idx = k;
-          trailPositions[idx * 3] = comet.position.x - comet.direction.x * k * trailSpacing;
-          trailPositions[idx * 3 + 1] = comet.position.y - comet.direction.y * k * trailSpacing;
-          trailPositions[idx * 3 + 2] = comet.position.z - comet.direction.z * k * trailSpacing;
-          trailFades[idx] = fade * Math.pow(1 - k / trailCount, 1.8);
-        }
-        trailGeometry.attributes.position.needsUpdate = true;
-        trailGeometry.attributes.aFade.needsUpdate = true;
-      }
+      drawMeteor(delta);
 
       renderer.render(scene, camera);
       animationFrame = window.requestAnimationFrame(animate);
@@ -418,8 +425,7 @@ export default function GalaxyBackdrop({
       galaxyMaterial.dispose();
       starGeometry.dispose();
       starMaterial.dispose();
-      trailGeometry.dispose();
-      trailMaterial.dispose();
+      meteorCanvas.remove();
       core.geometry.dispose();
       (core.material as THREE.Material).dispose();
       renderer.dispose();
