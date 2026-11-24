@@ -1148,10 +1148,39 @@ details[open] > .accordion-content { grid-template-rows: 1fr; opacity: 1; }
 .field-error-empty { visibility: hidden; }
 .contact-form .button { min-width: 150px; justify-self: start; cursor: pointer; }
 .contact-form .button:disabled { cursor: wait; opacity: 0.7; }
-.form-consent { display: flex; align-items: flex-start; gap: 9px; color: var(--muted); font-size: 10px; line-height: 1.6; }
-.form-consent input { flex: 0 0 auto; margin: 2px 0 0; accent-color: var(--accent); }
+.form-consent {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  width: 100%;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+.form-consent input {
+  display: block;
+  grid-column: 1;
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
 .form-consent [aria-invalid="true"] { outline: 1px solid #d77870; }
-.form-consent label { cursor: pointer; }
+.form-consent label {
+  display: block;
+  grid-column: 2;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  white-space: normal;
+  overflow-wrap: break-word;
+  cursor: pointer;
+}
 .form-privacy, .form-notice { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.6; }
 .form-notice-wrap {
   min-width: 0;
