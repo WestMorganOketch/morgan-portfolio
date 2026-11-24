@@ -7,6 +7,7 @@ import { useTheme } from "next-themes";
 import { ArrowUp, ArrowUpRight, Command, Menu, Search, SunMoon, X } from "lucide-react";
 import { publicPages } from "@/data/site";
 import { profile } from "@/data/profile";
+import GalaxyBackdrop from "@/components/GalaxyBackdrop";
 
 const analyticsPages = new Set([
   "home", "about", "skills", "experience", "projects", "work", "education", "certifications",
@@ -248,6 +249,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="modern-site">
+      {!isAdmin && <GalaxyBackdrop />}
       {!isAdmin && (
         <header className={`site-nav ${compact ? "site-nav-compact" : ""}`}>
           <Link className="brand" href="/" aria-label="Morgan West Oketch, home">
