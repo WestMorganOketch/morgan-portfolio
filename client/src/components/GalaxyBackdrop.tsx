@@ -44,46 +44,54 @@ function seededRandom(seed: number) {
 
 function makeStars(): Star[] {
   const random = seededRandom(73129);
-  return Array.from({ length: 260 }, () => ({
+  return Array.from({ length: 420 }, () => ({
     x: random(),
     y: random(),
-    radius: 0.35 + random() * 1.15,
+    radius: 0.35 + random() * 1.2,
     phase: random() * Math.PI * 2,
     twinkleSpeed: 0.00024 + random() * 0.00072,
-    depth: 0.15 + random() * 0.85,
+    depth: 0.12 + random() * 0.88,
   }));
 }
 
+/**
+ * Build four actual spiral arms. Each particle is assigned to one arm and
+ * receives a small angular spread around that arm, rather than a random
+ * full-circle angle that would dissolve the galaxy into a uniform disk.
+ */
 function makeGalaxyParticles(): GalaxyParticle[] {
   const random = seededRandom(204811);
   const armCount = 4;
-  return Array.from({ length: 780 }, () => {
-    const radius = Math.pow(random(), 0.78);
+  return Array.from({ length: 1450 }, () => {
     const arm = Math.floor(random() * armCount);
-    const angle = random() * Math.PI * 2
-      + radius * 8.5
-      + (arm * Math.PI * 2) / armCount
-      + (random() - 0.5) * 0.92;
+    const inBulge = random() < 0.24;
+    const radius = inBulge
+      ? Math.pow(random(), 1.8) * 0.36
+      : 0.09 + Math.pow(random(), 0.82) * 0.88;
+    const armSpread = (random() - 0.5) * (0.12 + radius * 0.25);
+    const angle = (arm * Math.PI * 2) / armCount + radius * 6.25 + armSpread;
+
     return {
       radius,
       angle,
       depth: (random() - 0.5) * 2,
-      size: 0.35 + random() * 1.3,
-      opacity: 0.18 + random() * 0.68,
-      tone: Math.floor(random() * 4),
+      size: 0.5 + random() * 1.65,
+      opacity: 0.32 + random() * 0.62,
+      tone: Math.floor(random() * 5),
     };
   });
 }
 
 const STAR_TONES = [
-  "rgba(230, 248, 255, 0.94)",
-  "rgba(135, 224, 199, 0.92)",
-  "rgba(166, 151, 255, 0.92)",
-  "rgba(255, 218, 166, 0.92)",
+  "rgba(224, 242, 255, 0.96)",
+  "rgba(126, 219, 255, 0.94)",
+  "rgba(157, 151, 255, 0.95)",
+  "rgba(255, 207, 169, 0.94)",
+  "rgba(181, 255, 229, 0.94)",
 ];
 
-const GALAXY_ROTATION_RATE = 0.000014;
-const POINTER_EASE = 0.035;
+const GALAXY_ROTATION_RATE = 0.000026;
+const POINTER_EASE = 0.075;
 
 export default function GalaxyBackdrop() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -97,9 +105,8 @@ export default function GalaxyBackdrop() {
     const stars = makeStars();
     const particles = makeGalaxyParticles();
     const backdrop = canvas.parentElement;
-    const parallaxLayers = backdrop?.querySelectorAll<HTMLElement>(
-      ".home-galaxy-halo, .home-galaxy-ring-outer, .home-galaxy-ring-middle, .home-galaxy-ring-inner",
-    );
+    const parallaxLayers = backdrop?.querySelectorAll<HTMLElement>(".home-galaxy-halo");
+
     let reducedMotion = reducedMotionQuery.matches;
     let isVisible = !document.hidden;
     let width = 0;
@@ -111,21 +118,23 @@ export default function GalaxyBackdrop() {
     let smoothPointerX = 0;
     let smoothPointerY = 0;
     let shootingStars: ShootingStar[] = [];
-    let nextShootingStarAt = 1200 + Math.random() * 2600;
+    let nextShootingStarAt = 1600 + Math.random() * 2400;
     let previousFrameTime = 0;
 
     const updatePointerTarget = (event: PointerEvent) => {
       if (event.pointerType !== "mouse" && event.pointerType !== "pen") return;
+
       const bounds = canvas.getBoundingClientRect();
-      const inside = event.clientX >= bounds.left && event.clientX <= bounds.right
-        && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
-      if (!inside) {
-        targetPointerX = 0;
-        targetPointerY = 0;
-        return;
-      }
-      targetPointerX = ((event.clientX - bounds.left) / Math.max(bounds.width, 1) - 0.5) * 2;
-      targetPointerY = ((event.clientY - bounds.top) / Math.max(bounds.height, 1) - 0.5) * 2;
+      if (bounds.width <= 0 || bounds.height <= 0) return;
+
+      targetPointerX = Math.max(-1, Math.min(
+        1,
+        ((event.clientX - bounds.left) / bounds.width - 0.5) * 2,
+      ));
+      targetPointerY = Math.max(-1, Math.min(
+        1,
+        ((event.clientY - bounds.top) / bounds.height - 0.5) * 2,
+      ));
     };
 
     const resetPointerTarget = () => {
@@ -138,17 +147,48 @@ export default function GalaxyBackdrop() {
     };
 
     const applyLayerParallax = () => {
-      if (!parallaxLayers) return;
-      parallaxLayers.forEach((layer) => {
-        const isHalo = layer.classList.contains("home-galaxy-halo");
-        const isMiddle = layer.classList.contains("home-galaxy-ring-middle");
-        const isInner = layer.classList.contains("home-galaxy-ring-inner");
-        const depth = isHalo ? 0.5 : isInner ? 1.15 : isMiddle ? 0.9 : 0.65;
-        layer.style.setProperty("--galaxy-shift-x", `${smoothPointerX * 36 * depth}px`);
-        layer.style.setProperty("--galaxy-shift-y", `${smoothPointerY * 25 * depth}px`);
-        layer.style.setProperty("--galaxy-rotate", `${smoothPointerX * 8 * depth}deg`);
-        layer.style.setProperty("--galaxy-tilt", `${-smoothPointerY * 6 * depth}deg`);
+      parallaxLayers?.forEach((layer) => {
+        layer.style.setProperty("--galaxy-shift-x", `${-smoothPointerX * 74}px`);
+        layer.style.setProperty("--galaxy-shift-y", `${-smoothPointerY * 56}px`);
+        layer.style.setProperty("--galaxy-rotate", `${smoothPointerX * 9}deg`);
+        layer.style.setProperty("--galaxy-tilt", `${-smoothPointerY * 7}deg`);
       });
+    };
+
+    const drawSpiralArms = (outerRadius: number, rotation: number) => {
+      if (!context) return;
+
+      for (let arm = 0; arm < 4; arm += 1) {
+        context.beginPath();
+        for (let step = 0; step <= 120; step += 1) {
+          const progress = step / 120;
+          const radius = outerRadius * (0.075 + progress * 0.91);
+          const angle = (arm * Math.PI * 2) / 4 + progress * 6.25 + rotation * 0.65;
+          const x = Math.cos(angle) * radius;
+          const y = Math.sin(angle) * radius;
+
+          if (step === 0) context.moveTo(x, y);
+          else context.lineTo(x, y);
+        }
+
+        context.globalAlpha = 0.34;
+        context.lineWidth = outerRadius * 0.075;
+        context.lineCap = "round";
+        context.strokeStyle = "rgba(101, 119, 255, 0.13)";
+        context.shadowColor = "rgba(121, 137, 255, 0.34)";
+        context.shadowBlur = outerRadius * 0.075;
+        context.stroke();
+
+        context.globalAlpha = 0.4;
+        context.lineWidth = outerRadius * 0.022;
+        context.strokeStyle = "rgba(139, 231, 255, 0.18)";
+        context.shadowColor = "rgba(139, 231, 255, 0.32)";
+        context.shadowBlur = outerRadius * 0.025;
+        context.stroke();
+      }
+
+      context.shadowBlur = 0;
+      context.globalAlpha = 1;
     };
 
     const paint = (time: number) => {
@@ -156,94 +196,128 @@ export default function GalaxyBackdrop() {
       context.clearRect(0, 0, width, height);
 
       const isCompact = width < 720;
-      const centerX = width * (isCompact ? 0.64 : 0.72) - smoothPointerX * 36;
-      const centerY = height * (isCompact ? 0.66 : 0.5) - smoothPointerY * 24;
-      const outerRadius = Math.min(width * (isCompact ? 0.48 : 0.45), height * 0.49);
-      // Roughly 11.6 minutes per full rotation, with smooth cursor-driven yaw.
-      const motionScale = reducedMotion ? 0 : 1;
-      const rotation = time * GALAXY_ROTATION_RATE * motionScale + smoothPointerX * (reducedMotion ? 0.10 : 0.15);
-
-      const nebula = context.createRadialGradient(
-        centerX, centerY, 0, centerX, centerY, outerRadius * 1.28,
+      const centerX = width * 0.5 - smoothPointerX * width * 0.072;
+      const centerY = height * 0.5 - smoothPointerY * height * 0.074;
+      const outerRadius = Math.min(
+        width * (isCompact ? 0.54 : 0.47),
+        height * (isCompact ? 0.31 : 0.45),
       );
-      nebula.addColorStop(0, "rgba(109, 106, 211, 0.12)");
-      nebula.addColorStop(0.28, "rgba(49, 184, 150, 0.105)");
-      nebula.addColorStop(0.66, "rgba(86, 95, 184, 0.045)");
-      nebula.addColorStop(1, "rgba(86, 95, 184, 0)");
+      const motionScale = reducedMotion ? 0 : 1;
+      const rotation = time * GALAXY_ROTATION_RATE * motionScale + smoothPointerX * 0.18;
+      const verticalPerspective = 0.43 + smoothPointerY * 0.045;
+
+      // Background nebula: a soft glow large enough to remain visible between
+      // the portfolio cards without washing out foreground text.
+      const nebula = context.createRadialGradient(
+        centerX, centerY, outerRadius * 0.04,
+        centerX, centerY, outerRadius * 1.5,
+      );
+      nebula.addColorStop(0, "rgba(132, 139, 255, 0.15)");
+      nebula.addColorStop(0.24, "rgba(74, 163, 235, 0.12)");
+      nebula.addColorStop(0.52, "rgba(105, 87, 206, 0.075)");
+      nebula.addColorStop(0.82, "rgba(80, 106, 190, 0.025)");
+      nebula.addColorStop(1, "rgba(80, 106, 190, 0)");
       context.fillStyle = nebula;
       context.fillRect(
-        Math.max(0, centerX - outerRadius * 1.3),
-        Math.max(0, centerY - outerRadius * 1.3),
-        Math.min(width, outerRadius * 2.6),
-        Math.min(height, outerRadius * 2.6),
+        Math.max(0, centerX - outerRadius * 1.5),
+        Math.max(0, centerY - outerRadius * 1.5),
+        Math.min(width, outerRadius * 3),
+        Math.min(height, outerRadius * 3),
       );
 
+      // Distant stars shift subtly against the foreground galaxy, creating
+      // separate depth planes as the pointer moves horizontally and vertically.
       for (const star of stars) {
         const drift = time * star.twinkleSpeed * star.depth * motionScale;
-        const x = (star.x * width + drift + smoothPointerX * (6 + star.depth * 18) + width) % width;
-        const y = star.y * height + smoothPointerY * (5 + star.depth * 12);
+        const x = (star.x * width + drift - smoothPointerX * (7 + star.depth * 25) + width * 2) % width;
+        const y = star.y * height - smoothPointerY * (5 + star.depth * 20);
         const twinklePhase = Math.sin(time * star.twinkleSpeed * motionScale + star.phase);
         const twinkle = reducedMotion
-          ? 0.48 + ((twinklePhase + 1) / 2) * 0.18
-          : 0.45 + ((twinklePhase + 1) / 2) * 0.48;
-        context.globalAlpha = twinkle * (0.35 + star.depth * 0.55);
-        context.fillStyle = star.depth > 0.76
-          ? "rgba(241, 250, 255, 0.96)"
-          : "rgba(169, 196, 220, 0.88)";
+          ? 0.58
+          : 0.5 + ((twinklePhase + 1) / 2) * 0.48;
+
+        context.globalAlpha = twinkle * (0.36 + star.depth * 0.62);
+        context.fillStyle = star.depth > 0.78
+          ? "rgba(246, 251, 255, 0.98)"
+          : "rgba(173, 203, 232, 0.9)";
         context.beginPath();
-        context.arc(x, y, star.radius * (0.55 + star.depth * 0.65), 0, Math.PI * 2);
+        context.arc(x, y, star.radius * (0.56 + star.depth * 0.7), 0, Math.PI * 2);
         context.fill();
       }
       context.globalAlpha = 1;
 
+      // Render the galaxy as a single rotating, cursor-steered scene.
+      context.save();
+      context.translate(centerX, centerY);
+      context.rotate(rotation);
+      context.scale(1, verticalPerspective);
+      context.globalCompositeOperation = "lighter";
+
+      // Broad dusty disk underneath the spiral arms.
+      const disk = context.createRadialGradient(
+        0, 0, outerRadius * 0.025,
+        0, 0, outerRadius,
+      );
+      disk.addColorStop(0, "rgba(235, 246, 255, 0.22)");
+      disk.addColorStop(0.18, "rgba(117, 190, 255, 0.14)");
+      disk.addColorStop(0.46, "rgba(113, 111, 239, 0.075)");
+      disk.addColorStop(0.78, "rgba(154, 105, 224, 0.025)");
+      disk.addColorStop(1, "rgba(154, 105, 224, 0)");
+      context.fillStyle = disk;
+      context.beginPath();
+      context.ellipse(0, 0, outerRadius * 0.98, outerRadius * 0.98, 0, 0, Math.PI * 2);
+      context.fill();
+
+      drawSpiralArms(outerRadius, rotation);
+
+      // Stars and gas clouds follow four visible logarithmic spiral arms.
       for (const particle of particles) {
-        const angle = particle.angle + rotation * (0.7 + particle.radius * 0.3);
-        const radialDistance = particle.radius * outerRadius;
-        const x = centerX + Math.cos(angle) * radialDistance;
-        const y = centerY
-          + Math.sin(angle) * radialDistance * 0.34
-          + particle.depth * radialDistance * 0.065;
-        const perspectiveScale = 0.72 + (Math.sin(angle) + 1) * 0.18;
+        const angle = particle.angle + rotation * (0.72 + particle.radius * 0.28);
+        const radialDistance = particle.radius * outerRadius * 0.96;
+        const x = Math.cos(angle) * radialDistance;
+        const y = Math.sin(angle) * radialDistance + particle.depth * radialDistance * 0.025;
+        const perspectiveScale = 0.78 + (Math.sin(angle) + 1) * 0.16;
         const particleSize = particle.size * perspectiveScale;
-        context.globalAlpha = particle.opacity * (0.55 + perspectiveScale * 0.34);
+
+        context.globalAlpha = particle.opacity * (0.52 + perspectiveScale * 0.36);
         context.fillStyle = STAR_TONES[particle.tone] ?? STAR_TONES[0];
         context.beginPath();
         context.arc(x, y, particleSize, 0, Math.PI * 2);
         context.fill();
-      }
-      context.globalAlpha = 1;
 
-      const coreRadius = Math.max(outerRadius * 0.18, 1);
+        if (particle.size > 1.72 && particle.radius > 0.28) {
+          context.globalAlpha *= 0.2;
+          context.shadowBlur = particleSize * 5;
+          context.shadowColor = STAR_TONES[particle.tone] ?? STAR_TONES[0];
+          context.beginPath();
+          context.arc(x, y, particleSize * 1.9, 0, Math.PI * 2);
+          context.fill();
+          context.shadowBlur = 0;
+        }
+      }
+
+      // Luminous galactic bulge.
+      const coreRadius = outerRadius * 0.235;
       const core = context.createRadialGradient(
-        centerX, centerY, 0, centerX, centerY, coreRadius,
+        0, 0, outerRadius * 0.006,
+        0, 0, coreRadius,
       );
-      core.addColorStop(0, "rgba(245, 255, 247, 0.76)");
-      core.addColorStop(0.12, "rgba(166, 255, 221, 0.45)");
-      core.addColorStop(0.42, "rgba(133, 139, 255, 0.17)");
-      core.addColorStop(1, "rgba(133, 139, 255, 0)");
+      core.addColorStop(0, "rgba(255, 255, 255, 0.9)");
+      core.addColorStop(0.1, "rgba(218, 238, 255, 0.72)");
+      core.addColorStop(0.29, "rgba(145, 197, 255, 0.32)");
+      core.addColorStop(0.56, "rgba(155, 135, 255, 0.15)");
+      core.addColorStop(1, "rgba(155, 135, 255, 0)");
+      context.globalAlpha = 1;
       context.fillStyle = core;
       context.beginPath();
-      context.arc(centerX, centerY, coreRadius, 0, Math.PI * 2);
+      context.arc(0, 0, coreRadius, 0, Math.PI * 2);
       context.fill();
 
-      context.save();
-      context.translate(centerX, centerY);
-      context.rotate(-0.18 + rotation * 0.18);
-      context.scale(1, 0.24);
-      const disk = context.createRadialGradient(0, 0, outerRadius * 0.012, 0, 0, outerRadius * 0.2);
-      disk.addColorStop(0, "rgba(245, 255, 251, 0.72)");
-      disk.addColorStop(0.18, "rgba(128, 255, 219, 0.32)");
-      disk.addColorStop(0.5, "rgba(140, 153, 255, 0.1)");
-      disk.addColorStop(1, "rgba(140, 153, 255, 0)");
-      context.fillStyle = disk;
-      context.beginPath();
-      context.ellipse(0, 0, outerRadius * 0.2, outerRadius * 0.2, 0, 0, Math.PI * 2);
-      context.fill();
+      context.globalCompositeOperation = "source-over";
       context.restore();
       context.globalAlpha = 1;
 
-      // Occasional meteors cross the viewport on varied trajectories.
-      // A short, bright head and fading tail keep the effect visible but restrained.
+      // Random meteors cross the full viewport, independent of the cursor.
       const frameDelta = previousFrameTime > 0 ? Math.min(time - previousFrameTime, 40) : 16.7;
       previousFrameTime = time;
 
@@ -309,7 +383,8 @@ export default function GalaxyBackdrop() {
 
     const animate = (time: number) => {
       if (!isVisible || reducedMotion) return;
-      // Ease toward the pointer rather than moving the scene abruptly.
+
+      // Smooth cursor tracking, with enough travel to be clearly perceptible.
       smoothPointerX += (targetPointerX - smoothPointerX) * POINTER_EASE;
       smoothPointerY += (targetPointerY - smoothPointerY) * POINTER_EASE;
       applyLayerParallax();
@@ -323,7 +398,6 @@ export default function GalaxyBackdrop() {
       if (!isVisible) return;
 
       if (reducedMotion) {
-        // Render a stable star field once; no RAF loop, parallax, orbit, or meteors.
         smoothPointerX = 0;
         smoothPointerY = 0;
         targetPointerX = 0;
@@ -341,7 +415,7 @@ export default function GalaxyBackdrop() {
       const bounds = canvas.getBoundingClientRect();
       width = bounds.width;
       height = bounds.height;
-      pixelRatio = Math.min(window.devicePixelRatio || 1, 1.6);
+      pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
       canvas.width = Math.max(1, Math.round(width * pixelRatio));
       canvas.height = Math.max(1, Math.round(height * pixelRatio));
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
@@ -381,9 +455,6 @@ export default function GalaxyBackdrop() {
   return (
     <div className="home-galaxy-backdrop" aria-hidden="true">
       <canvas className="home-galaxy-canvas" ref={canvasRef} />
-      <span className="home-galaxy-ring home-galaxy-ring-outer" />
-      <span className="home-galaxy-ring home-galaxy-ring-middle" />
-      <span className="home-galaxy-ring home-galaxy-ring-inner" />
       <span className="home-galaxy-halo" />
     </div>
   );
