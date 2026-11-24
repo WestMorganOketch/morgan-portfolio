@@ -219,7 +219,7 @@ html[data-theme="dark"] .public-site > .home-galaxy-backdrop {
   pointer-events: none;
   background-image:
     radial-gradient(ellipse at center, rgba(3, 4, 10, 0) 38%, rgba(3, 4, 10, 0.06) 52%, #03040a 72%),
-    url("https://apod.nasa.gov/apod/image/2505/M101_hst6000.jpg");
+    url("https://apod.nasa.gov/apod/fap/image/2505/M101_hst1280.jpg");
   background-size: 100% 100%, contain;
   background-position: center, center;
   background-repeat: no-repeat;
