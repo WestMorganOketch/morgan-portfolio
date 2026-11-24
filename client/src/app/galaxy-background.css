@@ -194,3 +194,55 @@ html[data-theme="dark"] .public-site > .home-galaxy-backdrop {
     width: min(112vw, 620px);
   }
 }
+
+/* Authentic Hubble Pinwheel Galaxy photo; only its camera transform animates. */
+.public-site > .home-galaxy-backdrop {
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    radial-gradient(ellipse at 50% 48%, rgba(8, 11, 28, 0.12), rgba(3, 4, 10, 0.4) 75%),
+    #03040a;
+}
+
+.public-site > .home-galaxy-backdrop .home-galaxy-photo {
+  position: absolute;
+  z-index: 0;
+  left: 50%;
+  top: 50%;
+  width: min(82vw, 1080px);
+  height: min(82vw, 1080px);
+  min-width: 560px;
+  min-height: 560px;
+  border-radius: 50%;
+  transform-origin: center;
+  will-change: transform;
+  pointer-events: none;
+  background-image:
+    radial-gradient(ellipse at center, rgba(3, 4, 10, 0) 38%, rgba(3, 4, 10, 0.06) 52%, #03040a 72%),
+    url("https://apod.nasa.gov/apod/image/2505/M101_hst6000.jpg");
+  background-size: 100% 100%, contain;
+  background-position: center, center;
+  background-repeat: no-repeat;
+  filter: saturate(1.08) contrast(1.04);
+  mix-blend-mode: screen;
+}
+
+.public-site > .home-galaxy-backdrop .home-galaxy-meteors {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+@media (max-width: 700px) {
+  .public-site > .home-galaxy-backdrop .home-galaxy-photo {
+    width: 112vw;
+    height: 112vw;
+    min-width: 0;
+    min-height: 0;
+  }
+}
+
