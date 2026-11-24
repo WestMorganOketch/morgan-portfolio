@@ -219,7 +219,7 @@ html[data-theme="dark"] .public-site > .home-galaxy-backdrop {
   pointer-events: none;
   background-image:
     radial-gradient(ellipse at center, rgba(3, 4, 10, 0) 38%, rgba(3, 4, 10, 0.06) 52%, #03040a 72%),
-    url("https://apod.nasa.gov/apod/fap/image/2505/M101_hst1280.jpg");
+    url("https://apod.nasa.gov/apod/image/2505/M101_hst6000.jpg");
   background-size: 100% 100%, contain;
   background-position: center, center;
   background-repeat: no-repeat;
@@ -243,6 +243,45 @@ html[data-theme="dark"] .public-site > .home-galaxy-backdrop {
     height: 112vw;
     min-width: 0;
     min-height: 0;
+  }
+}
+
+/* Ensure the actual NASA photograph is visibly rendered, not just requested. */
+.public-site > .home-galaxy-backdrop .home-galaxy-photo {
+  width: min(92vw, 1200px);
+  height: min(92vw, 1200px);
+  min-width: 0;
+  min-height: 0;
+  background-image: radial-gradient(
+    circle,
+    rgba(3, 4, 10, 0) 42%,
+    rgba(3, 4, 10, 0.025) 59%,
+    rgba(3, 4, 10, 0.2) 76%,
+    #03040a 100%
+  );
+  background-size: 100% 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+  mix-blend-mode: normal;
+}
+
+.public-site > .home-galaxy-backdrop .home-galaxy-photo-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  user-select: none;
+  -webkit-user-drag: none;
+  filter: saturate(1.16) contrast(1.08);
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 47%, rgba(0, 0, 0, 0.96) 58%, transparent 76%);
+  mask-image: radial-gradient(ellipse at center, #000 47%, rgba(0, 0, 0, 0.96) 58%, transparent 76%);
+}
+
+@media (max-width: 700px) {
+  .public-site > .home-galaxy-backdrop .home-galaxy-photo {
+    width: 112vw;
+    height: 112vw;
   }
 }
 
