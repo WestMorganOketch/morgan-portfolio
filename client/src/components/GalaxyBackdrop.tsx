@@ -302,7 +302,6 @@ export default function GalaxyBackdrop({
       readScroll();
     };
 
-    const clock = new THREE.Clock();
     const animate = (time: number) => {
       if (!visible) return;
       const delta = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : 0.016;
