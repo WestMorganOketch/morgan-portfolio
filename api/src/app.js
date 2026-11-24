@@ -8,9 +8,12 @@ import { registerAdminAuth } from "./adminAuth.js";
 import { registerCareerRoutes } from "./careerRoutes.js";
 
 const app = express();
-const webOrigins = new Set(
-  (process.env.WEB_ORIGINS ?? "").split(",").map((origin) => origin.trim()).filter(Boolean),
-);
+// Always allow the canonical production portfolio origin. Keep any additional
+// custom domains and local development origins configurable via WEB_ORIGINS.
+const canonicalWebOrigins = ["https://morgan-portfolio-delta.vercel.app"];
+const configuredWebOrigins = (process.env.WEB_ORIGINS ?? "")
+  .split(",").map((origin) => origin.trim()).filter(Boolean);
+const webOrigins = new Set([...canonicalWebOrigins, ...configuredWebOrigins]);
 const invalidOrigin = [...webOrigins].find((origin) => {
   try {
     const parsed = new URL(origin);

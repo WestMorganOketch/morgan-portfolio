@@ -4,7 +4,7 @@ import test from "node:test";
 
 process.env.DATABASE_URL = "postgresql://127.0.0.1:1/test";
 process.env.NODE_ENV = "test";
-process.env.WEB_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000,https://morgan-portfolio-delta.vercel.app";
+process.env.WEB_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000";
 
 const [{ app }, { pool }] = await Promise.all([
   import("../src/app.js"),

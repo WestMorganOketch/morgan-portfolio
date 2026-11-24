@@ -1,10 +1,31 @@
 import type { NextConfig } from "next";
 
-const apiOrigin = (
+const configuredApiOrigin = (
   process.env.PORTFOLIO_API_ORIGIN
   || process.env.VITE_API_URL
-  || "http://localhost:3001"
-).replace(/\/+$/, "");
+  || ""
+).trim();
+
+function normalizeApiOrigin(value: string): string {
+  if (!value) return "http://localhost:3001";
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("PORTFOLIO_API_ORIGIN must be an absolute API URL, such as https://your-api.example.com.");
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("PORTFOLIO_API_ORIGIN must use HTTP or HTTPS.");
+  }
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw new Error("PORTFOLIO_API_ORIGIN must not contain credentials, query parameters, or a fragment.");
+  }
+  // Accept a base ending in /api too; the rewrite appends /api itself.
+  if (parsed.pathname.replace(/\/+$/, "").toLowerCase() === "/api") parsed.pathname = "/";
+  return parsed.toString().replace(/\/+$/, "");
+}
+
+const apiOrigin = normalizeApiOrigin(configuredApiOrigin);
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
