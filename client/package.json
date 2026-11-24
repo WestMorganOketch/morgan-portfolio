@@ -24,7 +24,7 @@
     "react-dom": "^19.3.1",
     "react-hook-form": "^7.91.0",
     "zod": "^4.1.12",
-    "three": "^0.187.0"
+    "three": "^0.180.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
