@@ -164,3 +164,33 @@ html[data-theme="dark"] .public-site > .home-galaxy-backdrop {
     animation: none !important;
   }
 }
+
+/* The spiral is the primary scene, centered across the full public viewport. */
+.public-site > .home-galaxy-backdrop {
+  opacity: 0.97;
+}
+
+.public-site > .home-galaxy-backdrop .home-galaxy-canvas {
+  opacity: 1;
+}
+
+.public-site > .home-galaxy-backdrop .home-galaxy-halo {
+  left: 50%;
+  top: 50%;
+  width: min(74vw, 980px);
+  background: radial-gradient(
+    circle,
+    rgba(151, 169, 255, 0.16) 0%,
+    rgba(93, 170, 255, 0.12) 22%,
+    rgba(151, 111, 255, 0.075) 43%,
+    rgba(87, 130, 220, 0.025) 61%,
+    transparent 72%
+  );
+  filter: blur(12px);
+}
+
+@media (max-width: 700px) {
+  .public-site > .home-galaxy-backdrop .home-galaxy-halo {
+    width: min(112vw, 620px);
+  }
+}
