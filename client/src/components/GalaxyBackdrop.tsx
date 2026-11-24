@@ -28,7 +28,6 @@ type ShootingStar = {
   angle: number;
   hue: number;
   life: number;
-  maxLife: number;
   length: number;
 };
 
