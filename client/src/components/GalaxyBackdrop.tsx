@@ -202,9 +202,10 @@ export default function GalaxyBackdrop({
     scene.add(stars);
 
     // Shooting stars are shader-rendered points along a fading comet trail.
-    const cometPool = 4;
-    const trailCount = 30;
-    const trailSpacing = 0.1;
+    // Keep the meteor field to one comet so each trail has its own quiet moment.
+    const cometPool = 1;
+    const trailCount = 40;
+    const trailSpacing = 0.085;
     const trailPositions = new Float32Array(cometPool * trailCount * 3);
     const trailFades = new Float32Array(cometPool * trailCount);
     const trailGeometry = new THREE.BufferGeometry();
@@ -252,21 +253,28 @@ export default function GalaxyBackdrop({
     const spawnComet = (comet: Comet) => {
       comet.active = true;
       comet.age = 0;
-      comet.life = 0.9 + Math.random() * 0.7;
-      comet.speed = 9 + Math.random() * 6;
-      comet.position.set(
-        -8 + Math.random() * 16,
-        3 + Math.random() * 4,
-        -3 + Math.random() * 6,
-      );
-      comet.direction.set(-1, -0.35 - Math.random() * 0.35, 0).normalize();
+      // A longer, slower passage with a gentle downward arc.
+      comet.life = 2.25 + Math.random() * 0.55;
+      comet.speed = 4.8 + Math.random() * 1.35;
+      const fromRight = Math.random() < 0.5;
+      const slope = 0.16 + Math.random() * 0.18;
+      const depth = -2 + Math.random() * 4;
+      if (fromRight) {
+        comet.position.set(7.0 + Math.random() * 1.2, 4.1 + Math.random() * 2.0, depth);
+        comet.direction.set(-1, -slope, (Math.random() - 0.5) * 0.08).normalize();
+      } else {
+        comet.position.set(-7.0 - Math.random() * 1.2, 6.1 - Math.random() * 2.0, depth);
+        comet.direction.set(1, -slope, (Math.random() - 0.5) * 0.08).normalize();
+      }
     };
 
     const targetPointer = { x: 0, y: 0 };
     const smoothPointer = { x: 0, y: 0 };
     let targetScroll = 0;
     let smoothScroll = 0;
-    let nextCometAt = 1.2 + Math.random() * 2;
+    // First meteor appears after a calm pause; later meteors wait until the
+    // previous one has fully faded before the next begins.
+    let nextCometAt = 3.0 + Math.random() * 2.0;
     let lastTime = 0;
     let elapsed = 0;
     let animationFrame = 0;
@@ -329,27 +337,32 @@ export default function GalaxyBackdrop({
       stars.rotation.x = smoothPointer.y * 0.018;
 
       if (shootingStars && !reduceMotion) {
+        const comet = comets[0];
         nextCometAt -= delta;
-        if (nextCometAt <= 0) {
-          const free = comets.find((comet) => !comet.active);
-          if (free) spawnComet(free);
-          nextCometAt = 1.5 + Math.random() * 3.5;
+
+        if (!comet.active && nextCometAt <= 0) {
+          spawnComet(comet);
         }
-        for (let i = 0; i < cometPool; i++) {
-          const comet = comets[i];
-          if (comet.active) {
-            comet.age += delta;
-            comet.position.addScaledVector(comet.direction, comet.speed * delta);
-            if (comet.age >= comet.life) comet.active = false;
+
+        if (comet.active) {
+          comet.age += delta;
+          comet.position.addScaledVector(comet.direction, comet.speed * delta);
+          if (comet.age >= comet.life) {
+            comet.active = false;
+            // Let the last trail disappear before the next comet enters.
+            nextCometAt = 3.2 + Math.random() * 2.5;
           }
-          const fade = comet.active ? Math.sin(Math.PI * (comet.age / comet.life)) : 0;
-          for (let k = 0; k < trailCount; k++) {
-            const idx = i * trailCount + k;
-            trailPositions[idx * 3] = comet.position.x - comet.direction.x * k * trailSpacing;
-            trailPositions[idx * 3 + 1] = comet.position.y - comet.direction.y * k * trailSpacing;
-            trailPositions[idx * 3 + 2] = comet.position.z - comet.direction.z * k * trailSpacing;
-            trailFades[idx] = fade * Math.pow(1 - k / trailCount, 1.6);
-          }
+        }
+
+        const fade = comet.active
+          ? Math.sin(Math.PI * clamp(comet.age / comet.life, 0, 1))
+          : 0;
+        for (let k = 0; k < trailCount; k++) {
+          const idx = k;
+          trailPositions[idx * 3] = comet.position.x - comet.direction.x * k * trailSpacing;
+          trailPositions[idx * 3 + 1] = comet.position.y - comet.direction.y * k * trailSpacing;
+          trailPositions[idx * 3 + 2] = comet.position.z - comet.direction.z * k * trailSpacing;
+          trailFades[idx] = fade * Math.pow(1 - k / trailCount, 1.8);
         }
         trailGeometry.attributes.position.needsUpdate = true;
         trailGeometry.attributes.aFade.needsUpdate = true;
