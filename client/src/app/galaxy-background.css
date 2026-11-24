@@ -304,3 +304,87 @@ html[data-theme="dark"] .public-site > .home-galaxy-backdrop {
   opacity: 1;
   visibility: visible;
 }
+
+/* Final stable galaxy layer: use the real Hubble photograph without masks,
+   blend modes, or paint containment that can make it disappear. */
+.public-site > .home-galaxy-backdrop {
+  position: fixed !important;
+  z-index: 0 !important;
+  inset: 0 !important;
+  display: block !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  overflow: hidden !important;
+  contain: none !important;
+  isolation: isolate;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: none !important;
+  background: #02030a !important;
+  mix-blend-mode: normal !important;
+}
+
+.public-site > .home-galaxy-backdrop .home-galaxy-photo {
+  position: absolute !important;
+  z-index: 0 !important;
+  display: block !important;
+  top: 50% !important;
+  left: 50% !important;
+  width: min(110vw, 1480px) !important;
+  height: min(110vw, 1480px) !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform-origin: center center !important;
+  will-change: transform;
+  filter: none !important;
+  mix-blend-mode: normal !important;
+  background: transparent !important;
+  pointer-events: none !important;
+}
+
+.public-site > .home-galaxy-backdrop .home-galaxy-photo-image {
+  display: block !important;
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  filter: saturate(1.12) contrast(1.05) !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  background: transparent !important;
+}
+
+.public-site > .home-galaxy-backdrop .home-galaxy-meteors {
+  position: absolute !important;
+  z-index: 2 !important;
+  inset: 0 !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  pointer-events: none !important;
+}
+
+.public-site > main {
+  position: relative;
+  z-index: 1;
+  background: transparent !important;
+}
+
+@media (max-width: 700px) {
+  .public-site > .home-galaxy-backdrop .home-galaxy-photo {
+    width: 135vw !important;
+    height: 135vw !important;
+  }
+}
+
