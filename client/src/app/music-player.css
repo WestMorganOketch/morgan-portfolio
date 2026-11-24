@@ -279,3 +279,13 @@
 @media (prefers-reduced-motion: reduce) {
   .portfolio-music-playing.is-active i { animation: none; }
 }
+
+.portfolio-music-loading-icon {
+  animation: portfolio-music-spinner 900ms linear infinite;
+}
+@keyframes portfolio-music-spinner {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .portfolio-music-loading-icon { animation: none; }
+}
