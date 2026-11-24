@@ -28,7 +28,7 @@ const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
 export default function GalaxyBackdrop({
-  count = 90000,
+  count = 70000,
   radius = 6,
   branches = 4,
   spin = 1.25,
