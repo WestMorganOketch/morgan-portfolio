@@ -88,3 +88,20 @@ html[data-theme="dark"] .modern-site > .home-galaxy-backdrop {
     backdrop-filter: none;
   }
 }
+
+/* Keep broad section bands translucent so the galaxy remains visible while scrolling. */
+.modern-site > main .home-journey-band {
+  background-color: color-mix(in srgb, var(--surface-raised) 38%, transparent);
+}
+
+.modern-site > main .snapshot-section {
+  background-color: color-mix(in srgb, var(--surface-raised) 40%, transparent);
+}
+
+/* The on-screen résumé keeps its deliberate paper/card hierarchy; print remains unchanged. */
+@media screen {
+  .modern-site > main .resume-page {
+    background-color: color-mix(in srgb, var(--surface) 78%, transparent);
+    backdrop-filter: blur(8px);
+  }
+}
