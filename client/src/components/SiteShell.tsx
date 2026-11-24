@@ -2,12 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { ArrowUp, ArrowUpRight, Command, Menu, Search, SunMoon, X } from "lucide-react";
 import { publicPages } from "@/data/site";
 import { profile } from "@/data/profile";
-import GalaxyBackdrop from "@/components/GalaxyBackdrop";
+
+const GalaxyBackdrop = dynamic(() => import("@/components/GalaxyBackdrop"), {
+  ssr: false,
+  loading: () => null,
+});
 
 const analyticsPages = new Set([
   "home", "about", "skills", "experience", "projects", "work", "education", "certifications",
@@ -126,6 +131,7 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
 export function SiteShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [compact, setCompact] = useState(false);
+  const [galaxyReady, setGalaxyReady] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [exploreOpen, setExploreOpen] = useState(false);
   const [showTop, setShowTop] = useState(false);
@@ -152,6 +158,35 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
     if (horizontalDistance > verticalDistance
       && (horizontalDistance >= 60 || (horizontalDistance >= 30 && elapsed <= 180) || fastFlick)) closeExplore(true);
   };
+
+  useEffect(() => {
+    const isAdminRoute = pathname === "/admin" || pathname?.startsWith("/admin/") === true;
+    if (isAdminRoute || galaxyReady) return;
+
+    let cancelled = false;
+    let idleHandle: number | undefined;
+    let fallbackHandle = 0;
+    const startGalaxy = () => {
+      if (!cancelled) setGalaxyReady(true);
+    };
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+
+    if (typeof idleWindow.requestIdleCallback === "function") {
+      idleHandle = idleWindow.requestIdleCallback(startGalaxy, { timeout: 1200 });
+      fallbackHandle = window.setTimeout(startGalaxy, 1600);
+    } else {
+      fallbackHandle = window.setTimeout(startGalaxy, 650);
+    }
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(fallbackHandle);
+      if (idleHandle !== undefined) idleWindow.cancelIdleCallback?.(idleHandle);
+    };
+  }, [galaxyReady, pathname]);
 
   useEffect(() => {
     let frame = 0;
@@ -249,7 +284,9 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={isAdmin ? "modern-site admin-site" : "modern-site public-site"}>
-      {!isAdmin && <GalaxyBackdrop />}
+      {!isAdmin && (galaxyReady
+        ? <GalaxyBackdrop />
+        : <div className="home-galaxy-backdrop galaxy-loading" aria-hidden="true" />)}
       {!isAdmin && (
         <header className={`site-nav ${compact ? "site-nav-compact" : ""}`}>
           <Link className="brand" href="/" aria-label="Morgan West Oketch, home">

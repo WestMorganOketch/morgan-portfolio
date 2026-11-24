@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import {
   AudioLines,
+  LoaderCircle,
   Pause,
   Play,
   RotateCcw,
@@ -24,6 +25,7 @@ function formatTime(seconds: number): string {
 export default function PortfolioMusicPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(DEFAULT_VOLUME);
@@ -36,28 +38,43 @@ export default function PortfolioMusicPlayer() {
     const audio = audioRef.current;
     if (!audio) return;
     audio.volume = DEFAULT_VOLUME;
-    audio.preload = "none";
+    // Fetch only the small metadata range on page load. The full track is
+    // prepared when a visitor focuses or moves onto the Play control.
+    audio.preload = "metadata";
+  }, []);
+
+  const prepareAudio = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio || audio.preload === "auto") return;
+    audio.preload = "auto";
+    audio.load();
   }, []);
 
   const togglePlayback = useCallback(async () => {
     const audio = audioRef.current;
     if (!audio) return;
 
-    if (!audio.paused) {
+    if (loading || !audio.paused) {
       audio.pause();
+      setLoading(false);
       return;
     }
 
     setMessage("");
     setFailed(false);
+    setLoading(true);
+    audio.preload = "auto";
     try {
       await audio.play();
-    } catch {
+    } catch (error: unknown) {
       setPlaying(false);
+      if (error instanceof Error && error.name === "AbortError") return;
       setFailed(true);
       setMessage("The soundtrack could not be loaded. Please try again later.");
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [loading]);
 
   const handleSeek = (event: ChangeEvent<HTMLInputElement>) => {
     const nextTime = Number(event.currentTarget.value);
@@ -102,18 +119,27 @@ export default function PortfolioMusicPlayer() {
   };
 
   return (
-    <section className="portfolio-music" aria-label="Portfolio music player">
+    <section className="portfolio-music" aria-label="Portfolio music player" aria-busy={loading}>
       <audio
         ref={audioRef}
         src={TRACK_SOURCE}
-        preload="none"
+        preload="metadata"
         playsInline
         onPlay={() => {
           setPlaying(true);
           setMessage("");
           setFailed(false);
         }}
-        onPause={() => setPlaying(false)}
+        onPlaying={() => {
+          setLoading(false);
+          setPlaying(true);
+          setMessage("");
+        }}
+        onWaiting={() => setLoading(true)}
+        onPause={() => {
+          setPlaying(false);
+          setLoading(false);
+        }}
         onLoadedMetadata={(event) => {
           const nextDuration = event.currentTarget.duration;
           setDuration(Number.isFinite(nextDuration) ? nextDuration : 0);
@@ -127,6 +153,7 @@ export default function PortfolioMusicPlayer() {
         onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
         onCanPlay={() => {
           setReady(true);
+          setLoading(false);
           setFailed(false);
         }}
         onEnded={() => {
@@ -136,6 +163,7 @@ export default function PortfolioMusicPlayer() {
         onError={() => {
           setReady(false);
           setPlaying(false);
+          setLoading(false);
           setFailed(true);
           setMessage("The soundtrack is temporarily unavailable.");
         }}
@@ -143,7 +171,7 @@ export default function PortfolioMusicPlayer() {
 
       <div className="portfolio-music-heading">
         <span className="portfolio-music-kicker"><span aria-hidden="true" /> PERSONAL SOUNDTRACK</span>
-        <span className="portfolio-music-live-label">{playing ? "NOW PLAYING" : "PRESS PLAY"}</span>
+        <span className="portfolio-music-live-label">{loading ? "BUFFERING" : playing ? "NOW PLAYING" : "PRESS PLAY"}</span>
       </div>
 
       <div className="portfolio-music-track">
@@ -153,7 +181,7 @@ export default function PortfolioMusicPlayer() {
         </div>
         <div className="portfolio-music-track-copy">
           <p className="portfolio-music-title">West's professional Anthem</p>
-          <p className="portfolio-music-subtitle">{playing ? "Music is playing" : "A little music while you explore"}</p>
+          <p className="portfolio-music-subtitle">{loading ? "Preparing your soundtrack…" : playing ? "Music is playing" : "A little music while you explore"}</p>
         </div>
         <span className={playing ? "portfolio-music-playing is-active" : "portfolio-music-playing"} aria-hidden="true">
           <i /><i /><i /><i />
@@ -165,10 +193,16 @@ export default function PortfolioMusicPlayer() {
           className="portfolio-music-play"
           type="button"
           onClick={() => void togglePlayback()}
-          aria-label={playing ? "Pause soundtrack" : "Play soundtrack"}
-          title={playing ? "Pause" : "Play"}
+          onPointerEnter={prepareAudio}
+          onFocus={prepareAudio}
+          aria-label={loading ? "Buffering soundtrack" : playing ? "Pause soundtrack" : "Play soundtrack"}
+          title={loading ? "Loading…" : playing ? "Pause" : "Play"}
         >
-          {playing ? <Pause size={16} fill="currentColor" aria-hidden="true" /> : <Play size={16} fill="currentColor" aria-hidden="true" />}
+          {loading
+            ? <LoaderCircle className="portfolio-music-loading-icon" size={16} aria-hidden="true" />
+            : playing
+              ? <Pause size={16} fill="currentColor" aria-hidden="true" />
+              : <Play size={16} fill="currentColor" aria-hidden="true" />}
         </button>
         <div className="portfolio-music-progress">
           <input

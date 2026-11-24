@@ -28,7 +28,7 @@ const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
 export default function GalaxyBackdrop({
-  count = 90000,
+  count = 70000,
   radius = 6,
   branches = 4,
   spin = 1.25,
@@ -316,11 +316,16 @@ export default function GalaxyBackdrop({
     };
 
     const readScroll = () => {
+      if (reduceMotion) {
+        targetScroll = 0;
+        smoothScroll = 0;
+        return;
+      }
       const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
       targetScroll = clamp(window.scrollY / maxScroll, 0, 1);
     };
     const onPointerMove = (event: PointerEvent) => {
-      if (event.pointerType === "touch") return;
+      if (reduceMotion || event.pointerType === "touch") return;
       targetPointer.x = clamp((event.clientX / Math.max(window.innerWidth, 1) - 0.5) * 2, -1, 1);
       targetPointer.y = clamp((event.clientY / Math.max(window.innerHeight, 1) - 0.5) * 2, -1, 1);
     };
@@ -349,9 +354,33 @@ export default function GalaxyBackdrop({
 
     const animate = (time: number) => {
       if (!visible) return;
+
+      // Reduced-motion users get one stable render instead of a perpetual
+      // animation loop. Pointer and scroll parallax are disabled as well.
+      if (reduceMotion) {
+        lastTime = 0;
+        elapsed = 0;
+        targetPointer.x = 0;
+        targetPointer.y = 0;
+        smoothPointer.x = 0;
+        smoothPointer.y = 0;
+        targetScroll = 0;
+        smoothScroll = 0;
+        galaxyMaterial.uniforms.uTime.value = 0;
+        galaxyGroup.position.set(0, 0, 0);
+        galaxyGroup.scale.setScalar(0.86);
+        galaxyGroup.rotation.x = 0;
+        galaxyGroup.rotation.y = 0;
+        stars.rotation.set(0, 0, 0);
+        drawMeteor(0);
+        renderer.render(scene, camera);
+        animationFrame = 0;
+        return;
+      }
+
       const delta = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : 0.016;
       lastTime = time;
-      if (!reduceMotion) elapsed += delta;
+      elapsed += delta;
 
       const damping = 1 - Math.pow(0.001, delta);
       smoothPointer.x += (targetPointer.x - smoothPointer.x) * damping * 0.82;
@@ -396,6 +425,7 @@ export default function GalaxyBackdrop({
     };
     const onReducedMotionChange = () => {
       reduceMotion = reduceMotionQuery.matches;
+      lastTime = 0;
       startAnimation();
     };
 
