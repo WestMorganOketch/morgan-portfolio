@@ -44,9 +44,21 @@ export default function GalaxyBackdrop({
     if (!mount) return;
 
     const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const mobileQuery = window.matchMedia("(max-width: 700px)");
+    const compactQuery = window.matchMedia("(max-width: 900px)");
+    const coarsePointerQuery = window.matchMedia("(pointer: coarse)");
+    const device = navigator as Navigator & { deviceMemory?: number };
+    const lowPowerDevice = (navigator.hardwareConcurrency || 8) <= 4
+      || (device.deviceMemory !== undefined && device.deviceMemory <= 4);
     let reduceMotion = reduceMotionQuery.matches;
-    const isMobile = window.matchMedia("(max-width: 700px)").matches;
-    const particleCount = isMobile ? Math.floor(count * 0.48) : count;
+    let isMobile = mobileQuery.matches;
+    let isCompact = compactQuery.matches || coarsePointerQuery.matches;
+
+    // Keep the same galaxy character but choose a sensible render budget for
+    // phones, tablets, and lower-memory devices.
+    const particleBudget = lowPowerDevice ? 0.38 : isMobile ? 0.48 : isCompact ? 0.68 : 1;
+    const particleCount = Math.max(18000, Math.floor(count * particleBudget));
+    const pixelRatioLimit = () => lowPowerDevice ? 1 : isMobile ? 1.15 : isCompact ? 1.35 : 1.5;
 
     let renderer: THREE.WebGLRenderer;
     try {
@@ -61,7 +73,7 @@ export default function GalaxyBackdrop({
       return;
     }
 
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isMobile ? 1.25 : 1.65));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelRatioLimit()));
     renderer.setClearColor(0x03040a, 0);
     renderer.domElement.className = "home-galaxy-webgl-canvas";
     renderer.domElement.setAttribute("aria-hidden", "true");
@@ -217,6 +229,7 @@ export default function GalaxyBackdrop({
     let nextMeteorIn = 0.75;
     let nextMeteorDirection = 1;
     let lastTime = 0;
+    let lastRenderTime = 0;
     let elapsed = 0;
     let animationFrame = 0;
     let visible = !document.hidden;
@@ -337,6 +350,13 @@ export default function GalaxyBackdrop({
     const resize = () => {
       width = window.innerWidth;
       height = window.innerHeight;
+      isMobile = mobileQuery.matches;
+      isCompact = compactQuery.matches || coarsePointerQuery.matches;
+
+      const nextPixelRatio = Math.min(window.devicePixelRatio || 1, pixelRatioLimit());
+      if (Math.abs(renderer.getPixelRatio() - nextPixelRatio) > 0.01) {
+        renderer.setPixelRatio(nextPixelRatio);
+      }
       renderer.setSize(width, height, false);
       camera.aspect = width / Math.max(height, 1);
       camera.updateProjectionMatrix();
@@ -354,6 +374,13 @@ export default function GalaxyBackdrop({
 
     const animate = (time: number) => {
       if (!visible) return;
+
+      // Render at a consistent 60 Hz ceiling on high-refresh displays so the
+      // animation has a predictable cadence and does not waste GPU cycles.
+      if (!reduceMotion && lastRenderTime > 0 && time - lastRenderTime < 1000 / 60) {
+        animationFrame = window.requestAnimationFrame(animate);
+        return;
+      }
 
       // Reduced-motion users get one stable render instead of a perpetual
       // animation loop. Pointer and scroll parallax are disabled as well.
@@ -380,6 +407,7 @@ export default function GalaxyBackdrop({
 
       const delta = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : 0.016;
       lastTime = time;
+      lastRenderTime = time;
       elapsed += delta;
 
       const damping = 1 - Math.pow(0.001, delta);
@@ -388,19 +416,23 @@ export default function GalaxyBackdrop({
       smoothScroll += (targetScroll - smoothScroll) * 0.075;
 
       galaxyMaterial.uniforms.uTime.value = elapsed;
-      const zigzagX = Math.sin(smoothScroll * Math.PI * 5) * (isMobile ? 0.75 : 1.55);
-      const zigzagY = Math.cos(smoothScroll * Math.PI * 5) * 0.35;
-      const scrollScale = 0.86 + smoothScroll * 1.85;
+      // Use one calm parallax curve on every viewport. Compact/touch devices
+      // receive a slightly smaller amplitude, not a different movement style.
+      const scrollPhase = smoothScroll * Math.PI * 2;
+      const zigzagX = Math.sin(scrollPhase) * (isMobile ? 0.34 : isCompact ? 0.48 : 0.72);
+      const zigzagY = Math.cos(scrollPhase) * (isMobile ? 0.12 : 0.22);
+      const scrollScale = 0.88 + smoothScroll * (isMobile ? 0.75 : isCompact ? 1 : 1.25);
+      const pointerStrength = isCompact ? 0.42 : 0.62;
       galaxyGroup.position.set(
-        zigzagX - smoothPointer.x * 0.72,
-        zigzagY + smoothPointer.y * 0.48,
+        zigzagX - smoothPointer.x * pointerStrength,
+        zigzagY + smoothPointer.y * (isCompact ? 0.3 : 0.42),
         0,
       );
       galaxyGroup.scale.setScalar(scrollScale);
-      galaxyGroup.rotation.x = smoothPointer.y * 0.12;
-      galaxyGroup.rotation.y = elapsed * 0.025 + smoothPointer.x * 0.16;
-      stars.rotation.y = elapsed * 0.004 + smoothPointer.x * 0.025;
-      stars.rotation.x = smoothPointer.y * 0.018;
+      galaxyGroup.rotation.x = smoothPointer.y * (isCompact ? 0.07 : 0.1);
+      galaxyGroup.rotation.y = elapsed * 0.022 + smoothPointer.x * (isCompact ? 0.1 : 0.14);
+      stars.rotation.y = elapsed * 0.0035 + smoothPointer.x * 0.02;
+      stars.rotation.x = smoothPointer.y * (isCompact ? 0.012 : 0.016);
 
       drawMeteor(delta);
 
@@ -420,18 +452,23 @@ export default function GalaxyBackdrop({
         animationFrame = 0;
       } else {
         lastTime = 0;
+        lastRenderTime = 0;
         startAnimation();
       }
     };
     const onReducedMotionChange = () => {
       reduceMotion = reduceMotionQuery.matches;
       lastTime = 0;
+      lastRenderTime = 0;
       startAnimation();
     };
 
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(mount);
     window.addEventListener("resize", resize);
+    mobileQuery.addEventListener("change", resize);
+    compactQuery.addEventListener("change", resize);
+    coarsePointerQuery.addEventListener("change", resize);
     window.addEventListener("scroll", readScroll, { passive: true });
     document.addEventListener("pointermove", onPointerMove, { passive: true, capture: true });
     window.addEventListener("blur", resetPointer);
@@ -446,6 +483,9 @@ export default function GalaxyBackdrop({
       window.cancelAnimationFrame(animationFrame);
       resizeObserver.disconnect();
       window.removeEventListener("resize", resize);
+      mobileQuery.removeEventListener("change", resize);
+      compactQuery.removeEventListener("change", resize);
+      coarsePointerQuery.removeEventListener("change", resize);
       window.removeEventListener("scroll", readScroll);
       document.removeEventListener("pointermove", onPointerMove, true);
       window.removeEventListener("blur", resetPointer);
