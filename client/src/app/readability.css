@@ -1,0 +1,198 @@
+/* Readability pass: keep the galaxy visible while putting text on calm,
+   high-contrast surfaces. This file is imported after the visual/theme layers. */
+
+:root {
+  --muted: #bdc8c0;
+}
+html[data-theme="light"] {
+  --muted: #465448;
+}
+
+/* Give the primary introduction a gentle glass veil rather than hiding the galaxy. */
+.public-site > main .home-hero .hero-copy {
+  position: relative;
+  isolation: isolate;
+}
+.public-site > main .home-hero .hero-copy::before {
+  position: absolute;
+  z-index: -1;
+  inset: -18px -26px;
+  border: 1px solid color-mix(in srgb, var(--border) 48%, transparent);
+  border-radius: 20px;
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--surface) 91%, transparent) 0%,
+    color-mix(in srgb, var(--surface) 84%, transparent) 76%,
+    color-mix(in srgb, var(--surface) 34%, transparent) 100%
+  );
+  -webkit-backdrop-filter: blur(9px) saturate(115%);
+  backdrop-filter: blur(9px) saturate(115%);
+  content: "";
+  pointer-events: none;
+}
+html[data-theme="light"] .public-site > main .home-hero .hero-copy::before {
+  background: linear-gradient(
+    100deg,
+    rgba(249, 249, 243, .95) 0%,
+    rgba(249, 249, 243, .89) 76%,
+    rgba(249, 249, 243, .46) 100%
+  );
+}
+
+/* Text-led panels stay translucent, but backgrounds can no longer compete with text. */
+.public-site > main :is(
+  .content-card,
+  .skill-group-card,
+  .experience-card,
+  .cert-card,
+  .project-card,
+  .achievement-card,
+  .service-card,
+  .vault-card,
+  .education-feature,
+  .home-feature-grid article,
+  .coming-soon-card,
+  .technology-logo-section,
+  .technology-logo-card,
+  .badge-card,
+  .career-stat-grid > article,
+  .career-application,
+  .career-job-card,
+  .triage-alert,
+  .triage-review,
+  .about-statement,
+  .about-portrait-caption
+) {
+  background-color: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+  -webkit-backdrop-filter: blur(11px) saturate(118%);
+  backdrop-filter: blur(11px) saturate(118%);
+}
+.public-site > main .snapshot-section {
+  background-color: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+}
+.public-site > main .home-journey-band {
+  background-color: color-mix(in srgb, var(--surface-raised) 87%, transparent);
+}
+
+/* Comfortable body-copy sizing without inflating deliberate navigation and metadata labels. */
+.public-site > main .hero-summary {
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.8;
+}
+.public-site > main .hero-role-label { font-size: 12px; }
+.public-site > main .hero-socials { font-size: 12px; }
+.public-site > main .hero-scroll-hint { font-size: 10px; }
+.public-site > main .page-lede,
+.public-site > main .snapshot-heading > p,
+.public-site > main .home-section-heading > p,
+.public-site > main .about-story-prose p,
+.public-site > main .journey-content > p,
+.public-site > main .education-feature > p:not(.eyebrow),
+.public-site > main .coming-soon-card > p:not(.eyebrow),
+.public-site > main .not-found-page > p:not(.eyebrow) {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.8;
+}
+.public-site > main :is(
+  .content-card,
+  .skill-group-card,
+  .experience-card,
+  .cert-card,
+  .project-card,
+  .achievement-card,
+  .service-card,
+  .vault-card,
+  .education-feature,
+  .home-feature-grid article,
+  .coming-soon-card,
+  .career-application,
+  .career-job-card
+) p:not(.eyebrow) {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.75;
+}
+.public-site > main .snapshot-grid article p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.public-site > main .snapshot-heading > p { max-width: 440px; }
+.public-site > main .button { font-size: 12px; }
+.public-site > main .visual-window-header,
+.public-site > main .visual-window-footer { font-size: 10px; }
+.public-site > main .visual-kicker { font-size: 10px; }
+.public-site > main .visual-terminal { font-size: 10px; line-height: 1.8; }
+.public-site > main .visual-readout div { font-size: 9px; }
+.public-site > main .floating-chip { font-size: 10px; }
+.public-site > .site-footer { color: var(--muted); }
+.public-site > .site-footer > p,
+.public-site > .site-footer nav { font-size: 12px; }
+.public-site > .site-footer .copyright { font-size: 11px; }
+
+/* The music surface gets a slightly firmer backing and readable control labels. */
+.public-site > main .portfolio-music {
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+  background:
+    radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 60%),
+    color-mix(in srgb, var(--surface-raised) 96%, transparent);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  backdrop-filter: blur(12px) saturate(120%);
+}
+.public-site > main .portfolio-music-title { font-size: 14px; }
+.public-site > main .portfolio-music-subtitle { color: var(--muted); font-size: 11px; line-height: 1.6; }
+.public-site > main .portfolio-music-kicker,
+.public-site > main .portfolio-music-live-label { font-size: 9px; }
+.public-site > main .portfolio-music-times { font-size: 9px; }
+.public-site > main .portfolio-music-volume-row { font-size: 8px; }
+.public-site > main .portfolio-music-message { font-size: 11px; }
+
+/* Keep improved type sizing intact on compact screens. */
+@media (max-width: 620px) {
+  .public-site > main .home-hero .hero-copy::before {
+    inset: -10px -8px;
+    border-radius: 15px;
+    background: color-mix(in srgb, var(--surface) 91%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+  .public-site > main .hero-summary { font-size: 14px; line-height: 1.8; }
+  .public-site > main .page-lede,
+  .public-site > main .snapshot-heading > p,
+  .public-site > main .home-section-heading > p,
+  .public-site > main .about-story-prose p,
+  .public-site > main .journey-content > p,
+  .public-site > main .education-feature > p:not(.eyebrow),
+  .public-site > main .coming-soon-card > p:not(.eyebrow),
+  .public-site > main .not-found-page > p:not(.eyebrow),
+  .public-site > main :is(
+    .content-card,
+    .skill-group-card,
+    .experience-card,
+    .cert-card,
+    .project-card,
+    .achievement-card,
+    .service-card,
+    .vault-card,
+    .education-feature,
+    .home-feature-grid article,
+    .coming-soon-card,
+    .career-application,
+    .career-job-card
+  ) p:not(.eyebrow) {
+    font-size: 14px;
+    line-height: 1.75;
+  }
+  .public-site > main .snapshot-grid article p { font-size: 12px; }
+  .public-site > main .portfolio-music-title { font-size: 13px; }
+}
+@media (max-width: 360px) {
+  .public-site > main .hero-summary { font-size: 14px; }
+  .public-site > main .portfolio-music-kicker,
+  .public-site > main .portfolio-music-live-label { font-size: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .public-site > main .home-hero .hero-copy::before { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
