@@ -161,7 +161,7 @@ export default function GalaxyBackdrop() {
       const centerY = height * (isCompact ? 0.66 : 0.5) - smoothPointerY * 24;
       const outerRadius = Math.min(width * (isCompact ? 0.48 : 0.45), height * 0.49);
       // Roughly 11.6 minutes per full rotation, with smooth cursor-driven yaw.
-      const motionScale = reducedMotion ? 0.62 : 1;
+      const motionScale = reducedMotion ? 0 : 1;
       const rotation = time * GALAXY_ROTATION_RATE * motionScale + smoothPointerX * (reducedMotion ? 0.10 : 0.15);
 
       const nebula = context.createRadialGradient(
@@ -262,7 +262,6 @@ export default function GalaxyBackdrop() {
             angle,
             hue: Math.random() < 0.72 ? 192 : 257,
             life,
-            maxLife: life,
             length: 110 + Math.random() * 180,
           });
         }
@@ -310,7 +309,7 @@ export default function GalaxyBackdrop() {
     };
 
     const animate = (time: number) => {
-      if (!isVisible) return;
+      if (!isVisible || reducedMotion) return;
       // Ease toward the pointer rather than moving the scene abruptly.
       smoothPointerX += (targetPointerX - smoothPointerX) * POINTER_EASE;
       smoothPointerY += (targetPointerY - smoothPointerY) * POINTER_EASE;
@@ -321,7 +320,22 @@ export default function GalaxyBackdrop() {
 
     const start = () => {
       window.cancelAnimationFrame(frame);
-      if (isVisible) frame = window.requestAnimationFrame(animate);
+      frame = 0;
+      if (!isVisible) return;
+
+      if (reducedMotion) {
+        // Render a stable star field once; no RAF loop, parallax, orbit, or meteors.
+        smoothPointerX = 0;
+        smoothPointerY = 0;
+        targetPointerX = 0;
+        targetPointerY = 0;
+        shootingStars = [];
+        applyLayerParallax();
+        paint(0);
+        return;
+      }
+
+      frame = window.requestAnimationFrame(animate);
     };
 
     const resize = () => {
