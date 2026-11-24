@@ -113,6 +113,7 @@ export default function GalaxyBackdrop() {
     let height = 0;
     let pixelRatio = 1;
     let frame = 0;
+    let reducedMotionPointerFrame = 0;
     let targetPointerX = 0;
     let targetPointerY = 0;
     let smoothPointerX = 0;
@@ -121,8 +122,37 @@ export default function GalaxyBackdrop() {
     let nextShootingStarAt = 1600 + Math.random() * 2400;
     let previousFrameTime = 0;
 
-    const updatePointerTarget = (event: PointerEvent) => {
-      if (event.pointerType !== "mouse" && event.pointerType !== "pen") return;
+    // Reduced-motion mode pauses ambient animation, but must not disable
+    // direct, user-controlled cursor interaction on desktop browsers.
+    const animateReducedMotionPointer = () => {
+      if (!reducedMotion || !isVisible || reducedMotionPointerFrame) return;
+
+      const tick = () => {
+        reducedMotionPointerFrame = 0;
+        const deltaX = targetPointerX - smoothPointerX;
+        const deltaY = targetPointerY - smoothPointerY;
+
+        smoothPointerX += deltaX * 0.22;
+        smoothPointerY += deltaY * 0.22;
+        applyLayerParallax();
+        paint(0);
+
+        if (Math.abs(deltaX) > 0.001 || Math.abs(deltaY) > 0.001) {
+          reducedMotionPointerFrame = window.requestAnimationFrame(tick);
+        } else {
+          smoothPointerX = targetPointerX;
+          smoothPointerY = targetPointerY;
+          applyLayerParallax();
+          paint(0);
+        }
+      };
+
+      reducedMotionPointerFrame = window.requestAnimationFrame(tick);
+    };
+
+    const updatePointerTarget = (event: PointerEvent | MouseEvent) => {
+      const pointerType = "pointerType" in event ? event.pointerType : "mouse";
+      if (pointerType !== "mouse" && pointerType !== "pen") return;
 
       const bounds = canvas.getBoundingClientRect();
       if (bounds.width <= 0 || bounds.height <= 0) return;
@@ -135,14 +165,17 @@ export default function GalaxyBackdrop() {
         1,
         ((event.clientY - bounds.top) / bounds.height - 0.5) * 2,
       ));
+
+      animateReducedMotionPointer();
     };
 
     const resetPointerTarget = () => {
       targetPointerX = 0;
       targetPointerY = 0;
+      animateReducedMotionPointer();
     };
 
-    const onPointerOut = (event: PointerEvent) => {
+    const onPointerOut = (event: PointerEvent | MouseEvent) => {
       if (event.relatedTarget === null) resetPointerTarget();
     };
 
@@ -394,7 +427,9 @@ export default function GalaxyBackdrop() {
 
     const start = () => {
       window.cancelAnimationFrame(frame);
+      window.cancelAnimationFrame(reducedMotionPointerFrame);
       frame = 0;
+      reducedMotionPointerFrame = 0;
       if (!isVisible) return;
 
       if (reducedMotion) {
@@ -424,8 +459,13 @@ export default function GalaxyBackdrop() {
 
     const onVisibilityChange = () => {
       isVisible = !document.hidden;
-      if (!isVisible) window.cancelAnimationFrame(frame);
-      else start();
+      if (!isVisible) {
+        window.cancelAnimationFrame(frame);
+        window.cancelAnimationFrame(reducedMotionPointerFrame);
+        reducedMotionPointerFrame = 0;
+      } else {
+        start();
+      }
     };
 
     const onReducedMotionChange = () => {
@@ -436,6 +476,13 @@ export default function GalaxyBackdrop() {
     window.addEventListener("resize", resize);
     window.addEventListener("pointermove", updatePointerTarget, { passive: true });
     window.addEventListener("pointerout", onPointerOut);
+
+    // Older desktop browsers may not dispatch Pointer Events.
+    const supportsPointerEvents = "PointerEvent" in window;
+    if (!supportsPointerEvents) {
+      window.addEventListener("mousemove", updatePointerTarget, { passive: true });
+      window.addEventListener("mouseout", onPointerOut);
+    }
     window.addEventListener("blur", resetPointerTarget);
     document.addEventListener("visibilitychange", onVisibilityChange);
     reducedMotionQuery.addEventListener("change", onReducedMotionChange);
@@ -443,9 +490,14 @@ export default function GalaxyBackdrop() {
 
     return () => {
       window.cancelAnimationFrame(frame);
+      window.cancelAnimationFrame(reducedMotionPointerFrame);
       window.removeEventListener("resize", resize);
       window.removeEventListener("pointermove", updatePointerTarget);
       window.removeEventListener("pointerout", onPointerOut);
+      if (!supportsPointerEvents) {
+        window.removeEventListener("mousemove", updatePointerTarget);
+        window.removeEventListener("mouseout", onPointerOut);
+      }
       window.removeEventListener("blur", resetPointerTarget);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       reducedMotionQuery.removeEventListener("change", onReducedMotionChange);
