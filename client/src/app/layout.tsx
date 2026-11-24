@@ -7,6 +7,7 @@ import "./github-live.css";
 import "./music-player.css";
 import "./responsive-hardening.css";
 import "./galaxy-background.css";
+import "./readability.css";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
 
