@@ -388,3 +388,30 @@ html[data-theme="dark"] .public-site > .home-galaxy-backdrop {
   }
 }
 
+
+
+/* Procedural Three.js galaxy: transparent full-viewport canvas behind content. */
+.public-site > .home-galaxy-backdrop {
+  position: fixed !important;
+  z-index: 0 !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  overflow: hidden !important;
+  contain: none !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: none !important;
+  background: transparent !important;
+  mix-blend-mode: normal !important;
+}
+
+.public-site > .home-galaxy-backdrop .home-galaxy-webgl-canvas {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: none !important;
+}
