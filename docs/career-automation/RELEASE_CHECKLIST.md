@@ -1,6 +1,6 @@
 # Career Radar release checklist
 
-**Status (7 November 2026):** Career Radar implementation PR [#16](https://github.com/WestMorganOketch/morgan-portfolio/pull/16) is merged into `main`, and the latest `main` quality checks passed. This does **not** prove the production site or database is updated. Production release remains blocked until the historical database credential is rotated/revoked, the replacement credential is configured in the verified API environment, and a usable backup exists. Treat deployment, migrations, scheduled scans, Gmail OAuth, and live end-to-end behavior as unverified until each is checked directly.
+**Status (26 November 2026):** Career Radar code and `.github/workflows/career-radar-scheduled-scan.yml` are on `main`. The workflow defines four daily scan triggers (00:15, 06:15, 12:15, and 18:15 in `Africa/Nairobi`) plus manual dispatch. This confirms that the scheduler exists in source; it does **not** prove that production scans are active. Activation still requires confirming the previously exposed database credential was rotated/revoked, verifying the intended database and usable backup, applying and verifying migrations `004`–`010`, confirming the deployed API, and configuring the matching API/repository secrets. The live database, API environment, GitHub Actions secrets, and scheduled execution have not been verified in this session.
 
 ## Before touching the database
 
@@ -46,6 +46,17 @@ Use the SQL Editor in the **verified target project**. Review and run each compl
 
 If an earlier migration is already installed, first verify its tables and privileges rather than assuming its state. The SQL is additive and repeatable; do not delete or reset existing portfolio, admin, session, resume-profile, or application data.
 
+ 
+## Activate the scheduled scan
+
+Only do these steps after the credential, backup, migration, and API-deployment gates above are verified.
+
+1. Open the repository's **Actions** tab, choose **Career Radar scheduled scan**, and click **Run workflow**. The workflow validates both required secrets before calling the protected worker endpoint.
+2. Confirm the workflow run succeeds, then sign in to the portfolio admin and open **Job Radar** (`/admin/career`). Check **Dashboard → Recent scan activity** and **Source health**. An accepted trigger is not proof every source completed; the private run ledger is the source of truth.
+3. The GitHub schedule runs four times daily: **06:15, 12:15, 18:15, and 00:15 East Africa Time**. Manual scans use the authenticated **Scan now** button and are limited by the API.
+4. Use one scheduler only. If you later activate the n8n workflow template, disable the GitHub workflow's `schedule` trigger first; the worker endpoint permits only four triggers per rolling 24 hours.
+5. Application preparation additionally needs migrations `008` and `009`, a valid `DOC_ENCRYPTION_KEY`, and the private career document bucket. Keep `JR_SEND_MODE=draft`; Gmail OAuth, sending, and public publishing are separate opt-in steps.
+
 ## Verify the results
 
 Run these checks in the same target database after the migrations finish:
@@ -81,9 +92,9 @@ Expected output is six rows. This query does not expose secret values.
 ## After the migrations
 
 1. Configure and verify the API's server-side `DOC_ENCRYPTION_KEY` (32 bytes encoded as 64 hexadecimal characters or canonical base64) and `CAREER_DOCUMENT_BUCKET=career-private-documents`, plus the existing Supabase URL/service-role configuration. Keep the career bucket private; the API must refuse a public bucket.
-2. PR #16 is already merged to `main`. Confirm the hosting provider actually deployed the intended commit to the correct client and API services; do not assume that a GitHub merge triggered or completed both deployments.
-3. Configure GitHub Actions secrets `CAREER_API_BASE_URL` (HTTPS API origin) and `JOB_CRON_SECRET` (same random value as the API service) only after the API deploy is confirmed; then run the workflow manually and inspect the private scan ledger.
-4. Keep Gmail in draft mode until OAuth settings are configured server-side, the intended account is connected, generated CV/cover-letter PDFs are reviewed, and a test send is deliberately authorized. No test email should be sent during the migration step.
+2. Confirm that the hosting provider has deployed the intended API code and that `GET /api/health` succeeds on the actual API host. A green Vercel check for the frontend does not prove the API or database is ready.
+3. Set a new strong `JOB_CRON_SECRET` on the API service. In the GitHub repository, add Actions secrets `CAREER_API_BASE_URL` (the deployed API's public HTTPS origin only—not the Vercel frontend URL unless it truly is the API) and `JOB_CRON_SECRET` with the exact same value as the API environment. Do not commit or paste either secret into source files or chat.
+4. Keep Gmail in draft mode until OAuth settings are configured server-side, the intended account is connected, generated CV/cover-letter PDFs are reviewed, and a send is deliberately authorized. No test email should be sent during the migration step.
 5. Leave public publishing off unless you explicitly choose to enable it. Review the generated snapshot and original employer links before using the separate publish confirmation.
 
 **Stop condition:** Do not treat the release as live merely because the PR merged, CI passed, or SQL succeeded. Confirm credential rotation, verified migrations and RLS, deployed client/API versions, a successful authenticated scheduled scan visible in the private ledger, and each optional integration separately.
