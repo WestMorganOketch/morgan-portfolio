@@ -47,6 +47,14 @@ Use the SQL Editor in the **verified target project**. Review and run each compl
 If an earlier migration is already installed, first verify its tables and privileges rather than assuming its state. The SQL is additive and repeatable; do not delete or reset existing portfolio, admin, session, resume-profile, or application data.
 
  
+## Latest verified activation status (26 November 2026)
+
+- Career Radar scheduler code is merged to `main`; its configured GitHub schedule is six-hourly (four daily runs in the Kenya time zone) and uses a protected API trigger.
+- Source review and isolated tests do not prove the production database is migrated, server secrets are set, or any live scan completed. The credential-rotation and verified-backup gates remain mandatory.
+- To activate after those gates are cleared, set the API's `JOB_CRON_SECRET`, set matching GitHub Actions secrets `CAREER_API_BASE_URL` and `JOB_CRON_SECRET`, then dispatch the workflow manually and inspect the private scan ledger.
+- Automated job discovery, fit/risk triage, and shortlist are separate from actual applications. CV/cover-letter drafts require the application-preparation migrations and encryption settings; Gmail remains draft-only until explicitly configured and approved. No application is submitted automatically.
+- The separate n8n scheduler proposal in PR #44 is optional and unmerged; do not run it alongside the GitHub schedule.
+
 ## Activate the scheduled scan
 
 Only do these steps after the credential, backup, migration, and API-deployment gates above are verified.
