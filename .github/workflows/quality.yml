@@ -61,3 +61,6 @@ jobs:
       - name: Verify terminal content and production-build constraints
         working-directory: client
         run: npm run verify:terminal
+      - name: Verify résumé page and PDF output
+        working-directory: client
+        run: npm run verify:resume
