@@ -110,27 +110,14 @@ function findClosingTagStart(lowerInput, tagName, fromIndex) {
   return -1;
 }
 
-function stripScriptAndStyleBlocks(input) {
-  // Next.js embeds framework code and serialized route data in script tags.
-  // Avoid brittle HTML-filtering regexes: scan tags, respect quoted ">" in
-  // attributes, and skip complete script/style blocks before inspecting text.
-  const lowerInput = input.toLowerCase();
-  const visibleParts = [];
-  let cursor = 0;
-
-  while (cursor < input.length) {
+function findNextHiddenBlock(lowerInput, fromIndex) {
+  let cursor = fromIndex;
+  while (cursor < lowerInput.length) {
     const tagStart = lowerInput.indexOf("<", cursor);
-    if (tagStart < 0) {
-      visibleParts.push(input.slice(cursor));
-      break;
-    }
-    visibleParts.push(input.slice(cursor, tagStart));
+    if (tagStart < 0) return null;
 
     if (lowerInput.startsWith("<!--", tagStart)) {
-      const commentEnd = lowerInput.indexOf("-->", tagStart + 4);
-      if (commentEnd < 0) break;
-      cursor = commentEnd + 3;
-      continue;
+      return { start: tagStart, kind: "comment" };
     }
 
     const tagName = ["script", "style"].find((candidate) => {
@@ -138,16 +125,38 @@ function stripScriptAndStyleBlocks(input) {
       return lowerInput.startsWith(marker, tagStart)
         && isTagBoundary(lowerInput[tagStart + marker.length]);
     });
+    if (tagName) return { start: tagStart, kind: tagName };
+    cursor = tagStart + 1;
+  }
+  return null;
+}
 
-    if (!tagName) {
-      visibleParts.push("<");
-      cursor = tagStart + 1;
+function stripScriptAndStyleBlocks(input) {
+  // Next.js embeds framework code and serialized route data in script tags.
+  // Keep all ordinary markup intact while skipping comments and complete
+  // script/style blocks without relying on brittle HTML-filtering regexes.
+  const lowerInput = input.toLowerCase();
+  const visibleParts = [];
+  let cursor = 0;
+
+  while (cursor < input.length) {
+    const block = findNextHiddenBlock(lowerInput, cursor);
+    if (!block) {
+      visibleParts.push(input.slice(cursor));
+      break;
+    }
+    visibleParts.push(input.slice(cursor, block.start));
+
+    if (block.kind === "comment") {
+      const commentEnd = lowerInput.indexOf("-->", block.start + 4);
+      if (commentEnd < 0) break;
+      cursor = commentEnd + 3;
       continue;
     }
 
-    const openingEnd = findTagEnd(input, tagStart);
+    const openingEnd = findTagEnd(input, block.start);
     if (openingEnd < 0) break;
-    const closingStart = findClosingTagStart(lowerInput, tagName, openingEnd + 1);
+    const closingStart = findClosingTagStart(lowerInput, block.kind, openingEnd + 1);
     if (closingStart < 0) break;
     const closingEnd = findTagEnd(input, closingStart);
     if (closingEnd < 0) break;
