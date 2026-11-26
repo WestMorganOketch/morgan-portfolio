@@ -443,7 +443,9 @@ html[data-theme="dark"] .public-site > .home-galaxy-backdrop {
   content: "";
   transform: translate(-50%, -50%) rotate(-19deg) rotateX(58deg);
 }
-.public-site > .home-galaxy-backdrop.galaxy-loading::after {
+.public-site > .home-galaxy-backdrop.galaxy-loading::after,
+.public-site > .home-galaxy-backdrop[data-galaxy-status="webgl-unavailable"]::after,
+.public-site > .home-galaxy-backdrop[data-galaxy-status="webgl-lost"]::after {
   width: min(43vw, 520px);
   border-color: rgba(86, 221, 185, .17);
   transform: translate(-50%, -50%) rotate(16deg) rotateX(62deg);
