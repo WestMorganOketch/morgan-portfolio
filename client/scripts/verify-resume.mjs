@@ -78,15 +78,13 @@ async function waitForServer() {
 }
 
 function stripScriptAndStyleBlocks(input) {
-  let previous;
-  let current = input;
-  do {
-    previous = current;
-    current = current
-      .replace(/<(?=\s*script\b)/gi, "&lt;")
-      .replace(/<(?=\s*style\b)/gi, "&lt;");
-  } while (current !== previous);
-  return current;
+  // Next.js embeds framework code and serialized route data in script tags.
+  // Those strings may contain "undefined" or "[object Object]" without
+  // being visible to visitors, so exclude complete script/style blocks from
+  // checks that are intended to inspect the rendered page text.
+  return input
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ");
 }
 
 async function fetchPageAndPdf() {
