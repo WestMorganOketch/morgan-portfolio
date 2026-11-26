@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 
 type GalaxyProps = {
@@ -38,6 +38,36 @@ export default function GalaxyBackdrop({
   shootingStars = true,
 }: GalaxyProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
+  const [deviceProfileRevision, setDeviceProfileRevision] = useState(0);
+
+  // Rebuild the quality profile only when a viewport or pointer category
+  // actually changes (for example, rotating a tablet), not on every resize.
+  useEffect(() => {
+    const mobileQuery = window.matchMedia("(max-width: 700px)");
+    const compactQuery = window.matchMedia("(max-width: 900px)");
+    const coarsePointerQuery = window.matchMedia("(pointer: coarse)");
+    const readProfile = () => [
+      mobileQuery.matches,
+      compactQuery.matches,
+      coarsePointerQuery.matches,
+    ].join(":");
+    let currentProfile = readProfile();
+    const onProfileChange = () => {
+      const nextProfile = readProfile();
+      if (nextProfile === currentProfile) return;
+      currentProfile = nextProfile;
+      setDeviceProfileRevision((revision) => revision + 1);
+    };
+
+    mobileQuery.addEventListener("change", onProfileChange);
+    compactQuery.addEventListener("change", onProfileChange);
+    coarsePointerQuery.addEventListener("change", onProfileChange);
+    return () => {
+      mobileQuery.removeEventListener("change", onProfileChange);
+      compactQuery.removeEventListener("change", onProfileChange);
+      coarsePointerQuery.removeEventListener("change", onProfileChange);
+    };
+  }, []);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -229,7 +259,9 @@ export default function GalaxyBackdrop({
     let nextMeteorIn = 0.75;
     let nextMeteorDirection = 1;
     let lastTime = 0;
-    let lastRenderTime = 0;
+    let lastFrameTime = 0;
+    let frameAccumulator = 0;
+    const targetFrameInterval = 1000 / 60;
     let elapsed = 0;
     let animationFrame = 0;
     let visible = !document.hidden;
@@ -375,11 +407,20 @@ export default function GalaxyBackdrop({
     const animate = (time: number) => {
       if (!visible) return;
 
-      // Render at a consistent 60 Hz ceiling on high-refresh displays so the
-      // animation has a predictable cadence and does not waste GPU cycles.
-      if (!reduceMotion && lastRenderTime > 0 && time - lastRenderTime < 1000 / 60) {
-        animationFrame = window.requestAnimationFrame(animate);
-        return;
+      // Pace rendering at roughly 60 Hz with an accumulator. This keeps
+      // animation smooth on 90/120/144 Hz screens instead of blindly skipping
+      // every other frame and accidentally dropping to 30–45 FPS.
+      if (!reduceMotion) {
+        const frameElapsed = lastFrameTime
+          ? Math.min(time - lastFrameTime, 50)
+          : targetFrameInterval;
+        lastFrameTime = time;
+        frameAccumulator += frameElapsed;
+        if (frameAccumulator < targetFrameInterval) {
+          animationFrame = window.requestAnimationFrame(animate);
+          return;
+        }
+        frameAccumulator %= targetFrameInterval;
       }
 
       // Reduced-motion users get one stable render instead of a perpetual
@@ -407,7 +448,6 @@ export default function GalaxyBackdrop({
 
       const delta = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : 0.016;
       lastTime = time;
-      lastRenderTime = time;
       elapsed += delta;
 
       const damping = 1 - Math.pow(0.001, delta);
@@ -452,23 +492,40 @@ export default function GalaxyBackdrop({
         animationFrame = 0;
       } else {
         lastTime = 0;
-        lastRenderTime = 0;
+        lastFrameTime = 0;
+        frameAccumulator = 0;
         startAnimation();
       }
     };
     const onReducedMotionChange = () => {
       reduceMotion = reduceMotionQuery.matches;
       lastTime = 0;
-      lastRenderTime = 0;
+      lastFrameTime = 0;
+      frameAccumulator = 0;
       startAnimation();
     };
+    const onWebGLContextLost = (event: Event) => {
+      // Allow the browser/Three.js to restore the context, while showing the
+      // CSS galaxy fallback instead of leaving a blank or frozen canvas.
+      event.preventDefault();
+      mount.dataset.galaxyStatus = "webgl-lost";
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = 0;
+    };
+    const onWebGLContextRestored = () => {
+      mount.dataset.galaxyStatus = "running";
+      lastTime = 0;
+      lastFrameTime = 0;
+      frameAccumulator = 0;
+      startAnimation();
+    };
+
+    renderer.domElement.addEventListener("webglcontextlost", onWebGLContextLost);
+    renderer.domElement.addEventListener("webglcontextrestored", onWebGLContextRestored);
 
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(mount);
     window.addEventListener("resize", resize);
-    mobileQuery.addEventListener("change", resize);
-    compactQuery.addEventListener("change", resize);
-    coarsePointerQuery.addEventListener("change", resize);
     window.addEventListener("scroll", readScroll, { passive: true });
     document.addEventListener("pointermove", onPointerMove, { passive: true, capture: true });
     window.addEventListener("blur", resetPointer);
@@ -483,10 +540,9 @@ export default function GalaxyBackdrop({
       window.cancelAnimationFrame(animationFrame);
       resizeObserver.disconnect();
       window.removeEventListener("resize", resize);
-      mobileQuery.removeEventListener("change", resize);
-      compactQuery.removeEventListener("change", resize);
-      coarsePointerQuery.removeEventListener("change", resize);
       window.removeEventListener("scroll", readScroll);
+      renderer.domElement.removeEventListener("webglcontextlost", onWebGLContextLost);
+      renderer.domElement.removeEventListener("webglcontextrestored", onWebGLContextRestored);
       document.removeEventListener("pointermove", onPointerMove, true);
       window.removeEventListener("blur", resetPointer);
       document.removeEventListener("visibilitychange", onVisibilityChange);
@@ -501,7 +557,7 @@ export default function GalaxyBackdrop({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [count, radius, branches, spin, randomness, insideColor, outsideColor, shootingStars]);
+  }, [count, radius, branches, spin, randomness, insideColor, outsideColor, shootingStars, deviceProfileRevision]);
 
   return <div ref={mountRef} className="home-galaxy-backdrop" aria-hidden="true" />;
 }

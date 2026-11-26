@@ -419,14 +419,20 @@ html[data-theme="dark"] .public-site > .home-galaxy-backdrop {
 
 /* Lightweight static fallback keeps the galaxy outlook present while the
    Three.js bundle is deferred, and on devices where WebGL cannot initialize. */
-.public-site > .home-galaxy-backdrop.galaxy-loading {
+.public-site > .home-galaxy-backdrop.galaxy-loading,
+.public-site > .home-galaxy-backdrop[data-galaxy-status="webgl-unavailable"],
+.public-site > .home-galaxy-backdrop[data-galaxy-status="webgl-lost"] {
   background:
     radial-gradient(ellipse at 72% 43%, rgba(62, 164, 151, .16) 0%, rgba(73, 95, 180, .12) 22%, rgba(80, 66, 145, .06) 43%, transparent 66%),
     radial-gradient(ellipse at 24% 18%, rgba(88, 117, 178, .07), transparent 46%),
     #02030a !important;
 }
 .public-site > .home-galaxy-backdrop.galaxy-loading::before,
-.public-site > .home-galaxy-backdrop.galaxy-loading::after {
+.public-site > .home-galaxy-backdrop.galaxy-loading::after,
+.public-site > .home-galaxy-backdrop[data-galaxy-status="webgl-unavailable"]::before,
+.public-site > .home-galaxy-backdrop[data-galaxy-status="webgl-unavailable"]::after,
+.public-site > .home-galaxy-backdrop[data-galaxy-status="webgl-lost"]::before,
+.public-site > .home-galaxy-backdrop[data-galaxy-status="webgl-lost"]::after {
   position: absolute;
   top: 43%;
   left: 72%;
@@ -437,12 +443,18 @@ html[data-theme="dark"] .public-site > .home-galaxy-backdrop {
   content: "";
   transform: translate(-50%, -50%) rotate(-19deg) rotateX(58deg);
 }
-.public-site > .home-galaxy-backdrop.galaxy-loading::after {
+.public-site > .home-galaxy-backdrop.galaxy-loading::after,
+.public-site > .home-galaxy-backdrop[data-galaxy-status="webgl-unavailable"]::after,
+.public-site > .home-galaxy-backdrop[data-galaxy-status="webgl-lost"]::after {
   width: min(43vw, 520px);
   border-color: rgba(86, 221, 185, .17);
   transform: translate(-50%, -50%) rotate(16deg) rotateX(62deg);
 }
 @media (max-width: 700px) {
-  .public-site > .home-galaxy-backdrop.galaxy-loading::before { width: 105vw; }
-  .public-site > .home-galaxy-backdrop.galaxy-loading::after { width: 76vw; }
+  .public-site > .home-galaxy-backdrop.galaxy-loading::before,
+  .public-site > .home-galaxy-backdrop[data-galaxy-status="webgl-unavailable"]::before,
+  .public-site > .home-galaxy-backdrop[data-galaxy-status="webgl-lost"]::before { width: 105vw; }
+  .public-site > .home-galaxy-backdrop.galaxy-loading::after,
+  .public-site > .home-galaxy-backdrop[data-galaxy-status="webgl-unavailable"]::after,
+  .public-site > .home-galaxy-backdrop[data-galaxy-status="webgl-lost"]::after { width: 76vw; }
 }

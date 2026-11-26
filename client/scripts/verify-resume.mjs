@@ -12,17 +12,25 @@ const standardFontDataUrl = pathToFileURL(`${join(clientRoot, "node_modules", "p
 const nextBuildId = join(clientRoot, ".next", "BUILD_ID");
 assert.ok(existsSync(nextBuildId), "Run npm run build before npm run verify:resume.");
 
-function transpileModule(source, extraProfile) {
+function transpileModule(source, extraProfile, extraServices) {
   const code = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const exports = {};
-  new Function("exports", "__profile", code)(exports, extraProfile);
+  new Function("exports", "__profile", "__services", code)(exports, extraProfile, extraServices);
   return exports;
 }
 
-const profileSource = readFileSync(join(clientRoot, "src", "data", "profile.ts"), "utf8");
-const profileModule = transpileModule(profileSource);
+const terminalSource = readFileSync(join(clientRoot, "src", "content", "terminal.ts"), "utf8");
+const terminalModule = transpileModule(terminalSource);
+assert.ok(Array.isArray(terminalModule.PORTFOLIO_SERVICES), "Shared portfolio services catalogue must be available.");
+
+const profileSource = readFileSync(join(clientRoot, "src", "data", "profile.ts"), "utf8")
+  .replace(
+    'import { PORTFOLIO_SERVICES } from "@/content/terminal";',
+    "const PORTFOLIO_SERVICES = __services;",
+  );
+const profileModule = transpileModule(profileSource, undefined, terminalModule.PORTFOLIO_SERVICES);
 const resumeSource = readFileSync(join(clientRoot, "src", "data", "resume.ts"), "utf8")
   .replace('import { profile } from "./profile";', "const profile = __profile;");
 const resumeModule = transpileModule(resumeSource, profileModule.profile);
@@ -70,15 +78,13 @@ async function waitForServer() {
 }
 
 function stripScriptAndStyleBlocks(input) {
-  let previous;
-  let current = input;
-  do {
-    previous = current;
-    current = current
-      .replace(/<(?=\s*script\b)/gi, "&lt;")
-      .replace(/<(?=\s*style\b)/gi, "&lt;");
-  } while (current !== previous);
-  return current;
+  // Next.js embeds framework code and serialized route data in script tags.
+  // Those strings may contain "undefined" or "[object Object]" without
+  // being visible to visitors, so exclude complete script/style blocks from
+  // checks that are intended to inspect the rendered page text.
+  return input
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ");
 }
 
 async function fetchPageAndPdf() {
