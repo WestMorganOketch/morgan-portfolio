@@ -77,15 +77,91 @@ async function waitForServer() {
   throw new Error(`Production server did not become ready:\n${serverOutput}`);
 }
 
+function findTagEnd(input, startIndex) {
+  let quote = "";
+  for (let index = startIndex; index < input.length; index += 1) {
+    const character = input[index];
+    if (quote) {
+      if (character === quote) quote = "";
+      continue;
+    }
+    if (character === "\"" || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === ">") return index;
+  }
+  return -1;
+}
+
+function isTagBoundary(character) {
+  return character === undefined || character === ">" || character === "/" || character.trim() === "";
+}
+
+function findClosingTagStart(lowerInput, tagName, fromIndex) {
+  const marker = "</" + tagName;
+  let searchFrom = fromIndex;
+  while (searchFrom < lowerInput.length) {
+    const candidate = lowerInput.indexOf(marker, searchFrom);
+    if (candidate < 0) return -1;
+    if (isTagBoundary(lowerInput[candidate + marker.length])) return candidate;
+    searchFrom = candidate + marker.length;
+  }
+  return -1;
+}
+
 function stripScriptAndStyleBlocks(input) {
   // Next.js embeds framework code and serialized route data in script tags.
-  // Those strings may contain "undefined" or "[object Object]" without
-  // being visible to visitors, so exclude complete script/style blocks from
-  // checks that are intended to inspect the rendered page text.
-  return input
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ");
+  // Avoid brittle HTML-filtering regexes: scan tags, respect quoted ">" in
+  // attributes, and skip complete script/style blocks before inspecting text.
+  const lowerInput = input.toLowerCase();
+  const visibleParts = [];
+  let cursor = 0;
+
+  while (cursor < input.length) {
+    const tagStart = lowerInput.indexOf("<", cursor);
+    if (tagStart < 0) {
+      visibleParts.push(input.slice(cursor));
+      break;
+    }
+    visibleParts.push(input.slice(cursor, tagStart));
+
+    if (lowerInput.startsWith("<!--", tagStart)) {
+      const commentEnd = lowerInput.indexOf("-->", tagStart + 4);
+      if (commentEnd < 0) break;
+      cursor = commentEnd + 3;
+      continue;
+    }
+
+    const tagName = ["script", "style"].find((candidate) => {
+      const marker = "<" + candidate;
+      return lowerInput.startsWith(marker, tagStart)
+        && isTagBoundary(lowerInput[tagStart + marker.length]);
+    });
+
+    if (!tagName) {
+      visibleParts.push("<");
+      cursor = tagStart + 1;
+      continue;
+    }
+
+    const openingEnd = findTagEnd(input, tagStart);
+    if (openingEnd < 0) break;
+    const closingStart = findClosingTagStart(lowerInput, tagName, openingEnd + 1);
+    if (closingStart < 0) break;
+    const closingEnd = findTagEnd(input, closingStart);
+    if (closingEnd < 0) break;
+    cursor = closingEnd + 1;
+  }
+
+  return visibleParts.join(" ");
 }
+
+assert.equal(
+  stripScriptAndStyleBlocks('<p>Visible</p><script data-note="a>b">undefined</script\t\n bar><style>.x{}</style><p>Also visible</p>').replace(/\s+/g, " ").trim(),
+  "<p>Visible</p> <p>Also visible</p>",
+  "Visible-page checks must safely skip script/style blocks with quoted delimiters and whitespace in closing tags.",
+);
 
 async function fetchPageAndPdf() {
   const pageResponse = await fetch(`${origin}/resume`);
